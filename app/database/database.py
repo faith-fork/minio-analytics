@@ -33,12 +33,16 @@ def get_connection() -> sqlite3.Connection:
 def initialize_database() -> None:
     """Create the initial schema. Safe to call repeatedly during application startup."""
     schema = SCHEMA_PATH.read_text(encoding="utf-8")
-    with get_connection() as connection:
+    connection = get_connection()
+    try:
         connection.executescript(schema)
         connection.execute(
             "INSERT OR IGNORE INTO schema_version(version) VALUES (?)",
             (1,),
         )
+        connection.commit()
+    finally:
+        connection.close()
 
 
 @contextmanager
