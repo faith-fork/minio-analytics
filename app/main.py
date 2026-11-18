@@ -22,10 +22,12 @@ app = FastAPI(
 
 @app.get("/health", tags=["health"])
 def health() -> dict[str, str]:
+    connection = get_connection()
     try:
-        with get_connection() as connection:
-            connection.execute("SELECT 1").fetchone()
+        connection.execute("SELECT 1").fetchone()
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Database unavailable") from exc
+    finally:
+        connection.close()
 
     return {"status": "ok", "database": "ok"}
