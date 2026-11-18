@@ -13,13 +13,24 @@ A lightweight analytics dashboard for multi-location, multi-cluster MinIO enviro
 
 ## Initial technology choices
 
-- Python 3.11+ (PoC target: Python 3.12.9)
+- Python 3.12.9 (lab baseline; system Python is not modified)
 - FastAPI
 - SQLite (WAL mode)
 - HTML, CSS, and vanilla JavaScript
 - Chart.js
 - Prometheus HTTP API
 - systemd service/timer for scheduled collection
+
+## Deployment paths
+
+- Application and virtual environment: `/opt/minio-analytics`
+- Persistent application data root: `/data/minio-analytics`
+- SQLite database: `/data/minio-analytics/database/minio_analytics.db`
+- Database backups: `/data/minio-analytics/backups`
+- Application/collector logs: `/data/minio-analytics/logs`
+- Exports: `/data/minio-analytics/exports`
+
+The database location can be overridden with the `MINIO_ANALYTICS_DB` environment variable.
 
 ## Project layout
 
@@ -33,32 +44,38 @@ app/
   static/          Frontend assets
 scripts/           Daily, manual, and backfill collection commands
 config/            Safe example configuration
-data/              Local SQLite database (not committed)
-logs/              Local application and collector logs (not committed)
 ```
 
-## PoC environment
+Runtime data, logs, virtual environments, secrets, live endpoints, and customer data must not be committed to Git.
 
-The current lab baseline is Rocky Linux 10.0 (Red Quartz), Python 3.12.9,
-8 vCPUs, 7.5 GiB RAM, 5 GiB swap, and a 44 GB root filesystem.
-The application uses a project-local virtual environment; it does not replace
-the operating system Python.
+## Lab environment
 
-Suggested paths:
-
-- Application and virtual environment: `/opt/minio-analytics`
-- SQLite database and backups: `/var/lib/minio-analytics`
-- Logs: `/var/log/minio-analytics`
+- OS: Rocky Linux 10.0 (Red Quartz)
+- Python: 3.12.9
+- CPU: 8 vCPUs
+- RAM: 7.5 GiB
+- Swap: 5 GiB
+- Root filesystem: 44 GB
+- Dedicated data filesystem: 50 GB mounted at `/data`
 
 ## Development setup
 
-1. Install Python 3.11 or newer.
-2. Create and activate a virtual environment.
-3. Install dependencies with `pip install -r requirements.txt`.
-4. Copy `config/locations.example.yaml` to a local configuration file and fill in your environment-specific Prometheus endpoints.
-5. Start the API with `uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload`.
+From `/opt/minio-analytics`:
 
-The initial scaffold is intentionally small. Collector queries, database schema, authentication, APIs, and dashboard modules will be added incrementally and validated against the lab environment.
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+Copy `config/locations.example.yaml` to a local configuration file and add environment-specific Prometheus endpoints only on the VM. Do not commit the populated configuration.
+
+Start the API during development with:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+```
 
 ## Data and safety principles
 
@@ -67,8 +84,8 @@ The initial scaffold is intentionally small. Collector queries, database schema,
 - Treat missing metrics and failed Prometheus requests as unavailable, never as zero.
 - Keep bucket inventory and tenant mappings even when a bucket is temporarily absent from a scrape.
 - Store tenant attribution with each daily bucket snapshot so reassignment does not rewrite history.
-- Keep secrets, live endpoints, customer data, database files, logs, and virtual environments out of Git.
+- Use SQLite WAL mode and take regular database backups.
 
 ## Status
 
-Project scaffold initialised. The next milestone is the SQLite schema and validated Prometheus collectors.
+Initial database schema, Prometheus client, configuration loader, and cluster collector are in the repository. Lab deployment and collector validation are in progress.
