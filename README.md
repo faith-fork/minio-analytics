@@ -13,7 +13,7 @@ A lightweight analytics dashboard for multi-location, multi-cluster MinIO enviro
 
 ## Initial technology choices
 
-- Python 3.11+
+- Python 3.11+ (PoC target: Python 3.12.9)
 - FastAPI
 - SQLite (WAL mode)
 - HTML, CSS, and vanilla JavaScript
@@ -36,6 +36,19 @@ config/            Safe example configuration
 data/              Local SQLite database (not committed)
 logs/              Local application and collector logs (not committed)
 ```
+
+## PoC environment
+
+The current lab baseline is Rocky Linux 10.0 (Red Quartz), Python 3.12.9,
+8 vCPUs, 7.5 GiB RAM, 5 GiB swap, and a 44 GB root filesystem.
+The application uses a project-local virtual environment; it does not replace
+the operating system Python.
+
+Suggested paths:
+
+- Application and virtual environment: `/opt/minio-analytics`
+- SQLite database and backups: `/var/lib/minio-analytics`
+- Logs: `/var/log/minio-analytics`
 
 ## Development setup
 
