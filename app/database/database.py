@@ -7,12 +7,12 @@ from pathlib import Path
 from typing import Iterator
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "minio_analytics.db"
+DEFAULT_DB_PATH = Path("/data/minio-analytics/database/minio_analytics.db")
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 
 def database_path() -> Path:
-    """Return the configured database path, defaulting to the project data directory."""
+    """Return the configured database path, defaulting to the dedicated data disk."""
     configured = os.getenv("MINIO_ANALYTICS_DB", "").strip()
     return Path(configured).expanduser() if configured else DEFAULT_DB_PATH
 
@@ -57,3 +57,4 @@ def transaction() -> Iterator[sqlite3.Connection]:
         raise
     finally:
         connection.close()
+}
