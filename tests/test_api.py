@@ -3,10 +3,14 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 
-def test_authentication_and_role_enforcement(
-    client: TestClient, viewer_client: TestClient
-) -> None:
+def test_unauthenticated_requests_are_rejected(client: TestClient) -> None:
     assert client.get("/api/tenants").status_code == 401
+    assert client.get("/api/analytics/overview").status_code == 401
+
+
+def test_viewer_role_cannot_perform_administrative_actions(
+    viewer_client: TestClient,
+) -> None:
     assert viewer_client.get("/api/tenants").status_code == 200
     assert viewer_client.post(
         "/api/tenants", json={"name": "Blocked Tenant"}
