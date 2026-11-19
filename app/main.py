@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -55,11 +56,6 @@ app.include_router(auth_router)
 app.include_router(tenant_router)
 app.include_router(analytics_router)
 
-# Serve the browser dashboard after API routes so it cannot shadow them.
-STATIC_DIR = Path(__file__).resolve().parent / "static"
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="dashboard")
-
-
 @app.get("/health", tags=["health"])
 @app.get("/healthz", tags=["health"])
 def health() -> dict[str, str]:
@@ -72,3 +68,15 @@ def health() -> dict[str, str]:
         connection.close()
 
     return {"status": "ok", "database": "ok"}
+
+ 
+# Register the dashboard routes after API and health routes.
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+
+@app.get("/", include_in_schema=False)
+def dashboard_index() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
