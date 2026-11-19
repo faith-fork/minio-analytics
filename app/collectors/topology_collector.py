@@ -70,6 +70,7 @@ def collect_topology_snapshot(
     cluster: ClusterConfig,
     snapshot_ts: datetime,
     client: PrometheusClient | None = None,
+    include_pool_health: bool = True,
 ) -> TopologySnapshot:
     """Collect node, drive, pool and erasure-set telemetry at one instant.
 
@@ -242,55 +243,59 @@ def collect_topology_snapshot(
             )
             drives.append(row)
 
-        # Pool/set metrics are replicated on each MinIO node. Deduplicate on
-        # pool + set and retain the raw numeric status value without guessing
-        # its enum interpretation.
-        set_metrics = {
-            "status_value": unique("minio_cluster_health_erasure_set_status", selector,
-                                   ("pool", "set"), "erasure_sets"),
-            "online_drives": unique("minio_cluster_health_erasure_set_online_drives",
-                                    selector, ("pool", "set"), "erasure_sets"),
-            "healing_drives": unique("minio_cluster_health_erasure_set_healing_drives",
-                                     selector, ("pool", "set"), "erasure_sets"),
-            "read_quorum": unique("minio_cluster_health_erasure_set_read_quorum",
-                                  selector, ("pool", "set"), "erasure_sets"),
-            "write_quorum": unique("minio_cluster_health_erasure_set_write_quorum",
-                                   selector, ("pool", "set"), "erasure_sets"),
-        }
-        set_keys = set().union(*(set(values) for values in set_metrics.values()))
-        if not set_keys:
-            errors["erasure_sets"] = "No erasure-set health metrics returned"
-        else:
-            incomplete_sets = [
-                name for name, values in set_metrics.items()
-                if set(values) != set_keys
-            ]
-            if incomplete_sets:
-                errors["erasure_sets"] = "Incomplete erasure-set metric coverage: " + ", ".join(incomplete_sets)
-        erasure_sets = []
-        pool_groups: dict[str, list[dict[str, Any]]] = {}
-        for pool, set_id in sorted(set_keys):
-            row = {"pool_id": pool, "set_id": set_id}
-            for name, values in set_metrics.items():
-                row[name] = values.get((pool, set_id))
-            erasure_sets.append(row)
-            pool_groups.setdefault(pool, []).append(row)
-
-        pools = []
-        for pool_id, sets in sorted(pool_groups.items()):
-            pools.append({
-                "pool_id": pool_id,
-                "erasure_set_count": len(sets),
-                "online_drives": (
-                    sum(row["online_drives"] for row in sets)
-                    if all(row["online_drives"] is not None for row in sets) else None
-                ),
-                "healing_drives": (
-                    sum(row["healing_drives"] for row in sets)
-                    if all(row["healing_drives"] is not None for row in sets) else None
-                ),
-            })
-
+        pools: list[dict[str, Any]] = []
+        erasure_sets: list[dict[str, Any]] = []
+        if include_pool_health:
+            # Pool/set metrics are replicated on each MinIO node. Deduplicate on
+            # pool + set and retain the raw numeric status value without guessing
+            # its enum interpretation.
+            set_metrics = {
+                "status_value": unique("minio_cluster_health_erasure_set_status", selector,
+                                       ("pool", "set"), "erasure_sets"),
+                "online_drives": unique("minio_cluster_health_erasure_set_online_drives",
+                                        selector, ("pool", "set"), "erasure_sets"),
+                "healing_drives": unique("minio_cluster_health_erasure_set_healing_drives",
+                                         selector, ("pool", "set"), "erasure_sets"),
+                "read_quorum": unique("minio_cluster_health_erasure_set_read_quorum",
+                                      selector, ("pool", "set"), "erasure_sets"),
+                "write_quorum": unique("minio_cluster_health_erasure_set_write_quorum",
+                                       selector, ("pool", "set"), "erasure_sets"),
+            }
+            set_keys = set().union(*(set(values) for values in set_metrics.values()))
+            if not set_keys:
+                errors["erasure_sets"] = "No erasure-set health metrics returned"
+            else:
+                incomplete_sets = [
+                    name for name, values in set_metrics.items()
+                    if set(values) != set_keys
+                ]
+                if incomplete_sets:
+                    errors["erasure_sets"] = "Incomplete erasure-set metric coverage: " + ", ".join(incomplete_sets)
+            erasure_sets = []
+            pool_groups: dict[str, list[dict[str, Any]]] = {}
+            for pool, set_id in sorted(set_keys):
+                row = {"pool_id": pool, "set_id": set_id}
+                for name, values in set_metrics.items():
+                    row[name] = values.get((pool, set_id))
+                erasure_sets.append(row)
+                pool_groups.setdefault(pool, []).append(row)
+    
+            pools = []
+            for pool_id, sets in sorted(pool_groups.items()):
+                pools.append({
+                    "pool_id": pool_id,
+                    "erasure_set_count": len(sets),
+                    "online_drives": (
+                        sum(row["online_drives"] for row in sets)
+                        if all(row["online_drives"] is not None for row in sets) else None
+                    ),
+                    "healing_drives": (
+                        sum(row["healing_drives"] for row in sets)
+                        if all(row["healing_drives"] is not None for row in sets) else None
+                    ),
+                })
+    
+    
         return TopologySnapshot(
             location_id=location.id,
             cluster_id=cluster.id,
