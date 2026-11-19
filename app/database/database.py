@@ -6,7 +6,6 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB_PATH = Path("/data/minio-analytics/database/minio_analytics.db")
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
@@ -57,4 +56,3 @@ def transaction() -> Iterator[sqlite3.Connection]:
         raise
     finally:
         connection.close()
-}
