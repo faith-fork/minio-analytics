@@ -4,3 +4,4 @@ requests
 PyYAML
 python-dotenv
 pydantic-settings
+itsdangerous
