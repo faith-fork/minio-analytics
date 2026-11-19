@@ -106,8 +106,7 @@ def collect_topology_snapshot(
     try:
         # Node Exporter and MinIO target availability are deliberately distinct.
         node_up = unique("up", node_selector, ("instance",), "nodes")
-        minio_up = unique("up", selector + ',job="minio-metrics-node"',
-                          ("instance",), "nodes")
+        minio_up = unique("up", minio_node_selector, ("instance",), "nodes")
         cpu = unique(
             '100 * (1 - avg by (instance) (rate(node_cpu_seconds_total'
             + f'{{cluster="{_q(cluster.prometheus_label_value)}",job="node_exporter",mode="idle"}}'
