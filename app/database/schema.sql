@@ -94,6 +94,8 @@ CREATE TABLE IF NOT EXISTS bucket_daily_metrics (
     object_count INTEGER,
     version_count INTEGER,
     delete_marker_count INTEGER,
+    object_size_distribution_json TEXT NOT NULL DEFAULT '{}',
+    version_count_distribution_json TEXT NOT NULL DEFAULT '{}',
     metrics_available INTEGER NOT NULL DEFAULT 1 CHECK (metrics_available IN (0, 1)),
     error_text TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
