@@ -350,6 +350,13 @@ def test_master_admin_can_create_list_and_download_verified_backup(
     assert viewer_client.get("/api/master-admin/backups").status_code == 403
     assert viewer_client.post("/api/master-admin/backups").status_code == 403
 
+    # Both fixtures share one TestClient session; restore the Master Admin login.
+    relogin = admin_client.post(
+        "/api/auth/login",
+        json={"username": "admin-test", "password": "Admin-Test-Password-123!"},
+    )
+    assert relogin.status_code == 200
+
     created = admin_client.post("/api/master-admin/backups")
     assert created.status_code == 201
     payload = created.json()
