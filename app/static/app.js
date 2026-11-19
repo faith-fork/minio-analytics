@@ -80,10 +80,13 @@ async function showClusterTopology(id, section="overview"){
   const tabs=[["overview","Overview"],["nodes","Nodes"],["drives","Drives"],["pools","Pools"],["sets","Erasure Sets"]];
   const tabHtml='<div class="tabs">'+tabs.map(([key,label])=>'<button class="tab '+(section===key?'active':'')+'" data-topology-tab="'+key+'">'+label+'</button>').join("")+'</div>';
   const nodes=d.nodes||[],drives=d.drives||[],pools=d.pools||[],sets=d.erasure_sets||[];
+  const driveCountsComplete=nodes.length>0&&nodes.every(n=>n.drives_online!=null&&n.drives_offline!=null);
+  const drivesOnline=driveCountsComplete?nodes.reduce((sum,n)=>sum+n.drives_online,0):null;
+  const drivesOffline=driveCountsComplete?nodes.reduce((sum,n)=>sum+n.drives_offline,0):null;
   const nodeRows=nodes.map(n=>{
     const ne=n.node_exporter_up===1,ms=n.minio_scrape_up===1;
     const mem=n.memory_total_bytes&&n.memory_used_bytes!=null?n.memory_used_bytes/n.memory_total_bytes*100:null;
-    return '<tr><td><span class="cell-strong">'+esc(n.node_name)+'</span></td><td>'+pill(ne?'Online':n.node_exporter_up===0?'Offline':'Unknown')+'</td><td>'+pill(ms?'Reachable':n.minio_scrape_up===0?'Unreachable':'Unknown')+'</td><td>'+(n.cpu_utilization_pct==null?'—':fmt(n.cpu_utilization_pct,1)+'%')+'</td><td>'+(mem==null?'—':fmt(mem,1)+'%')+'</td><td>'+(n.load1==null?'—':fmt(n.load1,2))+'</td></tr>';
+    return '<tr><td><span class="cell-strong">'+esc(n.node_name)+'</span></td><td>'+pill(ne?'Online':n.node_exporter_up===0?'Offline':'Unknown')+'</td><td>'+pill(ms?'Reachable':n.minio_scrape_up===0?'Unreachable':'Unknown')+'</td><td>'+(n.cpu_utilization_pct==null?'—':fmt(n.cpu_utilization_pct,1)+'%')+'</td><td>'+(mem==null?'—':fmt(mem,1)+'%')+'</td><td>'+(n.load1==null?'—':fmt(n.load1,2))+'</td><td>'+(n.drives_online??'—')+'</td><td>'+(n.drives_offline??'—')+'</td></tr>';
   });
   const driveRows=drives.map(v=>{
     const minioPct=v.total_bytes&&v.used_bytes!=null?v.used_bytes/v.total_bytes*100:null;
@@ -95,11 +98,11 @@ async function showClusterTopology(id, section="overview"){
   const setRows=sets.map(s=>'<tr><td>'+esc(s.pool_id)+'</td><td>'+esc(s.set_id)+'</td><td>'+(s.status_value??'—')+'</td><td>'+(s.online_drives??'—')+'</td><td>'+(s.healing_drives??'—')+'</td><td>'+(s.read_quorum??'—')+'</td><td>'+(s.write_quorum??'—')+'</td></tr>');
   const overview='<div class="metric-grid">'+
     metric("NODES",nodes.length,nodes.filter(n=>n.minio_scrape_up===1).length+" MinIO scrape targets reachable","⌁")+
-    metric("DRIVES",drives.length,drives.filter(v=>v.availability_errors===0&&v.io_errors===0&&v.timeout_errors===0).length+" reporting zero drive errors","▤")+
+    metric("DRIVES",drives.length,drivesOnline==null?"Online/offline counts unavailable":drivesOnline+" online · "+drivesOffline+" offline","▤")+
     metric("POOLS",pools.length,"Pools discovered","▦")+
     metric("ERASURE SETS",sets.length,"Sets discovered","◫")+'</div>'+
     '<div class="detail-grid"><div class="detail-card"><small>SNAPSHOT DATE</small><strong>'+dateLabel(d.snapshot_date)+'</strong></div><div class="detail-card"><small>NODE EXPORTER</small><strong>'+nodes.filter(n=>n.node_exporter_up===1).length+' / '+nodes.length+' reachable</strong></div><div class="detail-card"><small>MINIO SCRAPES</small><strong>'+nodes.filter(n=>n.minio_scrape_up===1).length+' / '+nodes.length+' reachable</strong></div></div>'+
-    table("Node availability","MinIO and Node Exporter scrape status are reported separately.",["NODE","NODE EXPORTER","MINIO TARGET","CPU","MEMORY USED","LOAD 1M"],nodeRows)+
+    table("Node availability","MinIO and Node Exporter scrape status are reported separately.",["NODE","NODE EXPORTER","MINIO TARGET","CPU","MEMORY USED","LOAD 1M","DRIVES UP","DRIVES DOWN"],nodeRows)+
     table("Pool inventory","Pool counts derived from discovered erasure-set metrics.",["POOL","ERASURE SETS","ONLINE DRIVES","HEALING DRIVES"],poolRows);
   let body="";
   if(section==="overview") body=overview;
