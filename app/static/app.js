@@ -15,7 +15,7 @@ async function api(path, options={}) {
 }
 function toast(message,error=false){const el=document.createElement("div");el.className="toast"+(error?" error":"");el.textContent=message;$("#toast-root").append(el);setTimeout(()=>el.remove(),3600);}
 function showLogin(){state.user=null;$("#app-shell").classList.add("hidden");$("#login-screen").classList.remove("hidden");}
-function showApp(user){state.user=user;$("#login-screen").classList.add("hidden");$("#app-shell").classList.remove("hidden");$("#user-name").textContent=user.username;$("#user-role").textContent=user.role.toUpperCase();$("#user-avatar").textContent=user.username.slice(0,1).toUpperCase();$$(".admin-only").forEach(el=>el.classList.toggle("hidden",user.role!=="admin"));}
+function showApp(user){state.user=user;$("#login-screen").classList.add("hidden");$("#app-shell").classList.remove("hidden");$("#user-name").textContent=user.username;$("#user-role").textContent=user.role.toUpperCase();$("#user-avatar").textContent=user.username.slice(0,1).toUpperCase();$(".admin-only").forEach(el=>el.classList.toggle("hidden",user.role!=="admin"));$(".master-admin-only").forEach(el=>el.classList.toggle("hidden",!user.is_master_admin));}
 function pageHead(title,subtitle,actions=""){return `<div class="page-heading"><div><h1>${title}</h1><p>${subtitle}</p></div><div class="heading-actions">${actions}</div></div>`;}
 function metric(label,value,foot,icon="◈",good=false){return `<div class="metric-card"><div class="metric-top"><span>${label}</span><span class="metric-icon">${icon}</span></div><div class="metric-value">${value}</div><div class="metric-foot ${good?"good":""}">${foot}</div></div>`;}
 function pill(status){const cls=status==="success"||status===true?"":status==="partial"?"warn":status==="failed"||status===false?"bad":"neutral";const label=status===true?"Available":status===false?"Unavailable":String(status??"Unknown");return `<span class="status-pill ${cls}"><i></i>${esc(label)}</span>`;}
@@ -33,6 +33,7 @@ async function render(){
   else if(state.view==="buckets") await renderBuckets();
   else if(state.view==="health") await renderHealth();
   else if(state.view==="users" && state.user.role==="admin") await renderUsers();
+  else if(state.view==="master-admin" && state.user.is_master_admin) await renderMasterAdmin();
 }
 async function renderOverview(){
   await loadOverview();const o=state.overview,c=o.capacity_bytes,n=o.nodes;
@@ -49,6 +50,20 @@ async function renderClusters(){
   const rows=state.clusters.map(x=>`<tr><td><span class="cell-strong">${esc(x.cluster_name)}</span><br><span class="cell-muted">${esc(x.cluster_id)}</span></td><td>${esc(x.location_name)}</td><td>${pill(!!x.metrics_available)}</td><td>${bytes(x.raw_total_bytes)}</td><td>${bytes(x.raw_total_bytes-x.raw_free_bytes)}</td><td>${x.nodes_online??"—"} / ${x.nodes_offline??"—"}</td><td>${x.growth_bytes_per_day==null?"—":fmt(x.growth_bytes_per_day/1024**3)+" GiB"}</td><td><button class="table-link" data-cluster="${esc(x.cluster_id)}">View details →</button></td></tr>`);
   $("#content").innerHTML=pageHead("Clusters","Capacity, node health and daily growth across registered clusters.")+table("Registered clusters",state.clusters.length+" cluster(s)",["CLUSTER","LOCATION","STATUS","RAW CAPACITY","RAW USED","NODES UP / DOWN","GROWTH / DAY",""],rows);
 }
+
+async function renderMasterAdmin(){
+  const d=await api("/api/master-admin/settings"),s=d.settings;
+  $("#content").innerHTML=pageHead("Master Admin","Configure collector cadence. Changes are picked up by the scheduler without restarting the dashboard.")+
+    `<section class="panel" style="max-width:760px"><div class="panel-header"><div><h3>Collector schedule</h3><p>All times use Asia/Kolkata (IST).</p></div><span class="panel-tag">LIVE SETTINGS</span></div>
+    <form id="master-settings-form" class="form-grid" style="display:grid;gap:14px;max-width:520px">
+      <label>Node, drive health and filesystem interval (hours)<input class="form-control" type="number" name="node_interval_hours" min="1" max="24" step="1" value="${s.node_interval_hours}" required></label>
+      <p class="cell-muted">Default: every 4 hours. Valid range: 1–24 hours. Includes node availability, CPU, memory, load, per-drive health/error counters and filesystem utilization.</p>
+      <label>Daily capacity, bucket and pool collection time (IST)<input class="form-control" type="time" name="daily_collection_time" value="${esc(s.daily_collection_time)}" required></label>
+      <label>Confirm your Master Admin password<input class="form-control" type="password" name="current_password" autocomplete="current-password" required></label>
+      <div><button class="primary-button" type="submit">Save collector settings</button></div>
+    </form><p class="cell-muted" style="margin-top:14px">The scheduler checks settings every 60 seconds. Pool and erasure-set telemetry remains part of the daily collection. Database backups retain their existing schedule.</p></section>`;
+}
+
 function rangeControl(days,kind,id,attribution="current") {
   const options=[[7,"Last 7 days"],[30,"Last 30 days"],[60,"Last 60 days"],[90,"Last 90 days"],[180,"Last 6 months"],[365,"Last 12 months"]];
   return '<div class="toolbar trend-controls" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin:10px 0;flex-wrap:wrap"><label for="trend-range" class="cell-muted">Trend period</label><select id="trend-range" class="form-control" style="max-width:190px" data-trend-kind="'+kind+'" data-trend-id="'+esc(id)+'" data-trend-attribution="'+attribution+'">'+options.map(([value,label])=>'<option value="'+value+'" '+(Number(days)===value?'selected':'')+'>'+label+'</option>').join('')+'<option value="custom">Custom range</option></select><input type="date" id="trend-start" class="form-control" aria-label="Start date"><span class="cell-muted">to</span><input type="date" id="trend-end" class="form-control" aria-label="End date"><button class="secondary-button" data-action="apply-trend-dates" data-trend-kind="'+kind+'" data-trend-id="'+esc(id)+'" data-trend-attribution="'+attribution+'">Apply</button></div>';
@@ -265,7 +280,7 @@ document.addEventListener("click",async e=>{
 $("#login-form").addEventListener("submit",async e=>{e.preventDefault();$("#login-error").textContent="";const form=new FormData(e.currentTarget);try{const d=await api("/api/auth/login",{method:"POST",body:JSON.stringify({username:form.get("username"),password:form.get("password")})});showApp(d.user);setView("overview");}catch(err){$("#login-error").textContent=err.message;}});
 $("#logout-button").addEventListener("click",async()=>{try{await api("/api/auth/logout",{method:"POST"});}catch{}showLogin();});
 $("#refresh-button").addEventListener("click",()=>render().catch(e=>toast(e.message,true)));
-$("#content").addEventListener("change",e=>{
+$("#content").addEventListener("submit",async e=>{\n  if(e.target.id!=="master-settings-form")return;\n  e.preventDefault();const f=new FormData(e.target);try{const result=await api("/api/master-admin/settings",{method:"PUT",body:JSON.stringify({node_interval_hours:Number(f.get("node_interval_hours")),daily_collection_time:f.get("daily_collection_time"),current_password:f.get("current_password")})});toast("Collector settings saved; scheduler will apply them within 60 seconds.");await renderMasterAdmin();}catch(err){toast(err.message,true);}\n});\n$("#content").addEventListener("change",e=>{
   if(e.target.id==="trend-range" && e.target.value!=="custom"){const el=e.target,days=Number(el.value),kind=el.dataset.trendKind,id=el.dataset.trendId,mode=el.dataset.trendAttribution||"current";const run=kind==="cluster"||kind==="cluster-snapshots"?(kind==="cluster-snapshots"?showClusterSnapshots(id,days):showCluster(id,days)):kind==="tenant"||kind==="tenant-snapshots"?(kind==="tenant-snapshots"?showTenantSnapshots(Number(id),mode,days):showTenant(Number(id),mode,days)):kind==="bucket-snapshots"?showBucketSnapshots(Number(id),days):showBucket(Number(id),days);run.catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-user-role]")){
     const id=Number(e.target.dataset.userRole),role=e.target.value;
