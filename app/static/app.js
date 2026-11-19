@@ -59,8 +59,8 @@ async function showCluster(id){
 async function renderTenants(){
   const [summary,tenants]=await Promise.all([api("/api/analytics/tenants"),api("/api/tenants?include_inactive=true")]);state.tenants=tenants.items;
   const rows=summary.items.map(x=>`<tr><td><span class="cell-strong">${esc(x.tenant_name||"Unassigned")}</span></td><td>${x.bucket_count}</td><td>${x.buckets_with_metrics}</td><td>${bytes(x.used_bytes)}</td><td>${fmt(x.object_count,0)}</td><td>${dateLabel(x.latest_snapshot_date)}</td><td>${x.tenant_id?'<button class="table-link" data-tenant="'+x.tenant_id+'">History →</button>':"—"}</td></tr>`);
-  $("#content").innerHTML=pageHead("Tenants","Tenant usage is attributed using the tenant assignment recorded at snapshot time.",state.user.role==="admin"?'<button class="primary-small" data-action="new-tenant">＋ Create tenant</button>':"")+
-    table("Tenant usage","Latest stored bucket snapshot attribution",["TENANT","BUCKETS","WITH METRICS","USED","OBJECTS","SNAPSHOT",""],rows)+
+  $("#content").innerHTML=pageHead("Tenants","Tenant usage follows current bucket ownership; usage values come from the latest stored snapshots.",state.user.role==="admin"?'<button class="primary-small" data-action="new-tenant">＋ Create tenant</button>':"")+
+    table("Tenant usage","Current bucket ownership · latest available metrics snapshot",["TENANT","BUCKETS","WITH METRICS","USED","OBJECTS","SNAPSHOT",""],rows)+
     table("Tenant directory","Current tenant configuration",["TENANT","DESCRIPTION","CURRENT BUCKETS","STATUS"],state.tenants.map(t=>`<tr><td class="cell-strong">${esc(t.name)}</td><td>${esc(t.description||"—")}</td><td>${t.bucket_count}</td><td>${pill(t.is_active?"Active":"Inactive")}</td></tr>`));
 }
 async function showTenant(id){
