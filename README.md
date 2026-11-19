@@ -77,6 +77,27 @@ Start the API during development with:
 uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
+## Manual daily collection
+
+The collector can be run manually from the application root after creating the local `config/locations.yaml` file:
+
+```bash
+source .venv/bin/activate
+python -m scripts.collect_daily --config config/locations.yaml
+```
+
+By default, the snapshot timestamp is the current UTC time. To backfill or test a specific snapshot, pass an explicit timezone-aware timestamp:
+
+```bash
+python -m scripts.collect_daily \
+  --config config/locations.yaml \
+  --snapshot-at 2026-11-19T18:30:00Z
+```
+
+The collector makes at most two attempts per cluster (initial attempt plus one retry). It persists successful metric families even if another family fails, and records each cluster's outcome in `collection_runs` as `success`, `partial`, or `failed`. A non-zero process exit status indicates that at least one cluster did not complete successfully.
+
+The default timestamp is intended for manual validation. The production systemd timer must explicitly calculate and pass the intended midnight-IST snapshot timestamp; do not use the timer's execution time as the snapshot time.
+
 ## Data and safety principles
 
 - Store measurements in bytes; convert to TiB only for display.
