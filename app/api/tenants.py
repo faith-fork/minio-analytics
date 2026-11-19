@@ -272,6 +272,92 @@ def set_bucket_tenant(
     }
 
 
+class BulkBucketAssignment(BaseModel):
+    bucket_ids: list[int] = Field(min_length=1, max_length=500)
+    tenant_id: Optional[int] = Field(ge=1)
+    note: Optional[str] = Field(default=None, max_length=1000)
+
+
+@router.put("/api/buckets/bulk-tenant")
+def set_buckets_tenant(
+    payload: BulkBucketAssignment,
+    user: dict = Depends(require_admin),
+) -> dict:
+    bucket_ids = list(dict.fromkeys(payload.bucket_ids))
+    if len(bucket_ids) != len(payload.bucket_ids):
+        raise HTTPException(status_code=422, detail="Duplicate bucket IDs are not allowed")
+
+    with transaction() as connection:
+        if payload.tenant_id is not None:
+            tenant = connection.execute(
+                "SELECT id, name FROM tenants WHERE id = ? AND is_active = 1",
+                (payload.tenant_id,),
+            ).fetchone()
+            if tenant is None:
+                raise HTTPException(status_code=404, detail="Active tenant not found")
+            tenant_name = tenant["name"]
+        else:
+            tenant_name = None
+
+        placeholders = ",".join("?" for _ in bucket_ids)
+        rows = connection.execute(
+            f"""
+            SELECT id, cluster_id, bucket_name, tenant_id
+            FROM buckets
+            WHERE id IN ({placeholders}) AND is_active = 1
+            """,
+            bucket_ids,
+        ).fetchall()
+        if len(rows) != len(bucket_ids):
+            found = {row["id"] for row in rows}
+            missing = [bucket_id for bucket_id in bucket_ids if bucket_id not in found]
+            raise HTTPException(
+                status_code=404,
+                detail=f"Active bucket(s) not found: {', '.join(map(str, missing))}",
+            )
+
+        changed = []
+        unchanged = []
+        note = payload.note.strip() if payload.note and payload.note.strip() else None
+        for bucket in rows:
+            if bucket["tenant_id"] == payload.tenant_id:
+                unchanged.append(bucket["id"])
+                continue
+            connection.execute(
+                """
+                UPDATE buckets
+                SET tenant_id = ?,
+                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = ?
+                """,
+                (payload.tenant_id, bucket["id"]),
+            )
+            connection.execute(
+                """
+                INSERT INTO bucket_tenant_history
+                    (bucket_id, tenant_id, changed_at, changed_by, note)
+                VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), ?, ?)
+                """,
+                (bucket["id"], payload.tenant_id, user["username"], note),
+            )
+            changed.append({
+                "bucket_id": bucket["id"],
+                "cluster_id": bucket["cluster_id"],
+                "bucket_name": bucket["bucket_name"],
+            })
+
+    return {
+        "tenant_id": payload.tenant_id,
+        "tenant_name": tenant_name,
+        "requested_count": len(bucket_ids),
+        "changed_count": len(changed),
+        "unchanged_count": len(unchanged),
+        "changed": changed,
+        "unchanged_bucket_ids": unchanged,
+        "changed_by": user["username"],
+    }
+
+
 @router.get("/api/buckets/{bucket_id}/history")
 def bucket_assignment_history(
     bucket_id: int,
