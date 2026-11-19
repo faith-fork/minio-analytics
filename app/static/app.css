@@ -10,3 +10,8 @@
 .tenant-chart-controls button{border:1px solid var(--border,#dce3eb);background:var(--surface,#fff);color:var(--text,#334155);border-radius:7px;padding:5px 10px;font:inherit;cursor:pointer}
 .tenant-chart-controls button.active{background:var(--accent-soft,#e7f7f3);border-color:var(--accent,#13a58b);color:var(--accent,#087f6b);font-weight:600}
 .chart-note{margin:8px 2px 0;color:var(--muted,#718096);font-size:12px}
+
+/* Clear informational notice when tenant buckets have no configured quotas */
+.chart-note{display:flex;align-items:center;gap:9px;margin:12px 0 2px;padding:11px 14px;border:1px solid #d7e8e5;border-radius:8px;background:#f0f8f6;color:#245e55;font-size:13px;line-height:1.45}
+.chart-note strong{font-weight:700}
+.chart-note-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 20px;width:20px;height:20px;border-radius:50%;background:#d9efea;color:#087f6b;font-weight:700;font-size:13px}
