@@ -32,6 +32,7 @@ async function render(){
   else if(state.view==="tenants") await renderTenants();
   else if(state.view==="buckets") await renderBuckets();
   else if(state.view==="health") await renderHealth();
+  else if(state.view==="users" && state.user.role==="admin") await renderUsers();
 }
 async function renderOverview(){
   await loadOverview();const o=state.overview,c=o.capacity_bytes,n=o.nodes;
@@ -55,6 +56,12 @@ async function showCluster(id){
     `<div class="panel-grid">${panel("Capacity trend","Daily raw used and free capacity",'<div class="chart-wrap"><canvas id="cluster-chart"></canvas></div>',"90 DAYS")}${panel("Cluster health","Latest node availability",`<div class="capacity-list"><div class="capacity-row"><span>Online nodes</span><strong>${x.nodes_online??"—"}</strong></div><div class="capacity-row"><span>Offline nodes</span><strong>${x.nodes_offline??"—"}</strong></div><div class="capacity-row"><span>Growth per day</span><strong>${x.growth_bytes_per_day==null?"—":fmt(x.growth_bytes_per_day/1024**3)+" GiB"}</strong></div><div class="capacity-row"><span>Snapshot date</span><strong>${dateLabel(x.snapshot_date)}</strong></div><div class="capacity-row"><span>Metrics</span><strong>${pill(!!x.metrics_available)}</strong></div></div>`,"LATEST SNAPSHOT")}</div>`+
     table("Daily snapshots","Stored cluster metrics",["DATE","RAW TOTAL","RAW FREE","USABLE TOTAL","ONLINE","OFFLINE","STATUS"],series.map(r=>`<tr><td>${dateLabel(r.snapshot_date)}</td><td>${bytes(r.raw_total_bytes)}</td><td>${bytes(r.raw_free_bytes)}</td><td>${bytes(r.usable_total_bytes)}</td><td>${r.nodes_online??"—"}</td><td>${r.nodes_offline??"—"}</td><td>${pill(!!r.metrics_available)}</td></tr>`));
   chart("cluster-chart",series.map(r=>dateLabel(r.snapshot_date)),[{label:"Used TiB",data:series.map(r=>r.raw_total_bytes==null||r.raw_free_bytes==null?null:(r.raw_total_bytes-r.raw_free_bytes)/1024**4),color:"#13a58b",fill:true},{label:"Free TiB",data:series.map(r=>r.raw_free_bytes==null?null:r.raw_free_bytes/1024**4),color:"#4779d8"}]);
+}
+async function renderUsers(){
+  const data=await api("/api/auth/users");
+  const rows=data.items.map(u=>`<tr><td><span class="cell-strong">${esc(u.username)}</span></td><td><select class="form-control user-role" data-user-role="${u.id}"><option value="viewer" ${u.role==="viewer"?"selected":""}>Viewer</option><option value="admin" ${u.role==="admin"?"selected":""}>Admin</option></select></td><td>${pill(u.is_active?"Active":"Inactive")}</td><td>${dateLabel((u.created_at||"").slice(0,10))}</td><td><button class="table-link" data-reset-user="${u.id}">Reset password</button> · <button class="table-link" data-toggle-user="${u.id}" data-active="${u.is_active?0:1}">${u.is_active?"Deactivate":"Activate"}</button></td></tr>`);
+  $("#content").innerHTML=pageHead("User administration","Manage local dashboard accounts and access roles. OIDC integration can be added later.",'<button class="primary-small" data-action="new-user">＋ Add user</button>')+
+    table("Dashboard users",data.count+" account(s)",["USERNAME","ROLE","STATUS","CREATED","ACTIONS"],rows);
 }
 async function renderTenants(){
   const [summary,tenants]=await Promise.all([api("/api/analytics/tenants"),api("/api/tenants?include_inactive=true")]);state.tenants=tenants.items;
@@ -102,6 +109,12 @@ function openModal(title,description,fields,onSubmit){
   const root=$("#modal-root");root.innerHTML=`<div class="modal-backdrop"><section class="modal"><h3>${title}</h3><p>${description}</p><form id="modal-form">${fields}<div class="modal-actions"><button type="button" class="secondary-button" data-action="close-modal">Cancel</button><button class="primary-small" type="submit">Save</button></div></form></section></div>`;
   $("#modal-form").addEventListener("submit",async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.currentTarget));try{await onSubmit(data);root.innerHTML="";}catch(err){toast(err.message,true);}});
 }
+function createUserModal(){
+  openModal("Add dashboard user","Create a local account. Passwords must contain at least 12 characters.",'<label>Username</label><input name="username" required minlength="3" maxlength="64" pattern="[A-Za-z0-9._-]+" autocomplete="off"><label>Temporary password</label><input name="password" type="password" required minlength="12" maxlength="1024" autocomplete="new-password"><label>Role</label><select name="role"><option value="viewer" selected>Viewer — read-only</option><option value="admin">Administrator — manage users and tenants</option></select>',async d=>{await api("/api/auth/users",{method:"POST",body:JSON.stringify(d)});toast("User created");await renderUsers();});
+}
+function resetUserPasswordModal(id){
+  openModal("Reset user password","Set a new password of at least 12 characters.",'<label>New password</label><input name="password" type="password" required minlength="12" maxlength="1024" autocomplete="new-password">',async d=>{await api("/api/auth/users/"+id+"/reset-password",{method:"POST",body:JSON.stringify(d)});toast("Password reset successfully");});
+}
 function createTenantModal(){openModal("Create tenant","Add a tenant to organize bucket ownership.",'<label>Tenant name</label><input name="name" required maxlength="128"><label>Description</label><textarea name="description" maxlength="1000"></textarea>',async d=>{await api("/api/tenants",{method:"POST",body:JSON.stringify(d)});toast("Tenant created");await renderTenants();});}
 async function assignBucketModal(id){
   const b=state.buckets.find(x=>x.id===id);const options=state.tenants.filter(t=>t.is_active).map(t=>`<option value="${t.id}" ${t.id===b?.tenant_id?"selected":""}>${esc(t.name)}</option>`).join("");
@@ -128,13 +141,21 @@ document.addEventListener("click",async e=>{
   const action=e.target.closest("[data-action]")?.dataset.action;
   if(action==="refresh"){render().catch(err=>toast(err.message,true));}
   if(action==="new-tenant")createTenantModal();
+  if(action==="new-user")createUserModal();
   if(action==="bulk-assign")bulkAssignBucketsModal();
+  const reset=e.target.closest("[data-reset-user]");if(reset){resetUserPasswordModal(Number(reset.dataset.resetUser));return;}
+  const toggle=e.target.closest("[data-toggle-user]");if(toggle){try{await api("/api/auth/users/"+toggle.dataset.toggleUser+"/active",{method:"POST",body:JSON.stringify({is_active:toggle.dataset.active==="1"})});toast("User status updated");await renderUsers();}catch(err){toast(err.message,true);}return;}
   if(action==="close-modal")$("#modal-root").innerHTML="";
 });
 $("#login-form").addEventListener("submit",async e=>{e.preventDefault();$("#login-error").textContent="";const form=new FormData(e.currentTarget);try{const d=await api("/api/auth/login",{method:"POST",body:JSON.stringify({username:form.get("username"),password:form.get("password")})});showApp(d.user);setView("overview");}catch(err){$("#login-error").textContent=err.message;}});
 $("#logout-button").addEventListener("click",async()=>{try{await api("/api/auth/logout",{method:"POST"});}catch{}showLogin();});
 $("#refresh-button").addEventListener("click",()=>render().catch(e=>toast(e.message,true)));
 $("#content").addEventListener("change",e=>{
+  if(e.target.matches("[data-user-role]")){
+    const id=Number(e.target.dataset.userRole),role=e.target.value;
+    api("/api/auth/users/"+id,{method:"PATCH",body:JSON.stringify({role})}).then(()=>toast("User role updated")).catch(err=>{toast(err.message,true);renderUsers();});
+  }
+
   if(e.target.matches("[data-select-bucket]")){
     const id=Number(e.target.dataset.selectBucket);
     state.selectedBuckets=e.target.checked?[...new Set([...state.selectedBuckets,id])]:state.selectedBuckets.filter(x=>x!==id);
