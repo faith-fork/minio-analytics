@@ -12,6 +12,7 @@ import yaml
 class ClusterConfig:
     id: str
     name: str
+    prometheus_label_value: str
 
 
 @dataclass(frozen=True)
@@ -30,11 +31,7 @@ def _required_string(data: dict, key: str, context: str) -> str:
 
 
 def load_locations(path: str | Path | None = None) -> list[LocationConfig]:
-    """Load the local YAML inventory and validate its structure.
-
-    MINIO_ANALYTICS_CONFIG can override the default config/locations.yaml path.
-    The example file is never loaded implicitly because it contains placeholders.
-    """
+    """Load location-scoped Prometheus endpoints and their cluster label values."""
     configured = str(path or os.getenv("MINIO_ANALYTICS_CONFIG", "")).strip()
     if not configured:
         raise FileNotFoundError(
@@ -85,7 +82,6 @@ def load_locations(path: str | Path | None = None) -> list[LocationConfig]:
         if not 1 <= port <= 65535:
             raise ValueError(f"{context}.prometheus.port is outside 1..65535")
 
-        # Accept either a hostname/IP or a complete URL in the host field.
         if "://" in host:
             parsed = urlparse(host)
             if parsed.scheme not in {"http", "https"} or not parsed.hostname:
@@ -105,10 +101,17 @@ def load_locations(path: str | Path | None = None) -> list[LocationConfig]:
                 raise ValueError(f"{ccontext} must be a mapping")
             cluster_id = _required_string(cluster, "id", ccontext)
             cluster_name = _required_string(cluster, "name", ccontext)
+            label_value = _required_string(cluster, "prometheus_label_value", ccontext)
             if cluster_id in seen_cluster_ids:
                 raise ValueError(f"Duplicate cluster id: {cluster_id}")
             seen_cluster_ids.add(cluster_id)
-            clusters.append(ClusterConfig(id=cluster_id, name=cluster_name))
+            clusters.append(
+                ClusterConfig(
+                    id=cluster_id,
+                    name=cluster_name,
+                    prometheus_label_value=label_value,
+                )
+            )
 
         locations.append(
             LocationConfig(
