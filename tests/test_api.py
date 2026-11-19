@@ -165,6 +165,8 @@ def test_single_assignment_and_snapshot_attribution_are_separate(
     assert current_trend["attribution"] == "current"
     assert current_trend["series"][0]["used_bytes"] == 100
     assert current_trend["series"][0]["bucket_count"] == 1
+    assert current_trend["series"][0]["quota_bytes"] == 1000
+    assert current_trend["series"][0]["object_count"] == 10
 
     historical_trend = admin_client.get(
         "/api/analytics/tenants/" + str(tenant_id) + "?days=3650&attribution=historical"
