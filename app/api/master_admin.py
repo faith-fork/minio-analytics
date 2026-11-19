@@ -1,10 +1,9 @@
 from __future__ import annotations
-from datetime import datetime,timezone
+from datetime import datetime, timezone
 from pydantic import BaseModel,Field
 from fastapi import APIRouter,Depends,HTTPException
 from fastapi.responses import FileResponse
 from pathlib import Path
-from datetime import datetime
 from scripts.backup_database import backup_database
 from app.auth.dependencies import require_master_admin
 from app.auth.security import verify_password
@@ -37,15 +36,6 @@ def update_settings(p:SettingsUpdate,actor:dict=Depends(require_master_admin)):
     return {"updated":True,"effective_within_seconds":60,"settings":updates}
 
 BACKUP_DIR = Path("/data/minio-analytics/backups")
-
-def _verify_actor_password(actor: dict, password: str) -> None:
-    with transaction() as c:
-        u = c.execute(
-            "SELECT password_hash,is_active FROM users WHERE id=?",
-            (actor["id"],),
-        ).fetchone()
-    if u is None or not u["is_active"] or not verify_password(password, u["password_hash"]):
-        raise HTTPException(status_code=403, detail="Password confirmation failed")
 
 @router.get("/backups")
 def list_backups(actor: dict = Depends(require_master_admin)):
@@ -81,7 +71,7 @@ def create_backup(actor: dict = Depends(require_master_admin)):
 
 @router.get("/backups/{filename}/download")
 def download_backup(filename: str, actor: dict = Depends(require_master_admin)):
-    if not filename.endswith(".db") or Path(filename).name != filename or any(ch in filename for ch in ("/", "\\\\")):
+    if not filename.endswith(".db") or Path(filename).name != filename or any(ch in filename for ch in ("/", "\\")):
         raise HTTPException(status_code=400, detail="Invalid backup filename")
     path = BACKUP_DIR / filename
     if not path.is_file() or path.is_symlink():
