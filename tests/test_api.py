@@ -155,7 +155,7 @@ def test_single_assignment_and_snapshot_attribution_are_separate(
     assert current_owner["bucket_count"] == 1
     assert current_owner["used_bytes"] == 100
 
-    bucket_history = admin_client.get("/api/analytics/buckets/1").json()
+    bucket_history = admin_client.get("/api/analytics/buckets/1?days=3650").json()
     assert bucket_history["bucket"]["current_tenant_id"] == tenant_id
     assert bucket_history["series"][0]["tenant_id_at_snapshot"] is None
 
