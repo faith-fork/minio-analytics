@@ -120,9 +120,16 @@ def collect_topology_snapshot(
                                 ("instance",), "nodes")
         load1 = unique("node_load1", node_selector, ("instance",), "nodes")
 
-        hostnames = {
-            _host(key[0]) for key in set(node_up) | set(minio_up)
-        }
+        node_exporter_hosts = {_host(key[0]) for key in node_up}
+        minio_hosts = {_host(key[0]) for key in minio_up}
+        if not node_up or not minio_up:
+            errors["nodes"] = "Node Exporter or MinIO target availability metrics returned no samples"
+        elif node_exporter_hosts != minio_hosts:
+            errors["nodes"] = (
+                "Node Exporter and MinIO scrape target coverage differs: "
+                f"node_exporter={sorted(node_exporter_hosts)}, minio={sorted(minio_hosts)}"
+            )
+        hostnames = node_exporter_hosts | minio_hosts
         nodes: list[dict[str, Any]] = []
         for hostname in sorted(x for x in hostnames if x):
             node_instance = next((k[0] for k in node_up if _host(k[0]) == hostname), None)
@@ -159,6 +166,17 @@ def collect_topology_snapshot(
             "timeout_errors": unique("minio_node_drive_errors_timeout",
                                      minio_node_selector, ("server", "drive"), "drives"),
         }
+        drive_reference = set(drive_metrics["total_bytes"])
+        if not drive_reference:
+            errors["drives"] = "No per-drive MinIO capacity samples returned"
+        else:
+            incomplete = [
+                name for name, values in drive_metrics.items()
+                if set(values) != drive_reference
+            ]
+            if incomplete:
+                errors["drives"] = "Incomplete per-drive metric coverage: " + ", ".join(incomplete)
+
         fs_match = f'{{cluster="{_q(cluster.prometheus_label_value)}",job="node_exporter",mountpoint=~"/mnt/datadisk[0-9]+"}}'
         filesystem_metrics = {
             "filesystem_total_bytes": unique("node_filesystem_size_bytes", fs_match,
@@ -170,6 +188,17 @@ def collect_topology_snapshot(
             "filesystem_readonly": unique("node_filesystem_readonly", fs_match,
                                           ("instance", "mountpoint"), "filesystems"),
         }
+
+        filesystem_reference = set(filesystem_metrics["filesystem_total_bytes"])
+        if not filesystem_reference:
+            errors["filesystems"] = "No MinIO data mount filesystem metrics returned"
+        else:
+            incomplete_fs = [
+                name for name, values in filesystem_metrics.items()
+                if set(values) != filesystem_reference
+            ]
+            if incomplete_fs:
+                errors["filesystems"] = "Incomplete filesystem metric coverage: " + ", ".join(incomplete_fs)
 
         drive_keys = set().union(*(set(values) for values in drive_metrics.values()))
         drives: list[dict[str, Any]] = []
@@ -218,6 +247,15 @@ def collect_topology_snapshot(
                                    selector, ("pool", "set"), "erasure_sets"),
         }
         set_keys = set().union(*(set(values) for values in set_metrics.values()))
+        if not set_keys:
+            errors["erasure_sets"] = "No erasure-set health metrics returned"
+        else:
+            incomplete_sets = [
+                name for name, values in set_metrics.items()
+                if set(values) != set_keys
+            ]
+            if incomplete_sets:
+                errors["erasure_sets"] = "Incomplete erasure-set metric coverage: " + ", ".join(incomplete_sets)
         erasure_sets = []
         pool_groups: dict[str, list[dict[str, Any]]] = {}
         for pool, set_id in sorted(set_keys):
