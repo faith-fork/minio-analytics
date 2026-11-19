@@ -84,8 +84,8 @@ def collect_topology_snapshot(
     prom = client or PrometheusClient(location.prometheus_url)
     at = int(snapshot_ts.timestamp())
     selector = f'{{cluster="{_q(cluster.prometheus_label_value)}"}}'
-    node_selector = selector + ',job="node_exporter"'
-    minio_node_selector = selector + ',job="minio-metrics-node"'
+    node_selector = f'{{cluster="{_q(cluster.prometheus_label_value)}",job="node_exporter"}}'
+    minio_node_selector = f'{{cluster="{_q(cluster.prometheus_label_value)}",job="minio-metrics-node"}}'
     collected_at = datetime.now(timezone.utc)
     errors: dict[str, str] = {}
 
@@ -110,7 +110,8 @@ def collect_topology_snapshot(
                           ("instance",), "nodes")
         cpu = unique(
             '100 * (1 - avg by (instance) (rate(node_cpu_seconds_total'
-            + selector + ',job="node_exporter",mode="idle"}[5m])))',
+            + f'{{cluster="{_q(cluster.prometheus_label_value)}",job="node_exporter",mode="idle"}}'
+            + '[5m])))',
             "", ("instance",), "nodes"
         )
         mem_total = unique("node_memory_MemTotal_bytes", node_selector,
@@ -158,7 +159,7 @@ def collect_topology_snapshot(
             "timeout_errors": unique("minio_node_drive_errors_timeout",
                                      minio_node_selector, ("server", "drive"), "drives"),
         }
-        fs_match = node_selector + ',mountpoint=~"/mnt/datadisk[0-9]+"'
+        fs_match = f'{{cluster="{_q(cluster.prometheus_label_value)}",job="node_exporter",mountpoint=~"/mnt/datadisk[0-9]+"}}'
         filesystem_metrics = {
             "filesystem_total_bytes": unique("node_filesystem_size_bytes", fs_match,
                                              ("instance", "mountpoint"), "filesystems"),
