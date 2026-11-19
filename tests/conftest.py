@@ -63,8 +63,8 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
         connection.execute(
             """
-            INSERT INTO users (username, password_hash, role)
-            VALUES ('admin-test', ?, 'admin')
+            INSERT INTO users (username, password_hash, role, is_master_admin)
+            VALUES ('admin-test', ?, 'admin', 1)
             """,
             (hash_password("Admin-Test-Password-123!"),),
         )
