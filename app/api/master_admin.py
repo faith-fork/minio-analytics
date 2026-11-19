@@ -38,9 +38,6 @@ def update_settings(p:SettingsUpdate,actor:dict=Depends(require_master_admin)):
 
 BACKUP_DIR = Path("/data/minio-analytics/backups")
 
-class BackupRequest(BaseModel):
-    current_password: str = Field(min_length=1, max_length=1024)
-
 def _verify_actor_password(actor: dict, password: str) -> None:
     with transaction() as c:
         u = c.execute(
@@ -67,8 +64,7 @@ def list_backups(actor: dict = Depends(require_master_admin)):
     return {"items": items, "count": len(items)}
 
 @router.post("/backups", status_code=201)
-def create_backup(payload: BackupRequest, actor: dict = Depends(require_master_admin)):
-    _verify_actor_password(actor, payload.current_password)
+def create_backup(actor: dict = Depends(require_master_admin)):
     try:
         path = backup_database(BACKUP_DIR, retention_days=14)
     except Exception as exc:
