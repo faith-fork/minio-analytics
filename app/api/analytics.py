@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,7 +18,8 @@ def _dict(row) -> dict:
 
 
 def _window_start(days: int) -> str:
-    return (date.today() - timedelta(days=days - 1)).isoformat()
+    today_ist = datetime.now(ZoneInfo("Asia/Kolkata")).date()
+    return (today_ist - timedelta(days=days - 1)).isoformat()
 
 
 @router.get("/overview")
@@ -75,10 +77,12 @@ def overview(_: dict = Depends(get_current_user)) -> dict:
         "usable_total_bytes",
         "usable_free_bytes",
     )
+    complete_cluster_coverage = bool(cluster_rows) and len(available) == len(cluster_rows)
     capacity = {
         field: (
-            sum(r[field] for r in available if r[field] is not None)
-            if available and all(r[field] is not None for r in available)
+            sum(r[field] for r in available)
+            if complete_cluster_coverage
+            and all(r[field] is not None for r in available)
             else None
         )
         for field in sum_fields
@@ -96,13 +100,15 @@ def overview(_: dict = Depends(get_current_user)) -> dict:
         "capacity_bytes": capacity,
         "nodes": {
             "online": (
-                sum(r["nodes_online"] for r in available if r["nodes_online"] is not None)
-                if available and all(r["nodes_online"] is not None for r in available)
+                sum(r["nodes_online"] for r in available)
+                if complete_cluster_coverage
+                and all(r["nodes_online"] is not None for r in available)
                 else None
             ),
             "offline": (
-                sum(r["nodes_offline"] for r in available if r["nodes_offline"] is not None)
-                if available and all(r["nodes_offline"] is not None for r in available)
+                sum(r["nodes_offline"] for r in available)
+                if complete_cluster_coverage
+                and all(r["nodes_offline"] is not None for r in available)
                 else None
             ),
         },
