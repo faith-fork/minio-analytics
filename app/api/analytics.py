@@ -205,6 +205,37 @@ def cluster_analytics(
             """,
             (cluster_id, start, end),
         ).fetchall()
+        bucket_rows = connection.execute(
+            """
+            SELECT snapshot_date,
+                   COUNT(*) AS bucket_metric_rows,
+                   CASE
+                       WHEN COUNT(*) = (SELECT COUNT(*) FROM buckets
+                                        WHERE cluster_id = ? AND is_active = 1)
+                            AND SUM(CASE WHEN metrics_available = 1
+                                         AND quota_bytes IS NOT NULL THEN 1 ELSE 0 END) = COUNT(*)
+                       THEN SUM(quota_bytes) ELSE NULL
+                   END AS bucket_quota_bytes,
+                   CASE
+                       WHEN COUNT(*) = (SELECT COUNT(*) FROM buckets
+                                        WHERE cluster_id = ? AND is_active = 1)
+                            AND SUM(CASE WHEN metrics_available = 1
+                                         AND object_count IS NOT NULL THEN 1 ELSE 0 END) = COUNT(*)
+                       THEN SUM(object_count) ELSE NULL
+                   END AS bucket_object_count
+            FROM bucket_daily_metrics
+            WHERE cluster_id = ? AND snapshot_date BETWEEN ? AND ?
+            GROUP BY snapshot_date
+            """,
+            (cluster_id, cluster_id, cluster_id, start, end),
+        ).fetchall()
+        bucket_by_date = {row["snapshot_date"]: dict(row) for row in bucket_rows}
+        rows = [
+            {**dict(row),
+             "bucket_quota_bytes": bucket_by_date.get(row["snapshot_date"], {}).get("bucket_quota_bytes"),
+             "bucket_object_count": bucket_by_date.get(row["snapshot_date"], {}).get("bucket_object_count")}
+            for row in rows
+        ]
 
     return {
         "cluster": _dict(cluster),
