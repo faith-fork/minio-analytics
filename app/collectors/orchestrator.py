@@ -166,8 +166,9 @@ def collect_location(
 
         cluster_ok = cluster_snapshot is not None
         buckets_ok = bucket_snapshots is not None
-        status = "success" if cluster_ok and buckets_ok else (
-            "partial" if cluster_ok or buckets_ok else "failed"
+        topology_ok = topology_snapshot is not None and not topology_snapshot.family_errors
+        status = "success" if cluster_ok and buckets_ok and topology_ok else (
+            "partial" if cluster_ok or buckets_ok or topology_snapshot is not None else "failed"
         )
         metrics_collected = (1 if cluster_ok else 0) + (
             len(bucket_snapshots) if buckets_ok else 0
