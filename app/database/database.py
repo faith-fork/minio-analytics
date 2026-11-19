@@ -51,6 +51,9 @@ def _apply_migrations(connection: sqlite3.Connection) -> None:
     connection.execute(
         "INSERT OR IGNORE INTO schema_version(version) VALUES (?)", (3,)
     )
+    connection.execute(
+        "INSERT OR IGNORE INTO schema_version(version) VALUES (?)", (4,)
+    )
 
 
 def initialize_database() -> None:
