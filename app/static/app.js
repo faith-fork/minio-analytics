@@ -279,7 +279,7 @@ document.addEventListener("click",async e=>{
     run.catch(err=>toast(err.message,true));
   }
   if(action==="create-backup"){
-    const button=e.target.closest("[data-action='create-backup]");
+    const button=e.target.closest("[data-action='create-backup']");
     if(button){button.disabled=true;button.textContent="Creating backup…";}
     try{
       const result=await api("/api/master-admin/backups",{method:"POST"});
