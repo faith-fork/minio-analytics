@@ -98,6 +98,39 @@ The collector makes at most two attempts per cluster (initial attempt plus one r
 
 The default timestamp is intended for manual validation. The production systemd timer must explicitly calculate and pass the intended midnight-IST snapshot timestamp; do not use the timer's execution time as the snapshot time.
 
+## Scheduled collection and SQLite backups
+
+Systemd unit files are provided under `systemd/`:
+
+- `minio-analytics-collect.timer`: daily at 00:15 Asia/Kolkata; collection queries Prometheus at midnight IST for the current local date.
+- `minio-analytics-backup.timer`: daily at 00:45 Asia/Kolkata; creates a consistent SQLite online backup and retains the latest 14 days by age.
+
+Install on the lab VM after pulling the repository:
+
+```bash
+install -d -m 0750 /data/minio-analytics/{database,backups,logs,exports}
+install -m 0600 systemd/minio-analytics-collect.service /etc/systemd/system/
+install -m 0644 systemd/minio-analytics-collect.timer /etc/systemd/system/
+install -m 0600 systemd/minio-analytics-backup.service /etc/systemd/system/
+install -m 0644 systemd/minio-analytics-backup.timer /etc/systemd/system/
+systemctl daemon-reload
+```
+
+Validate the units before enabling timers:
+
+```bash
+systemd-analyze verify /etc/systemd/system/minio-analytics-collect.service /etc/systemd/system/minio-analytics-collect.timer /etc/systemd/system/minio-analytics-backup.service /etc/systemd/system/minio-analytics-backup.timer
+```
+
+Enable both schedules only after a successful manual run and backup test:
+
+```bash
+systemctl enable --now minio-analytics-collect.timer minio-analytics-backup.timer
+systemctl list-timers --all | grep minio-analytics
+```
+
+Inspect executions with `journalctl -u minio-analytics-collect.service` and `journalctl -u minio-analytics-backup.service`. The collection service runs as root because the current lab deployment and protected local configuration are root-owned; adjust `User`, `Group`, file ownership, and directory permissions together if a dedicated service account is introduced.
+
 ## Data and safety principles
 
 - Store measurements in bytes; convert to TiB only for display.
