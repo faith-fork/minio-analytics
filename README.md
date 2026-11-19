@@ -237,6 +237,22 @@ Login failures return a generic error. User records and role checks are read fro
 - Store tenant attribution with each daily bucket snapshot so reassignment does not rewrite history.
 - Use SQLite WAL mode and take regular database backups.
 
+## Automated tests
+
+Install the development dependencies into the project virtual environment:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+Run the API regression suite:
+
+```bash
+pytest -q
+```
+
+The tests use a fresh temporary SQLite database per test. They do not connect to Prometheus or modify the configured lab database. Coverage includes authentication, role enforcement, user creation/password reset/deactivation, last-administrator safeguards, tenant and bucket assignment, bulk assignment atomicity/idempotency, assignment history, current tenant aggregation, and preservation of snapshot-time attribution.
+
 ## Current implementation status
 
 The lab has validated daily cluster and bucket collection, SQLite persistence and backups, systemd scheduling, authentication and role enforcement, tenant/bucket management (including bulk assignment), all analytics APIs, and the browser dashboard for viewer and administrator workflows. Production hardening, automated regression tests, HTTPS/reverse-proxy deployment, and broader multi-location validation remain before production use.
