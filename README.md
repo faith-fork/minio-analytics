@@ -198,6 +198,20 @@ Use a persistent, root-readable environment file or systemd credential for a lon
 
 Bulk assignment validates the active tenant and every selected active bucket before making changes. The transaction updates current ownership and inserts one audit event per changed bucket. Unchanged assignments do not create duplicate history events. Existing daily snapshot attribution is never rewritten.
 
+### User administration
+
+Administrators can manage local dashboard accounts from the **User administration** section:
+
+- Create users with a unique username, an initial password (minimum 12 characters), and either the `admin` or `viewer` role.
+- List accounts and their active status.
+- Change a user's role.
+- Activate or deactivate accounts.
+- Reset a user's password.
+
+Only administrators can access these endpoints and the UI. The last active administrator cannot be demoted or deactivated, and an administrator cannot deactivate their own account. Deactivated users are rejected on their next request because the session identity is checked against SQLite on every authenticated request.
+
+Local accounts are the initial identity provider for the PoC. OIDC federation is a planned future enhancement; do not treat the current local login as an OIDC implementation.
+
 ### Browser dashboard
 
 Open `http://<server>:8001/` from a trusted internal network during lab validation. The dashboard provides overview, cluster, tenant, bucket, and collection-health views. Administrators can create tenants and assign buckets; viewers have read-only access.
