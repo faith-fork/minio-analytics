@@ -3,7 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
+from zoneinfo import ZoneInfo
 
 from app.collectors.orchestrator import collect_all
 from app.config.loader import load_locations
@@ -35,11 +36,17 @@ def main() -> int:
         default=None,
         help="Location YAML path (defaults to MINIO_ANALYTICS_CONFIG).",
     )
-    parser.add_argument(
+    snapshot_group = parser.add_mutually_exclusive_group()
+    snapshot_group.add_argument(
         "--snapshot-at",
         type=_parse_snapshot,
         default=None,
         help="Timezone-aware ISO-8601 snapshot timestamp; defaults to current UTC.",
+    )
+    snapshot_group.add_argument(
+        "--snapshot-midnight-ist",
+        action="store_true",
+        help="Use midnight IST on the current local date as the Prometheus snapshot time.",
     )
     parser.add_argument(
         "--max-attempts",
@@ -63,7 +70,13 @@ def main() -> int:
     )
 
     locations = load_locations(args.config)
-    snapshot_ts = args.snapshot_at or datetime.now(timezone.utc)
+    if args.snapshot_midnight_ist:
+        ist = ZoneInfo("Asia/Kolkata")
+        snapshot_ts = datetime.combine(
+            datetime.now(ist).date(), time.min, tzinfo=ist
+        ).astimezone(timezone.utc)
+    else:
+        snapshot_ts = args.snapshot_at or datetime.now(timezone.utc)
     results = collect_all(
         locations=locations,
         snapshot_ts=snapshot_ts,
