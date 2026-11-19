@@ -543,7 +543,14 @@ def cluster_topology(cluster_id: str, _: dict = Depends(get_current_user)) -> di
             except (TypeError,json.JSONDecodeError): health_errors={}
             node_ts=health["snapshot_ts"]; node_collected=health["collected_at"]
         else:
-            nodes=[]; drives=[]; health_errors={}; node_ts=None; node_collected=None
+            if run:
+                legacy_day=run["snapshot_date"]
+                nodes=connection.execute("SELECT * FROM node_daily_metrics WHERE cluster_id=? AND snapshot_date=? ORDER BY node_name",(cluster_id,legacy_day)).fetchall()
+                drives=connection.execute("SELECT * FROM drive_daily_metrics WHERE cluster_id=? AND snapshot_date=? ORDER BY node_name,drive_path",(cluster_id,legacy_day)).fetchall()
+                node_ts=run["snapshot_ts"]; node_collected=run["collected_at"]
+            else:
+                nodes=[]; drives=[]; node_ts=None; node_collected=None
+            health_errors={}
         if run:
             day=run["snapshot_date"]
             pools=connection.execute("SELECT * FROM pool_daily_metrics WHERE cluster_id=? AND snapshot_date=? ORDER BY pool_id",(cluster_id,day)).fetchall()
