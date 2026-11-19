@@ -185,3 +185,102 @@ def test_viewer_can_read_analytics_but_not_manage_users(
     assert viewer_client.get("/api/analytics/overview").status_code == 200
     assert viewer_client.get("/api/analytics/tenants").status_code == 200
     assert viewer_client.get("/api/auth/users").status_code == 403
+
+
+def test_cluster_topology_api_returns_latest_persisted_inventory(
+    viewer_client: TestClient,
+) -> None:
+    from app.database.database import transaction
+
+    with transaction() as connection:
+        connection.execute(
+            """
+            INSERT INTO topology_daily_runs (
+                snapshot_date, cluster_id, snapshot_ts, collected_at,
+                family_errors_json, node_count, drive_count, pool_count, erasure_set_count
+            ) VALUES (
+                '2026-11-19', 'cluster-1', '2026-11-18T18:30:00Z',
+                '2026-11-19T00:16:00Z', '{}', 1, 1, 1, 1
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO node_daily_metrics (
+                snapshot_date, cluster_id, node_name, node_exporter_up,
+                minio_scrape_up, cpu_utilization_pct, memory_total_bytes,
+                memory_available_bytes, memory_used_bytes, load1,
+                snapshot_ts, collected_at
+            ) VALUES (
+                '2026-11-19', 'cluster-1', 'node01', 1, 1, 12.5,
+                16000, 4000, 12000, 0.5,
+                '2026-11-18T18:30:00Z', '2026-11-19T00:16:00Z'
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO drive_daily_metrics (
+                snapshot_date, cluster_id, node_name, server, drive_path,
+                mountpoint, total_bytes, used_bytes, free_bytes,
+                availability_errors, io_errors, timeout_errors,
+                filesystem_total_bytes, filesystem_available_bytes,
+                filesystem_free_bytes, filesystem_readonly,
+                filesystem_used_bytes, filesystem_used_pct,
+                snapshot_ts, collected_at
+            ) VALUES (
+                '2026-11-19', 'cluster-1', 'node01', 'node01:9000',
+                '/mnt/datadisk1/minio', '/mnt/datadisk1',
+                1000, 400, 600, 0, 0, 0, 1000, 600, 600, 0,
+                400, 40, '2026-11-18T18:30:00Z', '2026-11-19T00:16:00Z'
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO pool_daily_metrics (
+                snapshot_date, cluster_id, pool_id, erasure_set_count,
+                online_drives, healing_drives, snapshot_ts, collected_at
+            ) VALUES (
+                '2026-11-19', 'cluster-1', '0', 1, 16, 0,
+                '2026-11-18T18:30:00Z', '2026-11-19T00:16:00Z'
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO erasure_set_daily_metrics (
+                snapshot_date, cluster_id, pool_id, set_id, status_value,
+                online_drives, healing_drives, read_quorum, write_quorum,
+                snapshot_ts, collected_at
+            ) VALUES (
+                '2026-11-19', 'cluster-1', '0', '0', 1, 16, 0, 12, 12,
+                '2026-11-18T18:30:00Z', '2026-11-19T00:16:00Z'
+            )
+            """
+        )
+
+    response = viewer_client.get("/api/analytics/clusters/cluster-1/topology")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["snapshot_date"] == "2026-11-19"
+    assert data["counts"] == {
+        "nodes": 1, "drives": 1, "pools": 1, "erasure_sets": 1
+    }
+    assert data["nodes"][0]["cpu_utilization_pct"] == 12.5
+    assert data["drives"][0]["mountpoint"] == "/mnt/datadisk1"
+    assert data["pools"][0]["pool_id"] == "0"
+    assert data["erasure_sets"][0]["read_quorum"] == 12
+
+
+def test_cluster_topology_api_returns_empty_state_before_first_collection(
+    viewer_client: TestClient,
+) -> None:
+    response = viewer_client.get("/api/analytics/clusters/cluster-1/topology")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["snapshot_date"] is None
+    assert data["nodes"] == []
+    assert data["drives"] == []
+    assert data["pools"] == []
+    assert data["erasure_sets"] == []
