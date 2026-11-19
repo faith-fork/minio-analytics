@@ -99,6 +99,26 @@ The collector makes at most two attempts per cluster (initial attempt plus one r
 
 The default timestamp is intended for manual validation. The production systemd timer must explicitly calculate and pass the intended midnight-IST snapshot timestamp; do not use the timer's execution time as the snapshot time.
 
+## Historical Prometheus backfill
+
+Prometheus history can be imported into SQLite using the dedicated backfill command. The default imports the previous 60 completed IST dates (ending yesterday), oldest first:
+
+```bash
+source .venv/bin/activate
+python -m scripts.backfill_history --config config/locations.yaml --days 60 --dry-run
+```
+
+Start with `--dry-run` to validate Prometheus coverage without changing SQLite. If the result is healthy, create a database backup and run the same command without `--dry-run`:
+
+```bash
+python -m scripts.backup_database
+python -m scripts.backfill_history --config config/locations.yaml --days 60
+```
+
+Use `--days 30` for a 30-day import, or specify an inclusive end date with `--end-date YYYY-MM-DD`. The default end date is yesterday in Asia/Kolkata, avoiding interference with the current day's scheduled snapshot. Re-running the backfill is safe: existing daily metric rows are not overwritten. Historical bucket inventory updates preserve current tenant assignments and active status; buckets found only in historical data are added as inactive inventory. Historical tenant attribution is left NULL because current ownership must not be projected backwards. Missing historical quota metrics remain NULL, not zero. Each cluster/date result is recorded in `collection_runs` with mode `historical_backfill`.
+
+Prometheus retention must cover the requested dates. The cluster growth calculations also use a 30-day lookback, so the oldest dates may have unavailable growth estimates if the required lookback is outside retention.
+
 ## Scheduled collection and SQLite backups
 
 Systemd unit files are provided under `systemd/`:
