@@ -21,6 +21,7 @@ def _public_user(row) -> dict:
         "id": row["id"],
         "username": row["username"],
         "role": row["role"],
+        "is_master_admin": bool(row["is_master_admin"]),
     }
 
 
@@ -30,7 +31,7 @@ def login(payload: LoginRequest, request: Request) -> dict:
     with transaction() as connection:
         row = connection.execute(
             """
-            SELECT id, username, password_hash, role, is_active
+            SELECT id, username, password_hash, role, is_active, is_master_admin
             FROM users
             WHERE username = ?
             """,
@@ -64,6 +65,7 @@ def me(user: dict = Depends(get_current_user)) -> dict:
         "id": user["id"],
         "username": user["username"],
         "role": user["role"],
+        "is_master_admin": bool(user["is_master_admin"]),
     }}
 
 
