@@ -6,6 +6,7 @@ const bytes = n => n == null ? "—" : (n/1024**4).toFixed(2)+" TiB";
 const pct = (used,total) => used == null || !total ? null : Math.max(0,Math.min(100,used/total*100));
 const esc = s => String(s ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const dateLabel = s => s ? new Date(s+"T00:00:00").toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}) : "—";
+const timestampLabel = s => s ? new Intl.DateTimeFormat("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:true,timeZone:"Asia/Kolkata"}).format(new Date(s))+" IST" : "Not collected";
 async function api(path, options={}) {
   const response = await fetch(path,{credentials:"same-origin",headers:{"Content-Type":"application/json",...(options.headers||{})},...options});
   if(response.status===401){showLogin();throw new Error("Your session has expired. Please sign in again.");}
@@ -111,7 +112,7 @@ async function showClusterTopology(id, section="overview"){
   });
   const poolRows=pools.map(p=>'<tr><td>'+esc(p.pool_id)+'</td><td>'+p.erasure_set_count+'</td><td>'+(p.online_drives??'—')+'</td><td>'+(p.healing_drives??'—')+'</td></tr>');
   const setRows=sets.map(s=>'<tr><td>'+esc(s.pool_id)+'</td><td>'+esc(s.set_id)+'</td><td>'+(s.status_value??'—')+'</td><td>'+(s.online_drives??'—')+'</td><td>'+(s.healing_drives??'—')+'</td><td>'+(s.read_quorum??'—')+'</td><td>'+(s.write_quorum??'—')+'</td></tr>');
-  const overview='<div class="metric-grid">'+
+  const overview='<div class="detail-grid"><div class="detail-card"><small>NODE / DRIVE SNAPSHOT</small><strong>'+timestampLabel(d.node_snapshot_ts)+'</strong><p class="muted">Collected at '+timestampLabel(d.node_collected_at)+'</p></div><div class="detail-card"><small>POOL / ERASURE-SET SNAPSHOT</small><strong>'+timestampLabel(d.topology_snapshot_ts)+'</strong><p class="muted">Collected at '+timestampLabel(d.topology_collected_at)+'</p></div></div>'+'<div class="metric-grid">'+
     metric("NODES",nodes.length,nodes.filter(n=>n.minio_scrape_up===1).length+" MinIO scrape targets reachable","⌁")+
     metric("DRIVES",drives.length,drivesOnline==null?"Online/offline counts unavailable":drivesOnline+" online · "+drivesOffline+" offline","▤")+
     metric("POOLS",pools.length,"Pools discovered","▦")+
