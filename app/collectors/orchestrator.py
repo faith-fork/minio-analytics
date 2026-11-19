@@ -8,12 +8,14 @@ from typing import Any
 
 from app.collectors.bucket_collector import collect_bucket_snapshots
 from app.collectors.cluster_collector import collect_cluster_snapshot
+from app.collectors.topology_collector import collect_topology_snapshot
 from app.config.loader import LocationConfig
 from app.database.database import initialize_database, transaction
 from app.database.persistence import (
     _snapshot_date,
     persist_bucket_snapshots,
     persist_cluster_snapshot,
+    persist_topology_snapshot,
     sync_configuration,
 )
 
@@ -87,6 +89,7 @@ def collect_location(
         cluster_snapshot = None
         last_cluster_snapshot = None
         bucket_snapshots = None
+        topology_snapshot = None
         errors: list[str] = []
         attempts_used = 0
 
@@ -127,6 +130,20 @@ def collect_location(
             except Exception as exc:
                 attempt_errors.append(f"bucket metrics: {exc}")
 
+            try:
+                candidate_topology = collect_topology_snapshot(
+                    location=location,
+                    cluster=cluster,
+                    snapshot_ts=snapshot_ts,
+                )
+                topology_snapshot = candidate_topology
+                attempt_errors.extend(
+                    f"topology {family}: {message}"
+                    for family, message in candidate_topology.family_errors.items()
+                )
+            except Exception as exc:
+                attempt_errors.append(f"topology metrics: {exc}")
+
             if not attempt_errors:
                 errors = []
                 break
@@ -144,6 +161,8 @@ def collect_location(
 
         if bucket_snapshots is not None:
             persist_bucket_snapshots(bucket_snapshots, snapshot_date=day)
+        if topology_snapshot is not None:
+            persist_topology_snapshot(topology_snapshot, snapshot_date=day)
 
         cluster_ok = cluster_snapshot is not None
         buckets_ok = bucket_snapshots is not None
@@ -158,6 +177,15 @@ def collect_location(
             "bucket_count": len(bucket_snapshots) if buckets_ok else None,
             "cluster_metrics_available": cluster_ok,
             "bucket_metrics_available": buckets_ok,
+            "topology_counts": (
+                {
+                    "nodes": len(topology_snapshot.nodes),
+                    "drives": len(topology_snapshot.drives),
+                    "pools": len(topology_snapshot.pools),
+                    "erasure_sets": len(topology_snapshot.erasure_sets),
+                } if topology_snapshot is not None else None
+            ),
+            "topology_errors": topology_snapshot.family_errors if topology_snapshot else {},
             "errors": errors,
         }
         finished_at = datetime.now(timezone.utc)
