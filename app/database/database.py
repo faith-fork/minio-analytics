@@ -51,8 +51,21 @@ def _apply_migrations(connection: sqlite3.Connection) -> None:
     connection.execute(
         "INSERT OR IGNORE INTO schema_version(version) VALUES (?)", (3,)
     )
+    node_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(node_daily_metrics)")
+    }
+    for name in ("drives_online", "drives_offline"):
+        if name not in node_columns:
+            connection.execute(
+                f"ALTER TABLE node_daily_metrics ADD COLUMN {name} INTEGER"
+            )
+
     connection.execute(
         "INSERT OR IGNORE INTO schema_version(version) VALUES (?)", (4,)
+    )
+    connection.execute(
+        "INSERT OR IGNORE INTO schema_version(version) VALUES (?)", (5,)
     )
 
 
