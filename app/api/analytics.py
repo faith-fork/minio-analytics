@@ -258,9 +258,10 @@ def tenant_analytics(_: dict = Depends(get_current_user)) -> dict:
 def tenant_analytics_detail(
     tenant_id: int,
     days: int = Query(default=30, ge=1, le=3650),
+    attribution: str = Query(default="current", pattern="^(current|historical)$"),
     _: dict = Depends(get_current_user),
 ) -> dict:
-    """Return historical usage attributed to this tenant at snapshot time."""
+    """Return tenant usage using current ownership or snapshot-time ownership."""
     start = _window_start(days)
     with transaction() as connection:
         tenant = connection.execute(
@@ -270,37 +271,81 @@ def tenant_analytics_detail(
         if tenant is None:
             raise HTTPException(status_code=404, detail="Tenant not found")
 
-        rows = connection.execute(
-            """
-            SELECT snapshot_date,
-                   COUNT(DISTINCT bucket_id) AS bucket_count,
-                   CASE
-                       WHEN SUM(CASE WHEN metrics_available = 1 THEN 1 ELSE 0 END) = COUNT(*)
-                            AND COUNT(used_bytes) = COUNT(*)
-                       THEN SUM(used_bytes)
-                       ELSE NULL
-                   END AS used_bytes,
-                   CASE
-                       WHEN SUM(CASE WHEN metrics_available = 1 THEN 1 ELSE 0 END) = COUNT(*)
-                            AND COUNT(object_count) = COUNT(*)
-                       THEN SUM(object_count)
-                       ELSE NULL
-                   END AS object_count,
-                   SUM(CASE WHEN metrics_available = 0 THEN 1 ELSE 0 END)
-                       AS unavailable_bucket_metrics
-            FROM bucket_daily_metrics
-            WHERE tenant_id_at_snapshot = ? AND snapshot_date >= ?
-            GROUP BY snapshot_date
-            ORDER BY snapshot_date
-            """,
-            (tenant_id, start),
-        ).fetchall()
+        if attribution == "current":
+            # Retrospective view: follow today's bucket-to-tenant mapping back
+            # through stored snapshots. Require complete bucket coverage for
+            # totals so missing bucket-days are not silently undercounted.
+            rows = connection.execute(
+                """
+                SELECT m.snapshot_date,
+                       COUNT(DISTINCT b.id) AS bucket_count,
+                       CASE
+                           WHEN COUNT(m.bucket_id) = COUNT(DISTINCT b.id)
+                                AND SUM(CASE WHEN m.metrics_available = 1
+                                             AND m.used_bytes IS NOT NULL
+                                             THEN 1 ELSE 0 END) = COUNT(DISTINCT b.id)
+                           THEN SUM(m.used_bytes)
+                           ELSE NULL
+                       END AS used_bytes,
+                       CASE
+                           WHEN COUNT(m.bucket_id) = COUNT(DISTINCT b.id)
+                                AND SUM(CASE WHEN m.metrics_available = 1
+                                             AND m.object_count IS NOT NULL
+                                             THEN 1 ELSE 0 END) = COUNT(DISTINCT b.id)
+                           THEN SUM(m.object_count)
+                           ELSE NULL
+                       END AS object_count,
+                       SUM(CASE WHEN m.bucket_id IS NULL
+                                      OR m.metrics_available = 0
+                                      OR m.used_bytes IS NULL
+                                THEN 1 ELSE 0 END) AS unavailable_bucket_metrics
+                FROM buckets b
+                LEFT JOIN bucket_daily_metrics m
+                    ON m.bucket_id = b.id AND m.snapshot_date >= ?
+                WHERE b.tenant_id = ?
+                  AND m.snapshot_date IS NOT NULL
+                GROUP BY m.snapshot_date
+                ORDER BY m.snapshot_date
+                """,
+                (start, tenant_id),
+            ).fetchall()
+            attribution_description = (
+                "current bucket ownership applied retrospectively to stored daily snapshots"
+            )
+        else:
+            rows = connection.execute(
+                """
+                SELECT snapshot_date,
+                       COUNT(DISTINCT bucket_id) AS bucket_count,
+                       CASE
+                           WHEN SUM(CASE WHEN metrics_available = 1 THEN 1 ELSE 0 END) = COUNT(*)
+                                AND COUNT(used_bytes) = COUNT(*)
+                           THEN SUM(used_bytes)
+                           ELSE NULL
+                       END AS used_bytes,
+                       CASE
+                           WHEN SUM(CASE WHEN metrics_available = 1 THEN 1 ELSE 0 END) = COUNT(*)
+                                AND COUNT(object_count) = COUNT(*)
+                           THEN SUM(object_count)
+                           ELSE NULL
+                       END AS object_count,
+                       SUM(CASE WHEN metrics_available = 0 THEN 1 ELSE 0 END)
+                           AS unavailable_bucket_metrics
+                FROM bucket_daily_metrics
+                WHERE tenant_id_at_snapshot = ? AND snapshot_date >= ?
+                GROUP BY snapshot_date
+                ORDER BY snapshot_date
+                """,
+                (tenant_id, start),
+            ).fetchall()
+            attribution_description = "tenant_id_at_snapshot"
 
     return {
         "tenant": _dict(tenant),
         "days": days,
+        "attribution": attribution,
+        "attribution_description": attribution_description,
         "series": [_dict(row) for row in rows],
-        "attribution": "tenant_id_at_snapshot",
     }
 
 
