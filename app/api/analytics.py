@@ -520,86 +520,53 @@ def collection_health(
 
 
 @router.get("/clusters/{cluster_id}/topology")
-def cluster_topology(
-    cluster_id: str,
-    _: dict = Depends(get_current_user),
-) -> dict:
-    """Return the latest persisted node, drive, pool and erasure-set inventory."""
+def cluster_topology(cluster_id: str, _: dict = Depends(get_current_user)) -> dict:
+    """Return latest high-frequency node/drive health and daily pool topology."""
     with transaction() as connection:
         cluster = connection.execute(
-            """
-            SELECT c.id, c.name, l.name AS location_name
-            FROM clusters c JOIN locations l ON l.id = c.location_id
-            WHERE c.id = ?
-            """,
-            (cluster_id,),
+            """SELECT c.id,c.name,l.name AS location_name FROM clusters c
+               JOIN locations l ON l.id=c.location_id WHERE c.id=?""",(cluster_id,)
         ).fetchone()
-        if cluster is None:
-            raise HTTPException(status_code=404, detail="Cluster not found")
-
-        run = connection.execute(
-            """
-            SELECT * FROM topology_daily_runs
-            WHERE cluster_id = ?
-            ORDER BY snapshot_date DESC, id DESC LIMIT 1
-            """,
-            (cluster_id,),
+        if cluster is None: raise HTTPException(status_code=404,detail="Cluster not found")
+        run=connection.execute(
+            "SELECT * FROM topology_daily_runs WHERE cluster_id=? ORDER BY snapshot_date DESC,id DESC LIMIT 1",
+            (cluster_id,)
         ).fetchone()
-        if run is None:
-            return {
-                "cluster": _dict(cluster), "snapshot_date": None,
-                "collected_at": None, "family_errors": {},
-                "nodes": [], "drives": [], "pools": [], "erasure_sets": [],
-                "message": "No topology snapshot has been collected yet.",
-            }
-
-        day = run["snapshot_date"]
-        nodes = connection.execute(
-            """
-            SELECT * FROM node_daily_metrics
-            WHERE cluster_id = ? AND snapshot_date = ?
-            ORDER BY node_name
-            """, (cluster_id, day)
-        ).fetchall()
-        drives = connection.execute(
-            """
-            SELECT * FROM drive_daily_metrics
-            WHERE cluster_id = ? AND snapshot_date = ?
-            ORDER BY node_name, drive_path
-            """, (cluster_id, day)
-        ).fetchall()
-        pools = connection.execute(
-            """
-            SELECT * FROM pool_daily_metrics
-            WHERE cluster_id = ? AND snapshot_date = ?
-            ORDER BY pool_id
-            """, (cluster_id, day)
-        ).fetchall()
-        sets = connection.execute(
-            """
-            SELECT * FROM erasure_set_daily_metrics
-            WHERE cluster_id = ? AND snapshot_date = ?
-            ORDER BY pool_id, set_id
-            """, (cluster_id, day)
-        ).fetchall()
-
-    try:
-        family_errors = json.loads(run["family_errors_json"] or "{}")
-    except (TypeError, json.JSONDecodeError):
-        family_errors = {}
-
+        health=connection.execute(
+            "SELECT * FROM node_health_runs WHERE cluster_id=? ORDER BY snapshot_ts DESC,id DESC LIMIT 1",
+            (cluster_id,)
+        ).fetchone()
+        if health:
+            nodes=connection.execute("SELECT * FROM node_health_metrics WHERE run_id=? ORDER BY node_name",(health["run_id"],)).fetchall()
+            drives=connection.execute("SELECT * FROM drive_health_metrics WHERE run_id=? ORDER BY node_name,drive_path",(health["run_id"],)).fetchall()
+            try: health_errors=json.loads(health["family_errors_json"] or "{}")
+            except (TypeError,json.JSONDecodeError): health_errors={}
+            node_ts=health["snapshot_ts"]; node_collected=health["collected_at"]
+        else:
+            nodes=[]; drives=[]; health_errors={}; node_ts=None; node_collected=None
+        if run:
+            day=run["snapshot_date"]
+            pools=connection.execute("SELECT * FROM pool_daily_metrics WHERE cluster_id=? AND snapshot_date=? ORDER BY pool_id",(cluster_id,day)).fetchall()
+            sets=connection.execute("SELECT * FROM erasure_set_daily_metrics WHERE cluster_id=? AND snapshot_date=? ORDER BY pool_id,set_id",(cluster_id,day)).fetchall()
+            try: daily_errors=json.loads(run["family_errors_json"] or "{}")
+            except (TypeError,json.JSONDecodeError): daily_errors={}
+            pool_ts=run["snapshot_ts"]; pool_collected=run["collected_at"]
+        else:
+            pools=[]; sets=[]; daily_errors={}; pool_ts=None; pool_collected=None
+    errors={**daily_errors,**health_errors}
     return {
-        "cluster": _dict(cluster),
-        "snapshot_date": day,
-        "snapshot_ts": run["snapshot_ts"],
-        "collected_at": run["collected_at"],
-        "family_errors": family_errors,
-        "counts": {
-            "nodes": run["node_count"], "drives": run["drive_count"],
-            "pools": run["pool_count"], "erasure_sets": run["erasure_set_count"],
-        },
-        "nodes": [_dict(row) for row in nodes],
-        "drives": [_dict(row) for row in drives],
-        "pools": [_dict(row) for row in pools],
-        "erasure_sets": [_dict(row) for row in sets],
+        "cluster":_dict(cluster),
+        "snapshot_date":run["snapshot_date"] if run else None,
+        "snapshot_ts":node_ts or pool_ts,
+        "collected_at":node_collected or pool_collected,
+        "node_snapshot_ts":node_ts,
+        "node_collected_at":node_collected,
+        "topology_snapshot_ts":pool_ts,
+        "topology_collected_at":pool_collected,
+        "family_errors":errors,
+        "counts":{"nodes":len(nodes),"drives":len(drives),"pools":len(pools),"erasure_sets":len(sets)},
+        "nodes":[_dict(r) for r in nodes],
+        "drives":[_dict(r) for r in drives],
+        "pools":[_dict(r) for r in pools],
+        "erasure_sets":[_dict(r) for r in sets],
     }
