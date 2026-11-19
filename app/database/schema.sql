@@ -5,6 +5,16 @@ CREATE TABLE IF NOT EXISTS schema_version (
     applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('admin', 'viewer')),
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
 CREATE TABLE IF NOT EXISTS locations (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
@@ -118,6 +128,7 @@ CREATE TABLE IF NOT EXISTS collection_runs (
     details_json TEXT NOT NULL DEFAULT '{}'
 );
 
+CREATE INDEX IF NOT EXISTS idx_users_active_role ON users(is_active, role);
 CREATE INDEX IF NOT EXISTS idx_clusters_location ON clusters(location_id);
 CREATE INDEX IF NOT EXISTS idx_buckets_cluster ON buckets(cluster_id);
 CREATE INDEX IF NOT EXISTS idx_buckets_tenant ON buckets(tenant_id);
