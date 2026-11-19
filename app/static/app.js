@@ -80,7 +80,7 @@ async function renderBuckets(){
   $("#content").innerHTML=pageHead("Buckets","Inventory and current tenant ownership across your MinIO clusters.")+
     `<div class="toolbar" style="margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><input id="bucket-filter" class="form-control" placeholder="Filter buckets by name or cluster"><span id="bucket-selection-count" class="cell-muted">${state.selectedBuckets.length} selected</span>${admin?'<button class="primary-small" data-action="bulk-assign" '+(state.selectedBuckets.length?'':'disabled')+'>Assign selected buckets</button>':""}</div>`+
     table("Bucket inventory",buckets.count+" active bucket(s)",headers,rows);
-  $("#select-all-buckets").checked=state.buckets.length>0&&state.selectedBuckets.length===state.buckets.length;
+  const selectAll=$("#select-all-buckets");if(selectAll)selectAll.checked=state.buckets.length>0&&state.selectedBuckets.length===state.buckets.length;
 }
 async function showBucket(id){
   const [d,h]=await Promise.all([api("/api/analytics/buckets/"+id+"?days=90"),api("/api/buckets/"+id+"/history")]);const series=d.series||[],latest=series.at(-1)||{};clearCharts();
