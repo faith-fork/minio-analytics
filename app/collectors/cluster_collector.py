@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from math import isfinite
 from typing import Optional
 
 from app.collectors.prometheus import PrometheusClient, PrometheusError
@@ -9,6 +10,7 @@ from app.config.loader import ClusterConfig, LocationConfig
 
 RAW_EFF_FACTOR = 0.993
 LOOKBACK_DAYS = 30
+CLUSTER_LABEL = "cluster"
 
 
 @dataclass(frozen=True)
@@ -31,15 +33,25 @@ class ClusterSnapshot:
     error_text: Optional[str] = None
 
 
-def _scalar(client: PrometheusClient, promql: str, at: int | None = None) -> float | None:
+def _promql_string(value: str) -> str:
+    """Escape a string for use inside a PromQL double-quoted label matcher."""
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
+def _scalar(
+    client: PrometheusClient, promql: str, at: int | float | None = None
+) -> float | None:
     samples = client.query(promql, at=at)
     if not samples:
         return None
     if len(samples) != 1:
         raise PrometheusError(
-            f"Expected one sample for scalar query, received {len(samples)}: {promql}"
+            f"Expected one aggregated sample, received {len(samples)}: {promql}"
         )
-    return samples[0].value
+    value = samples[0].value
+    if not isfinite(value):
+        return None
+    return value
 
 
 def collect_cluster_snapshot(
@@ -48,47 +60,45 @@ def collect_cluster_snapshot(
     snapshot_ts: datetime,
     client: PrometheusClient | None = None,
 ) -> ClusterSnapshot:
-    """Collect cluster capacity/node metrics at one shared snapshot timestamp.
+    """Collect one cluster from a location-level Prometheus endpoint.
 
-    The endpoint is location-scoped. When a location has multiple clusters,
-    metric labels must be checked and filtered to the correct cluster before
-    enabling collection for that location.
+    MinIO exports cluster-wide gauges on multiple nodes/jobs. max() over the
+    exact cluster label deliberately deduplicates those repeated observations;
+    summing them would multiply capacity and node counts.
     """
     own_client = client is None
     prom = client or PrometheusClient(location.prometheus_url)
     collected_at = datetime.now(timezone.utc)
     timestamp = int(snapshot_ts.timestamp())
+    label_value = _promql_string(cluster.prometheus_label_value)
+    selector = f'{{{CLUSTER_LABEL}="{label_value}"}}'
 
     queries = {
         "raw_total_bytes": (
-            f"max(minio_cluster_capacity_raw_total_bytes @ {timestamp}) * {RAW_EFF_FACTOR}"
+            f"max(minio_cluster_capacity_raw_total_bytes{selector}) * {RAW_EFF_FACTOR}"
         ),
-        "raw_free_bytes": (
-            f"max(minio_cluster_capacity_raw_free_bytes @ {timestamp})"
-        ),
-        "usable_total_bytes": (
-            f"max(minio_cluster_capacity_usable_total_bytes @ {timestamp})"
-        ),
-        "usable_free_bytes": (
-            f"max(minio_cluster_capacity_usable_free_bytes @ {timestamp})"
-        ),
-        "nodes_online": "max(minio_cluster_nodes_online_total)",
-        "nodes_offline": "max(minio_cluster_nodes_offline_total)",
+        "raw_free_bytes": f"max(minio_cluster_capacity_raw_free_bytes{selector})",
+        "usable_total_bytes": f"max(minio_cluster_capacity_usable_total_bytes{selector})",
+        "usable_free_bytes": f"max(minio_cluster_capacity_usable_free_bytes{selector})",
+        "nodes_online": f"max(minio_cluster_nodes_online_total{selector})",
+        "nodes_offline": f"max(minio_cluster_nodes_offline_total{selector})",
         "growth_bytes_per_day": (
-            "deriv((max(minio_cluster_capacity_raw_total_bytes) * "
-            f"{RAW_EFF_FACTOR} - max(minio_cluster_capacity_raw_free_bytes)"
+            f"deriv((max(minio_cluster_capacity_raw_total_bytes{selector}) * "
+            f"{RAW_EFF_FACTOR} - max(minio_cluster_capacity_raw_free_bytes{selector})"
             f")[{LOOKBACK_DAYS}d:1d]) * 86400"
         ),
         "days_to_full": (
-            f"(max(minio_cluster_capacity_raw_free_bytes @ {timestamp}) / "
-            f"-deriv(max(minio_cluster_capacity_raw_free_bytes)[{LOOKBACK_DAYS}d:1d])) / 86400"
+            f"(max(minio_cluster_capacity_raw_free_bytes{selector}) / "
+            f"-deriv(max(minio_cluster_capacity_raw_free_bytes{selector})"
+            f"[{LOOKBACK_DAYS}d:1d])) / 86400"
         ),
     }
 
     try:
-        values = {name: _scalar(prom, query) for name, query in queries.items()}
-        # Required storage capacity metrics must be present. Missing values are
-        # not coerced to zero, since that would make an unavailable metric look valid.
+        values = {
+            name: _scalar(prom, query, at=timestamp)
+            for name, query in queries.items()
+        }
         required = (
             "raw_total_bytes",
             "raw_free_bytes",
@@ -97,7 +107,10 @@ def collect_cluster_snapshot(
         )
         missing = [name for name in required if values[name] is None]
         if missing:
-            raise PrometheusError(f"Missing required metrics: {', '.join(missing)}")
+            raise PrometheusError(
+                f"Missing required metrics for Prometheus cluster "
+                f"{cluster.prometheus_label_value}: {', '.join(missing)}"
+            )
 
         online = values["nodes_online"]
         offline = values["nodes_offline"]
