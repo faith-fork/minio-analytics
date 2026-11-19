@@ -1,6 +1,6 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
-const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], health:null, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null} };
+const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], health:null, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null} };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
 const bytes = n => n == null ? "—" : (n/1024**4).toFixed(2)+" TiB";
 const pct = (used,total) => used == null || !total ? null : Math.max(0,Math.min(100,used/total*100));
@@ -94,22 +94,30 @@ async function renderTenants(){
     table("Tenant directory","Current tenant configuration",["TENANT","DESCRIPTION","CURRENT BUCKETS","STATUS"],state.tenants.map(t=>`<tr><td class="cell-strong">${esc(t.name)}</td><td>${esc(t.description||"—")}</td><td>${t.bucket_count}</td><td>${pill(t.is_active?"Active":"Inactive")}</td></tr>`));
 }
 async function showTenant(id,attribution="current",days=90,startDate=null,endDate=null){
+  state.snapshotContext={type:"tenant",id,attribution,days,startDate,endDate};
   const d=await api("/api/analytics/tenants/"+id+"?"+trendQuery(days,startDate,endDate,"attribution="+encodeURIComponent(attribution)));clearCharts();
   const current=attribution==="current";
   const subtitle=current
     ?"Historical bucket usage attributed using current tenant ownership."
     :"Historical usage attributed to this tenant at snapshot time.";
   const actions=`<div class="heading-actions"><button class="subtle-button" data-tenant-mode="current" data-tenant-id="${id}" ${current?'disabled':''}>Current ownership</button><button class="subtle-button" data-tenant-mode="historical" data-tenant-id="${id}" ${!current?'disabled':''}>Historical ownership</button><button class="subtle-button" data-view="tenants">← All tenants</button></div>`;
-  const emptyMessage=current
-    ?"No stored bucket snapshots found for buckets currently assigned to this tenant."
-    :"No snapshots were recorded under this tenant's ownership during this period.";
   $("#content").innerHTML=pageHead(esc(d.tenant.name),subtitle,actions)+
     `${rangeControl(days,"tenant",id,attribution)}<div class="detail-grid"><div class="detail-card"><small>DESCRIPTION</small><strong style="font-size:14px">${esc(d.tenant.description||"—")}</strong></div><div class="detail-card"><small>STATUS</small><strong style="font-size:14px">${d.tenant.is_active?"Active":"Inactive"}</strong></div><div class="detail-card"><small>HISTORY WINDOW</small><strong>${days} days</strong></div></div>`+
     panel("Tenant capacity and quota trend",current?"Daily usage and summed bucket quotas for currently assigned buckets":"Daily usage and quotas based on historical snapshot attribution",'<div class="chart-wrap"><canvas id="tenant-chart"></canvas></div>')+
     panel("Tenant object trend","Daily object count across attributed buckets",'<div class="chart-wrap"><canvas id="tenant-object-chart"></canvas></div>')+
-    table("Daily tenant snapshots",current?"Current ownership is applied retrospectively; totals require metrics for every currently assigned bucket.":"Missing metrics remain unavailable, not zero.",["DATE","BUCKETS","USED","OBJECTS","UNAVAILABLE BUCKETS"],d.series.map(r=>`<tr><td>${dateLabel(r.snapshot_date)}</td><td>${r.bucket_count}</td><td>${bytes(r.used_bytes)}</td><td>${fmt(r.object_count,0)}</td><td>${r.unavailable_bucket_metrics}</td></tr>`),emptyMessage);
+    `<div class="snapshot-link-panel"><div><strong>Daily snapshots</strong><p>Browse daily tenant usage, quota, object counts and metric availability.</p></div><button class="primary-small" data-action="open-tenant-snapshots">View daily snapshots →</button></div>`;
   chart("tenant-chart",d.series.map(r=>dateLabel(r.snapshot_date)),[{label:"Used TiB",data:d.series.map(r=>r.used_bytes==null?null:r.used_bytes/1024**4),color:"#13a58b",fill:true},{label:"Quota TiB",data:d.series.map(r=>r.quota_bytes==null?null:r.quota_bytes/1024**4),color:"#d9922e"}]);
   chart("tenant-object-chart",d.series.map(r=>dateLabel(r.snapshot_date)),[{label:"Objects",data:d.series.map(r=>r.object_count),color:"#4779d8",fill:true}]);
+}
+async function showTenantSnapshots(id,attribution="current",days=90,startDate=null,endDate=null){
+  state.snapshotContext={type:"tenant",id,attribution,days,startDate,endDate};
+  const d=await api("/api/analytics/tenants/"+id+"?"+trendQuery(days,startDate,endDate,"attribution="+encodeURIComponent(attribution)));
+  const current=attribution==="current";
+  const rows=(d.series||[]).map(r=>`<tr><td>${dateLabel(r.snapshot_date)}</td><td>${r.bucket_count}</td><td>${bytes(r.used_bytes)}</td><td>${bytes(r.quota_bytes)}</td><td>${fmt(r.object_count,0)}</td><td>${r.unavailable_bucket_metrics??"—"}</td></tr>`);
+  clearCharts();
+  $("#content").innerHTML=pageHead(esc(d.tenant.name)+" — Daily snapshots",current?"Daily metrics using current bucket ownership.":"Daily metrics using tenant ownership recorded at snapshot time.",'<button class="subtle-button" data-action="back-to-entity">← Back to tenant</button>')+
+    rangeControl(days,"tenant-snapshots",id,attribution)+
+    table("Daily tenant snapshots",rows.length+" snapshot(s) · "+(current?"Current ownership":"Historical ownership"),["DATE","BUCKETS","USED","QUOTA","OBJECTS","UNAVAILABLE BUCKETS"],rows,current?"No stored bucket snapshots found for buckets currently assigned to this tenant.":"No snapshots were recorded under this tenant's ownership during this period.");
 }
 async function renderBuckets(){
   const [buckets,tenants]=await Promise.all([api("/api/buckets"),api("/api/tenants")]);state.buckets=buckets.items;state.tenants=tenants.items;
@@ -123,15 +131,25 @@ async function renderBuckets(){
   const selectAll=$("#select-all-buckets");if(selectAll)selectAll.checked=state.buckets.length>0&&state.selectedBuckets.length===state.buckets.length;
 }
 async function showBucket(id,days=90,startDate=null,endDate=null){
+  state.snapshotContext={type:"bucket",id,attribution:"current",days,startDate,endDate};
   const [d,h]=await Promise.all([api("/api/analytics/buckets/"+id+"?"+trendQuery(days,startDate,endDate)),api("/api/buckets/"+id+"/history")]);const series=d.series||[],latest=series.at(-1)||{};clearCharts();
   $("#content").innerHTML=pageHead(esc(d.bucket.bucket_name),"Cluster · "+esc(d.bucket.cluster_name)+" · Current tenant: "+esc(d.bucket.current_tenant_name||"Unassigned"),'<button class="subtle-button" data-view="buckets">← All buckets</button>')+
     `<div class="detail-grid"><div class="detail-card"><small>USED</small><strong>${bytes(latest.used_bytes)}</strong></div><div class="detail-card"><small>QUOTA</small><strong>${bytes(latest.quota_bytes)}</strong></div><div class="detail-card"><small>OBJECTS</small><strong>${fmt(latest.object_count,0)}</strong></div></div>`+
     panel("Bucket usage and quota trend","Daily usage and quota in TiB",rangeControl(days,"bucket",id)+'<div class="chart-wrap"><canvas id="bucket-chart"></canvas></div>')+
     panel("Bucket object trend","Daily object count",'<div class="chart-wrap"><canvas id="bucket-object-chart"></canvas></div>')+
-    table("Daily snapshots","Historical tenant attribution is retained per snapshot.",["DATE","TENANT AT SNAPSHOT","USED","QUOTA","OBJECTS","VERSIONS","DELETE MARKERS"],series.map(r=>`<tr><td>${dateLabel(r.snapshot_date)}</td><td>${esc(r.tenant_name_at_snapshot||"Unassigned")}</td><td>${bytes(r.used_bytes)}</td><td>${bytes(r.quota_bytes)}</td><td>${fmt(r.object_count,0)}</td><td>${r.version_count??"—"}</td><td>${r.delete_marker_count??"—"}</td></tr>`))+
+    `<div class="snapshot-link-panel"><div><strong>Daily snapshots</strong><p>Browse daily usage, quota, object counts and snapshot-time tenant attribution.</p></div><button class="primary-small" data-action="open-bucket-snapshots">View daily snapshots →</button></div>`+
     table("Assignment history","Administrative ownership changes",["CHANGED AT","TENANT","CHANGED BY","NOTE"],h.items.map(r=>`<tr><td>${esc(r.changed_at)}</td><td>${esc(r.tenant_name||"Unassigned")}</td><td>${esc(r.changed_by)}</td><td>${esc(r.note||"—")}</td></tr>`));
   chart("bucket-chart",series.map(r=>dateLabel(r.snapshot_date)),[{label:"Used TiB",data:series.map(r=>r.used_bytes==null?null:r.used_bytes/1024**4),color:"#13a58b",fill:true},{label:"Quota TiB",data:series.map(r=>r.quota_bytes==null?null:r.quota_bytes/1024**4),color:"#d9922e"}]);
   chart("bucket-object-chart",series.map(r=>dateLabel(r.snapshot_date)),[{label:"Objects",data:series.map(r=>r.object_count),color:"#4779d8",fill:true}]);
+}
+async function showBucketSnapshots(id,days=90,startDate=null,endDate=null){
+  state.snapshotContext={type:"bucket",id,attribution:"current",days,startDate,endDate};
+  const d=await api("/api/analytics/buckets/"+id+"?"+trendQuery(days,startDate,endDate));
+  const rows=(d.series||[]).map(r=>`<tr><td>${dateLabel(r.snapshot_date)}</td><td>${esc(r.tenant_name_at_snapshot||"Unassigned")}</td><td>${bytes(r.used_bytes)}</td><td>${bytes(r.quota_bytes)}</td><td>${fmt(r.object_count,0)}</td><td>${r.version_count??"—"}</td><td>${r.delete_marker_count??"—"}</td><td>${pill(!!r.metrics_available)}</td></tr>`);
+  clearCharts();
+  $("#content").innerHTML=pageHead(esc(d.bucket.bucket_name)+" — Daily snapshots","Historical bucket metrics · Cluster "+esc(d.bucket.cluster_name),'<button class="subtle-button" data-action="back-to-entity">← Back to bucket</button>')+
+    rangeControl(days,"bucket-snapshots",id)+
+    table("Daily snapshots",rows.length+" snapshot(s)",["DATE","TENANT AT SNAPSHOT","USED","QUOTA","OBJECTS","VERSIONS","DELETE MARKERS","STATUS"],rows,"No bucket snapshots are available for this date range.");
 }
 async function renderHealth(){
   state.health=await api("/api/analytics/collection-health?limit=50");const counts=state.health.status_counts;
@@ -175,6 +193,9 @@ document.addEventListener("click",async e=>{
   const bucket=e.target.closest("[data-bucket]");if(bucket){try{await showBucket(bucket.dataset.bucket);}catch(err){toast(err.message,true);}return;}
   const assign=e.target.closest("[data-assign]");if(assign){assignBucketModal(Number(assign.dataset.assign));return;}
   const action=e.target.closest("[data-action]")?.dataset.action;
+  if(action==="open-tenant-snapshots"){const c=state.snapshotContext;showTenantSnapshots(c.id,c.attribution,c.days,c.startDate,c.endDate).catch(err=>toast(err.message,true));return;}
+  if(action==="open-bucket-snapshots"){const c=state.snapshotContext;showBucketSnapshots(c.id,c.days,c.startDate,c.endDate).catch(err=>toast(err.message,true));return;}
+  if(action==="back-to-entity"){const c=state.snapshotContext;if(c.type==="tenant")showTenant(c.id,c.attribution,c.days,c.startDate,c.endDate).catch(err=>toast(err.message,true));else if(c.type==="bucket")showBucket(c.id,c.days,c.startDate,c.endDate).catch(err=>toast(err.message,true));return;}
   if(action==="open-cluster-snapshots"){showClusterSnapshots(state.snapshotClusterId,state.snapshotRange.days,state.snapshotRange.startDate,state.snapshotRange.endDate).catch(err=>toast(err.message,true));return;}
   if(action==="back-to-cluster"){showCluster(state.snapshotClusterId,state.snapshotRange.days,state.snapshotRange.startDate,state.snapshotRange.endDate).catch(err=>toast(err.message,true));return;}
   if(action==="refresh"){render().catch(err=>toast(err.message,true));}
@@ -184,7 +205,7 @@ document.addEventListener("click",async e=>{
     if(!start||!end){toast("Choose both a start date and an end date.",true);return;}
     if(start>end){toast("Start date must be on or before end date.",true);return;}
     const kind=el.dataset.trendKind,id=el.dataset.trendId,mode=el.dataset.trendAttribution||"current";
-    const run=kind==="cluster"||kind==="cluster-snapshots"?(kind==="cluster-snapshots"?showClusterSnapshots(id,90,start,end):showCluster(id,90,start,end)):kind==="tenant"?showTenant(Number(id),mode,90,start,end):showBucket(Number(id),90,start,end);
+    const run=kind==="cluster"||kind==="cluster-snapshots"?(kind==="cluster-snapshots"?showClusterSnapshots(id,90,start,end):showCluster(id,90,start,end)):kind==="tenant"||kind==="tenant-snapshots"?(kind==="tenant-snapshots"?showTenantSnapshots(Number(id),mode,90,start,end):showTenant(Number(id),mode,90,start,end)):kind==="bucket-snapshots"?showBucketSnapshots(Number(id),90,start,end):showBucket(Number(id),90,start,end);
     run.catch(err=>toast(err.message,true));
   }
   if(action==="new-tenant")createTenantModal();
@@ -198,7 +219,7 @@ $("#login-form").addEventListener("submit",async e=>{e.preventDefault();$("#logi
 $("#logout-button").addEventListener("click",async()=>{try{await api("/api/auth/logout",{method:"POST"});}catch{}showLogin();});
 $("#refresh-button").addEventListener("click",()=>render().catch(e=>toast(e.message,true)));
 $("#content").addEventListener("change",e=>{
-  if(e.target.id==="trend-range" && e.target.value!=="custom"){const el=e.target,days=Number(el.value),kind=el.dataset.trendKind,id=el.dataset.trendId,mode=el.dataset.trendAttribution||"current";const run=kind==="cluster"||kind==="cluster-snapshots"?(kind==="cluster-snapshots"?showClusterSnapshots(id,days):showCluster(id,days)):kind==="tenant"?showTenant(Number(id),mode,days):showBucket(Number(id),days);run.catch(err=>toast(err.message,true));return;}
+  if(e.target.id==="trend-range" && e.target.value!=="custom"){const el=e.target,days=Number(el.value),kind=el.dataset.trendKind,id=el.dataset.trendId,mode=el.dataset.trendAttribution||"current";const run=kind==="cluster"||kind==="cluster-snapshots"?(kind==="cluster-snapshots"?showClusterSnapshots(id,days):showCluster(id,days)):kind==="tenant"||kind==="tenant-snapshots"?(kind==="tenant-snapshots"?showTenantSnapshots(Number(id),mode,days):showTenant(Number(id),mode,days)):kind==="bucket-snapshots"?showBucketSnapshots(Number(id),days):showBucket(Number(id),days);run.catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-user-role]")){
     const id=Number(e.target.dataset.userRole),role=e.target.value;
     api("/api/auth/users/"+id,{method:"PATCH",body:JSON.stringify({role})}).then(()=>toast("User role updated")).catch(err=>{toast(err.message,true);renderUsers();});
