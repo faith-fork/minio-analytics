@@ -131,6 +131,70 @@ systemctl list-timers --all | grep minio-analytics
 
 Inspect executions with `journalctl -u minio-analytics-collect.service` and `journalctl -u minio-analytics-backup.service`. The collection service runs as root because the current lab deployment and protected local configuration are root-owned; adjust `User`, `Group`, file ownership, and directory permissions together if a dedicated service account is introduced.
 
+
+## Web API authentication foundation
+
+The FastAPI application uses SQLite-backed users and signed, HTTP-only session cookies.
+
+- Roles are `admin` and `viewer`.
+- Passwords are hashed with PBKDF2-HMAC-SHA256; plaintext passwords are never stored.
+- Sessions expire after 8 hours.
+- Inactive users are rejected on every authenticated request.
+- The initial user is created explicitly with the CLI; there is no default username or password.
+- The browser-facing application must use HTTPS. The secure-cookie flag defaults to enabled.
+
+### Configure the session secret
+
+Generate a unique secret on the VM and keep it outside Git:
+
+```bash
+umask 077
+openssl rand -hex 32
+```
+
+Set the generated value in the application service environment as `MINIO_ANALYTICS_SESSION_SECRET`. Do not paste it into source code, README files, or shell history.
+
+For an isolated HTTP-only lab test, set `MINIO_ANALYTICS_COOKIE_SECURE=false` in the current shell. Leave it unset (secure cookies enabled) when serving the app through HTTPS.
+
+### Create the first administrator
+
+From `/opt/minio-analytics`:
+
+```bash
+source .venv/bin/activate
+python -m scripts.create_user --username admin --role admin
+```
+
+The script prompts twice for a password of at least 12 characters. It does not accept passwords as command-line arguments.
+
+Create additional read-only users with:
+
+```bash
+python -m scripts.create_user --username analyst1 --role viewer
+```
+
+### Run the API
+
+For a temporary lab session, export the secret and start Uvicorn:
+
+```bash
+export MINIO_ANALYTICS_SESSION_SECRET="$(openssl rand -hex 32)"
+export MINIO_ANALYTICS_COOKIE_SECURE=false
+uvicorn app.main:app --host 0.0.0.0 --port 8001
+```
+
+Use a persistent, root-readable environment file or systemd credential for a long-running deployment; do not generate a new secret on every restart, because that invalidates existing sessions.
+
+### Authentication endpoints
+
+- `POST /api/auth/login` — JSON body: `{"username":"admin","password":"..."}`; sets the session cookie.
+- `GET /api/auth/me` — returns the current authenticated user and role.
+- `POST /api/auth/logout` — clears the session.
+- `GET /health` — database health check.
+- `GET /docs` — interactive API documentation (keep internal; do not expose publicly).
+
+Login failures return a generic error. User records and role checks are read from SQLite. Analytics and administration routes will use the shared `get_current_user` and `require_admin` dependencies.
+
 ## Data and safety principles
 
 - Store measurements in bytes; convert to TiB only for display.
