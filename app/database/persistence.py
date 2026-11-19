@@ -326,12 +326,12 @@ def persist_topology_snapshot(
                     snapshot_date, cluster_id, node_name, node_exporter_instance,
                     minio_instance, node_exporter_up, minio_scrape_up,
                     cpu_utilization_pct, memory_total_bytes, memory_available_bytes,
-                    memory_used_bytes, load1, snapshot_ts, collected_at
+                    memory_used_bytes, load1, drives_online, drives_offline, snapshot_ts, collected_at
                 ) VALUES (
                     :snapshot_date, :cluster_id, :node_name, :node_exporter_instance,
                     :minio_instance, :node_exporter_up, :minio_scrape_up,
                     :cpu_utilization_pct, :memory_total_bytes, :memory_available_bytes,
-                    :memory_used_bytes, :load1, :snapshot_ts, :collected_at
+                    :memory_used_bytes, :load1, :drives_online, :drives_offline, :snapshot_ts, :collected_at
                 )
                 ON CONFLICT(snapshot_date, cluster_id, node_name) DO UPDATE SET
                     node_exporter_instance=excluded.node_exporter_instance,
@@ -343,6 +343,8 @@ def persist_topology_snapshot(
                     memory_available_bytes=excluded.memory_available_bytes,
                     memory_used_bytes=excluded.memory_used_bytes,
                     load1=excluded.load1,
+                    drives_online=excluded.drives_online,
+                    drives_offline=excluded.drives_offline,
                     snapshot_ts=excluded.snapshot_ts,
                     collected_at=excluded.collected_at
                 """,
