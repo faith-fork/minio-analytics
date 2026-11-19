@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException
 from starlette.middleware.sessions import SessionMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.auth import router as auth_router
 from app.api.analytics import router as analytics_router
@@ -52,6 +54,10 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(tenant_router)
 app.include_router(analytics_router)
+
+# Serve the browser dashboard after API routes so it cannot shadow them.
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="dashboard")
 
 
 @app.get("/health", tags=["health"])
