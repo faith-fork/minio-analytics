@@ -96,9 +96,13 @@ def update_tenant(
     if not changes:
         raise HTTPException(status_code=422, detail="No tenant fields supplied")
     if "name" in changes:
+        if changes["name"] is None:
+            raise HTTPException(status_code=422, detail="Tenant name cannot be null")
         changes["name"] = changes["name"].strip()
         if not changes["name"]:
             raise HTTPException(status_code=422, detail="Tenant name cannot be blank")
+    if "is_active" in changes and changes["is_active"] is None:
+        raise HTTPException(status_code=422, detail="is_active cannot be null")
     if "description" in changes and changes["description"] is not None:
         changes["description"] = changes["description"].strip() or None
 
@@ -248,7 +252,12 @@ def set_bucket_tenant(
             INSERT INTO bucket_tenant_history (bucket_id, tenant_id, changed_at, changed_by, note)
             VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), ?, ?)
             """,
-            (bucket_id, payload.tenant_id, user["username"], payload.note),
+            (
+                bucket_id,
+                payload.tenant_id,
+                user["username"],
+                payload.note.strip() if payload.note else None,
+            ),
         )
 
     return {
