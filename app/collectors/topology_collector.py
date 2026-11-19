@@ -110,7 +110,7 @@ def collect_topology_snapshot(
                           ("instance",), "nodes")
         cpu = unique(
             '100 * (1 - avg by (instance) (rate(node_cpu_seconds_total'
-            + node_selector + ',mode="idle"[5m])))',
+            + selector + ',job="node_exporter",mode="idle"}[5m])))',
             "", ("instance",), "nodes"
         )
         mem_total = unique("node_memory_MemTotal_bytes", node_selector,
