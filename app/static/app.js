@@ -53,16 +53,23 @@ async function renderClusters(){
 }
 
 async function renderMasterAdmin(){
-  const d=await api("/api/master-admin/settings"),s=d.settings;
-  $("#content").innerHTML=pageHead("Master Admin","Configure collector cadence. Changes are picked up by the scheduler without restarting the dashboard.")+
-    `<section class="panel" style="max-width:760px"><div class="panel-header"><div><h3>Collector schedule</h3><p>All times use Asia/Kolkata (IST).</p></div><span class="panel-tag">LIVE SETTINGS</span></div>
+  const [d, backups] = await Promise.all([
+    api("/api/master-admin/settings"),
+    api("/api/master-admin/backups")
+  ]);
+  const s=d.settings;
+  const backupRows=backups.items.map(b=>`<tr><td><span class="cell-strong">${esc(b.filename)}</span></td><td>${timestampLabel(b.created_at)}</td><td>${fmt(b.size_bytes/1024/1024,2)} MiB</td><td>${pill("success")} Verified</td><td><a class="table-link" href="${esc(b.download_url)}">Download ↓</a></td></tr>`);
+  $("#content").innerHTML=pageHead("Master Admin","Configure collector cadence and manage verified database backups.")+
+    `<section class="panel" style="max-width:760px;margin-bottom:16px"><div class="panel-header"><div><h3>Collector schedule</h3><p>All times use Asia/Kolkata (IST).</p></div><span class="panel-tag">LIVE SETTINGS</span></div>
     <form id="master-settings-form" class="form-grid" style="display:grid;gap:14px;max-width:520px">
       <label>Node, drive health and filesystem interval (hours)<input class="form-control" type="number" name="node_interval_hours" min="1" max="24" step="1" value="${s.node_interval_hours}" required></label>
       <p class="cell-muted">Default: every 4 hours. Valid range: 1–24 hours. Includes node availability, CPU, memory, load, per-drive health/error counters and filesystem utilization.</p>
       <label>Daily capacity, bucket and pool collection time (IST)<input class="form-control" type="time" name="daily_collection_time" value="${esc(s.daily_collection_time)}" required></label>
       <label>Confirm your Master Admin password<input class="form-control" type="password" name="current_password" autocomplete="current-password" required></label>
       <div><button class="primary-button" type="submit">Save collector settings</button></div>
-    </form><p class="cell-muted" style="margin-top:14px">The scheduler checks settings every 60 seconds. Pool and erasure-set telemetry remains part of the daily collection. Database backups retain their existing schedule.</p></section>`;
+    </form><p class="cell-muted" style="margin-top:14px">The scheduler checks settings every 60 seconds. Pool and erasure-set telemetry remains part of the daily collection. Scheduled backups continue at their configured time.</p></section>`+
+    `<section class="panel" style="max-width:100%"><div class="panel-header"><div><h3>Database backups</h3><p>Creates a consistent SQLite online backup and verifies it with PRAGMA integrity_check. The dashboard remains available.</p></div><button class="primary-small" data-action="create-backup">Create backup now</button></div><p class="cell-muted" style="margin:0 0 14px">Manual backups use the same backup directory as scheduled backups. Scheduled retention remains 14 days.</p></section>`+
+    table("Backup history",backups.count+" backup file(s)",["FILE","CREATED AT","SIZE","INTEGRITY",""],backupRows,"No database backups found.");
 }
 
 function rangeControl(days,kind,id,attribution="current") {
@@ -271,6 +278,16 @@ document.addEventListener("click",async e=>{
     const run=kind==="cluster"||kind==="cluster-snapshots"?(kind==="cluster-snapshots"?showClusterSnapshots(id,90,start,end):showCluster(id,90,start,end)):kind==="tenant"||kind==="tenant-snapshots"?(kind==="tenant-snapshots"?showTenantSnapshots(Number(id),mode,90,start,end):showTenant(Number(id),mode,90,start,end)):kind==="bucket-snapshots"?showBucketSnapshots(Number(id),90,start,end):showBucket(Number(id),90,start,end);
     run.catch(err=>toast(err.message,true));
   }
+  if(action==="create-backup"){
+    const button=e.target.closest("[data-action='create-backup]");
+    if(button){button.disabled=true;button.textContent="Creating backup…";}
+    try{
+      const result=await api("/api/master-admin/backups",{method:"POST"});
+      toast("Backup created and integrity verified: "+result.filename);
+      await renderMasterAdmin();
+    }catch(err){toast(err.message,true);if(button){button.disabled=false;button.textContent="Create backup now";}}
+    return;
+  }
   if(action==="new-tenant")createTenantModal();
   if(action==="new-user")createUserModal();
   if(action==="bulk-assign")bulkAssignBucketsModal();
@@ -281,7 +298,16 @@ document.addEventListener("click",async e=>{
 $("#login-form").addEventListener("submit",async e=>{e.preventDefault();$("#login-error").textContent="";const form=new FormData(e.currentTarget);try{const d=await api("/api/auth/login",{method:"POST",body:JSON.stringify({username:form.get("username"),password:form.get("password")})});showApp(d.user);setView("overview");}catch(err){$("#login-error").textContent=err.message;}});
 $("#logout-button").addEventListener("click",async()=>{try{await api("/api/auth/logout",{method:"POST"});}catch{}showLogin();});
 $("#refresh-button").addEventListener("click",()=>render().catch(e=>toast(e.message,true)));
-$("#content").addEventListener("submit",async e=>{\n  if(e.target.id!=="master-settings-form")return;\n  e.preventDefault();const f=new FormData(e.target);try{const result=await api("/api/master-admin/settings",{method:"PUT",body:JSON.stringify({node_interval_hours:Number(f.get("node_interval_hours")),daily_collection_time:f.get("daily_collection_time"),current_password:f.get("current_password")})});toast("Collector settings saved; scheduler will apply them within 60 seconds.");await renderMasterAdmin();}catch(err){toast(err.message,true);}\n});\n$("#content").addEventListener("change",e=>{
+$("#content").addEventListener("submit",async e=>{
+  if(e.target.id!=="master-settings-form")return;
+  e.preventDefault();const f=new FormData(e.target);
+  try{
+    await api("/api/master-admin/settings",{method:"PUT",body:JSON.stringify({node_interval_hours:Number(f.get("node_interval_hours")),daily_collection_time:f.get("daily_collection_time"),current_password:f.get("current_password")})});
+    toast("Collector settings saved; scheduler will apply them within 60 seconds.");
+    await renderMasterAdmin();
+  }catch(err){toast(err.message,true);}
+});
+$("#content").addEventListener("change",e=>{
   if(e.target.id==="trend-range" && e.target.value!=="custom"){const el=e.target,days=Number(el.value),kind=el.dataset.trendKind,id=el.dataset.trendId,mode=el.dataset.trendAttribution||"current";const run=kind==="cluster"||kind==="cluster-snapshots"?(kind==="cluster-snapshots"?showClusterSnapshots(id,days):showCluster(id,days)):kind==="tenant"||kind==="tenant-snapshots"?(kind==="tenant-snapshots"?showTenantSnapshots(Number(id),mode,days):showTenant(Number(id),mode,days)):kind==="bucket-snapshots"?showBucketSnapshots(Number(id),days):showBucket(Number(id),days);run.catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-user-role]")){
     const id=Number(e.target.dataset.userRole),role=e.target.value;
