@@ -171,13 +171,20 @@ async function showTenant(id,attribution="current",days=90,startDate=null,endDat
     ?"Historical bucket usage attributed using current tenant ownership."
     :"Historical usage attributed to this tenant at snapshot time.";
   const actions=`<div class="heading-actions"><button class="subtle-button" data-tenant-mode="current" data-tenant-id="${id}" ${current?'disabled':''}>Current ownership</button><button class="subtle-button" data-tenant-mode="historical" data-tenant-id="${id}" ${!current?'disabled':''}>Historical ownership</button><button class="subtle-button" data-view="tenants">← All tenants</button></div>`;
+  const hasHistoricalSnapshots=Array.isArray(d.series)&&d.series.length>0;
+  const noHistoricalAttribution=!current&&!hasHistoricalSnapshots;
+  const charts=noHistoricalAttribution
+    ? panel("No historical attribution available","No bucket snapshots were attributed to this tenant during the selected period.",'<div class="empty-state"><strong>No historical ownership records found</strong><p>Bucket ownership was assigned after the relevant daily snapshots. Historical reporting will populate as new daily snapshots are collected under this tenant\'s ownership.</p><p>To view the historical usage of buckets assigned to this tenant today, switch to <strong>Current ownership</strong>.</p></div>')
+    : panel("Tenant capacity and quota trend",current?"Daily usage and summed bucket quotas for currently assigned buckets":"Daily usage and quotas based on historical snapshot attribution",'<div class="chart-wrap"><canvas id="tenant-chart"></canvas></div>')+
+      panel("Tenant object trend","Daily object count across attributed buckets",'<div class="chart-wrap"><canvas id="tenant-object-chart"></canvas></div>');
   $("#content").innerHTML=pageHead(esc(d.tenant.name),subtitle,actions)+
     `${rangeControl(days,"tenant",id,attribution)}<div class="detail-grid"><div class="detail-card"><small>DESCRIPTION</small><strong style="font-size:14px">${esc(d.tenant.description||"—")}</strong></div><div class="detail-card"><small>STATUS</small><strong style="font-size:14px">${d.tenant.is_active?"Active":"Inactive"}</strong></div><div class="detail-card"><small>HISTORY WINDOW</small><strong>${days} days</strong></div></div>`+
-    panel("Tenant capacity and quota trend",current?"Daily usage and summed bucket quotas for currently assigned buckets":"Daily usage and quotas based on historical snapshot attribution",'<div class="chart-wrap"><canvas id="tenant-chart"></canvas></div>')+
-    panel("Tenant object trend","Daily object count across attributed buckets",'<div class="chart-wrap"><canvas id="tenant-object-chart"></canvas></div>')+
+    charts+
     `<div class="snapshot-link-panel"><div><strong>Daily snapshots</strong><p>Browse daily tenant usage, quota, object counts and metric availability.</p></div><button class="primary-small" data-action="open-tenant-snapshots">View daily snapshots →</button></div>`;
-  chart("tenant-chart",d.series.map(r=>dateLabel(r.snapshot_date)),[{label:"Used TiB",data:d.series.map(r=>r.used_bytes==null?null:r.used_bytes/1024**4),color:"#13a58b",fill:true},{label:"Quota TiB",data:d.series.map(r=>r.quota_bytes==null?null:r.quota_bytes/1024**4),color:"#d9922e"}]);
-  chart("tenant-object-chart",d.series.map(r=>dateLabel(r.snapshot_date)),[{label:"Objects",data:d.series.map(r=>r.object_count),color:"#4779d8",fill:true}]);
+  if(!noHistoricalAttribution){
+    chart("tenant-chart",d.series.map(r=>dateLabel(r.snapshot_date)),[{label:"Used TiB",data:d.series.map(r=>r.used_bytes==null?null:r.used_bytes/1024**4),color:"#13a58b",fill:true},{label:"Quota TiB",data:d.series.map(r=>r.quota_bytes==null?null:r.quota_bytes/1024**4),color:"#d9922e"}]);
+    chart("tenant-object-chart",d.series.map(r=>dateLabel(r.snapshot_date)),[{label:"Objects",data:d.series.map(r=>r.object_count),color:"#4779d8",fill:true}]);
+  }
 }
 async function showTenantSnapshots(id,attribution="current",days=90,startDate=null,endDate=null){
   state.snapshotContext={type:"tenant",id,attribution,days,startDate,endDate};
