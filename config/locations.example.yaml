@@ -1,22 +1,15 @@
-# Copy this file to locations.yaml and replace placeholders locally.
+# Copy to locations.yaml and replace placeholders locally.
+# One Prometheus endpoint per location; list every cluster scraped by it.
+# prometheus_label_value must exactly match the Prometheus "cluster" label.
 # Do not commit live Prometheus addresses or credentials.
 locations:
-  - id: del
-    name: DEL
+  - id: lab
+    name: LAB
     prometheus:
       host: "PROMETHEUS_HOST"
       port: 9090
       scheme: "http"
     clusters:
-      - id: del01
-        name: DEL01
-
-  - id: blr
-    name: BLR
-    prometheus:
-      host: "PROMETHEUS_HOST"
-      port: 9090
-      scheme: "http"
-    clusters:
-      - id: blr01
-        name: BLR01
+      - id: miniotestcl02
+        name: MinIO Test Cluster 02
+        prometheus_label_value: "miniotestcl02.example.com"
