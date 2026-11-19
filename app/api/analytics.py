@@ -17,9 +17,15 @@ def _dict(row) -> dict:
     return dict(row) if row is not None else {}
 
 
-def _window_start(days: int) -> str:
+def _date_window(days: int, start_date: date | None, end_date: date | None) -> tuple[str, str]:
     today_ist = datetime.now(ZoneInfo("Asia/Kolkata")).date()
-    return (today_ist - timedelta(days=days - 1)).isoformat()
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=422, detail="start_date must be on or before end_date")
+    end = end_date or today_ist
+    start = start_date or (end - timedelta(days=days - 1))
+    if start > end:
+        raise HTTPException(status_code=422, detail="start_date must be on or before end_date")
+    return start.isoformat(), end.isoformat()
 
 
 @router.get("/overview")
@@ -157,10 +163,12 @@ def list_cluster_analytics(_: dict = Depends(get_current_user)) -> dict:
 def cluster_analytics(
     cluster_id: str,
     days: int = Query(default=30, ge=1, le=3650),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
     _: dict = Depends(get_current_user),
 ) -> dict:
     """Return one cluster's latest snapshot and daily capacity time series."""
-    start = _window_start(days)
+    start, end = _date_window(days, start_date, end_date)
     with transaction() as connection:
         cluster = connection.execute(
             """
@@ -192,16 +200,18 @@ def cluster_analytics(
                    usable_free_bytes, nodes_online, nodes_offline,
                    growth_bytes_per_day, days_to_full, error_text
             FROM cluster_daily_metrics
-            WHERE cluster_id = ? AND snapshot_date >= ?
+            WHERE cluster_id = ? AND snapshot_date BETWEEN ? AND ?
             ORDER BY snapshot_date
             """,
-            (cluster_id, start),
+            (cluster_id, start, end),
         ).fetchall()
 
     return {
         "cluster": _dict(cluster),
         "latest": _dict(latest) if latest else None,
         "days": days,
+        "start_date": start,
+        "end_date": end,
         "series": [_dict(row) for row in rows],
     }
 
@@ -258,11 +268,13 @@ def tenant_analytics(_: dict = Depends(get_current_user)) -> dict:
 def tenant_analytics_detail(
     tenant_id: int,
     days: int = Query(default=30, ge=1, le=3650),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
     attribution: str = Query(default="current", pattern="^(current|historical)$"),
     _: dict = Depends(get_current_user),
 ) -> dict:
     """Return tenant usage using current ownership or snapshot-time ownership."""
-    start = _window_start(days)
+    start, end = _date_window(days, start_date, end_date)
     with transaction() as connection:
         tenant = connection.execute(
             "SELECT id, name, description, is_active FROM tenants WHERE id = ?",
@@ -284,7 +296,7 @@ def tenant_analytics_detail(
                     SELECT DISTINCT m.snapshot_date
                     FROM bucket_daily_metrics m
                     JOIN owned_buckets b ON b.id = m.bucket_id
-                    WHERE m.snapshot_date >= ?
+                    WHERE m.snapshot_date BETWEEN ? AND ?
                 )
                 SELECT d.snapshot_date,
                        COUNT(b.id) AS bucket_count,
@@ -296,6 +308,14 @@ def tenant_analytics_detail(
                            THEN SUM(m.used_bytes)
                            ELSE NULL
                        END AS used_bytes,
+                       CASE
+                           WHEN COUNT(m.bucket_id) = COUNT(b.id)
+                                AND SUM(CASE WHEN m.metrics_available = 1
+                                             AND m.quota_bytes IS NOT NULL
+                                             THEN 1 ELSE 0 END) = COUNT(b.id)
+                           THEN SUM(m.quota_bytes)
+                           ELSE NULL
+                       END AS quota_bytes,
                        CASE
                            WHEN COUNT(m.bucket_id) = COUNT(b.id)
                                 AND SUM(CASE WHEN m.metrics_available = 1
@@ -315,7 +335,7 @@ def tenant_analytics_detail(
                 GROUP BY d.snapshot_date
                 ORDER BY d.snapshot_date
                 """,
-                (tenant_id, start),
+                (tenant_id, start, end),
             ).fetchall()
             attribution_description = (
                 "current bucket ownership applied retrospectively to stored daily snapshots"
@@ -333,6 +353,12 @@ def tenant_analytics_detail(
                        END AS used_bytes,
                        CASE
                            WHEN SUM(CASE WHEN metrics_available = 1 THEN 1 ELSE 0 END) = COUNT(*)
+                                AND COUNT(quota_bytes) = COUNT(*)
+                           THEN SUM(quota_bytes)
+                           ELSE NULL
+                       END AS quota_bytes,
+                       CASE
+                           WHEN SUM(CASE WHEN metrics_available = 1 THEN 1 ELSE 0 END) = COUNT(*)
                                 AND COUNT(object_count) = COUNT(*)
                            THEN SUM(object_count)
                            ELSE NULL
@@ -340,17 +366,19 @@ def tenant_analytics_detail(
                        SUM(CASE WHEN metrics_available = 0 THEN 1 ELSE 0 END)
                            AS unavailable_bucket_metrics
                 FROM bucket_daily_metrics
-                WHERE tenant_id_at_snapshot = ? AND snapshot_date >= ?
+                WHERE tenant_id_at_snapshot = ? AND snapshot_date BETWEEN ? AND ?
                 GROUP BY snapshot_date
                 ORDER BY snapshot_date
                 """,
-                (tenant_id, start),
+                (tenant_id, start, end),
             ).fetchall()
             attribution_description = "tenant_id_at_snapshot"
 
     return {
         "tenant": _dict(tenant),
         "days": days,
+        "start_date": start,
+        "end_date": end,
         "attribution": attribution,
         "attribution_description": attribution_description,
         "series": [_dict(row) for row in rows],
@@ -361,10 +389,12 @@ def tenant_analytics_detail(
 def bucket_analytics(
     bucket_id: int,
     days: int = Query(default=30, ge=1, le=3650),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
     _: dict = Depends(get_current_user),
 ) -> dict:
     """Return bucket usage history, preserving snapshot-time tenant attribution."""
-    start = _window_start(days)
+    start, end = _date_window(days, start_date, end_date)
     with transaction() as connection:
         bucket = connection.execute(
             """
@@ -392,10 +422,10 @@ def bucket_analytics(
                    m.metrics_available, m.error_text
             FROM bucket_daily_metrics m
             LEFT JOIN tenants st ON st.id = m.tenant_id_at_snapshot
-            WHERE m.bucket_id = ? AND m.snapshot_date >= ?
+            WHERE m.bucket_id = ? AND m.snapshot_date BETWEEN ? AND ?
             ORDER BY m.snapshot_date
             """,
-            (bucket_id, start),
+            (bucket_id, start, end),
         ).fetchall()
 
     series = []
@@ -409,7 +439,7 @@ def bucket_analytics(
                 item[field.removesuffix("_json")] = None
         series.append(item)
 
-    return {"bucket": _dict(bucket), "days": days, "series": series}
+    return {"bucket": _dict(bucket), "days": days, "start_date": start, "end_date": end, "series": series}
 
 
 @router.get("/collection-health")
