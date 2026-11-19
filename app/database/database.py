@@ -30,18 +30,14 @@ def get_connection() -> sqlite3.Connection:
 
 
 def _apply_migrations(connection: sqlite3.Connection) -> None:
-    """Apply additive, idempotent migrations without rebuilding existing tables."""
+    """Apply safe additive migrations without rebuilding existing tables."""
     columns = {
         row["name"]
         for row in connection.execute("PRAGMA table_info(bucket_daily_metrics)")
     }
     additions = {
-        "object_size_distribution_json": (
-            "TEXT NOT NULL DEFAULT '{}'"
-        ),
-        "version_count_distribution_json": (
-            "TEXT NOT NULL DEFAULT '{}'"
-        ),
+        "object_size_distribution_json": "TEXT NOT NULL DEFAULT '{}'",
+        "version_count_distribution_json": "TEXT NOT NULL DEFAULT '{}'",
     }
     for name, definition in additions.items():
         if name not in columns:
@@ -51,6 +47,9 @@ def _apply_migrations(connection: sqlite3.Connection) -> None:
 
     connection.execute(
         "INSERT OR IGNORE INTO schema_version(version) VALUES (?)", (2,)
+    )
+    connection.execute(
+        "INSERT OR IGNORE INTO schema_version(version) VALUES (?)", (3,)
     )
 
 
