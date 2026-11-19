@@ -145,6 +145,8 @@ CREATE TABLE IF NOT EXISTS node_daily_metrics (
     memory_available_bytes REAL,
     memory_used_bytes REAL,
     load1 REAL,
+    drives_online INTEGER,
+    drives_offline INTEGER,
     snapshot_ts TEXT NOT NULL,
     collected_at TEXT NOT NULL,
     UNIQUE(snapshot_date, cluster_id, node_name)
