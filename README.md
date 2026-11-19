@@ -174,6 +174,31 @@ Create additional read-only users with:
 python -m scripts.create_user --username analyst1 --role viewer
 ```
 
+### Run the web application with systemd (lab deployment)
+
+A systemd unit is provided at `systemd/minio-analytics-web.service`. It loads the persistent session secret from `/etc/minio-analytics/web.env`, starts Uvicorn on TCP port 8001, restarts after unexpected failures, and keeps application data writable only under `/data/minio-analytics`.
+
+Install and validate the unit:
+
+```bash
+install -m 0600 systemd/minio-analytics-web.service /etc/systemd/system/
+systemd-analyze verify /etc/systemd/system/minio-analytics-web.service
+systemctl daemon-reload
+```
+
+Before enabling it, confirm `/etc/minio-analytics/web.env` exists, is owned by root, has mode 0600, contains the persistent `MINIO_ANALYTICS_SESSION_SECRET`, and has `MINIO_ANALYTICS_COOKIE_SECURE=false` only for the current HTTP lab deployment. Do not regenerate the secret on restart.
+
+Start and inspect:
+
+```bash
+systemctl enable --now minio-analytics-web.service
+systemctl status minio-analytics-web.service
+journalctl -u minio-analytics-web.service -n 50 --no-pager
+curl -s http://127.0.0.1:8001/health
+```
+
+The supplied unit runs as root to match the current root-owned lab installation, protected environment file, and data directories. This is a lab convenience, not the recommended production identity. Before production, create a dedicated service account, grant only required read access to application/configuration files and write access to the database/backup paths, bind Uvicorn to loopback behind an HTTPS reverse proxy, and set secure cookies. The unit currently binds to all interfaces for the existing lab access pattern; keep TCP 8001 restricted to trusted networks.
+
 ### Run the API
 
 For a temporary lab session, export the secret and start Uvicorn:
