@@ -284,3 +284,48 @@ def test_cluster_topology_api_returns_empty_state_before_first_collection(
     assert data["drives"] == []
     assert data["pools"] == []
     assert data["erasure_sets"] == []
+
+
+def test_master_admin_settings_require_privilege_and_password(admin_client, viewer_client):
+    settings = admin_client.get("/api/master-admin/settings")
+    assert settings.status_code == 200
+    assert settings.json()["settings"] == {
+        "node_interval_hours": 4,
+        "daily_collection_time": "00:15",
+    }
+    denied = viewer_client.get("/api/master-admin/settings")
+    assert denied.status_code == 403
+    bad_password = admin_client.put(
+        "/api/master-admin/settings",
+        json={"node_interval_hours": 6, "daily_collection_time": "00:30",
+              "current_password": "Wrong-Password-123!"},
+    )
+    assert bad_password.status_code == 403
+    updated = admin_client.put(
+        "/api/master-admin/settings",
+        json={"node_interval_hours": 6, "daily_collection_time": "00:30",
+              "current_password": "Admin-Test-Password-123!"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["effective_within_seconds"] == 60
+    assert admin_client.get("/api/master-admin/settings").json()["settings"] == {
+        "node_interval_hours": 6,
+        "daily_collection_time": "00:30",
+    }
+
+
+def test_normal_admin_cannot_access_master_admin_settings(client):
+    from app.auth.security import hash_password
+    from app.database.database import transaction
+    with transaction() as connection:
+        connection.execute(
+            "INSERT INTO users(username,password_hash,role) VALUES('regular-admin',?,'admin')",
+            (hash_password("Regular-Admin-Password-123!"),),
+        )
+    response = client.post(
+        "/api/auth/login",
+        json={"username": "regular-admin", "password": "Regular-Admin-Password-123!"},
+    )
+    assert response.status_code == 200
+    assert response.json()["user"]["is_master_admin"] is False
+    assert client.get("/api/master-admin/settings").status_code == 403
