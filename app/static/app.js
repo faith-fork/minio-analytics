@@ -1,6 +1,6 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
-const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], health:null, charts:[] };
+const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], health:null, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null} };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
 const bytes = n => n == null ? "—" : (n/1024**4).toFixed(2)+" TiB";
 const pct = (used,total) => used == null || !total ? null : Math.max(0,Math.min(100,used/total*100));
@@ -61,14 +61,24 @@ function trendQuery(days,startDate,endDate,extra="") {
   return params.toString();
 }
 async function showCluster(id,days=90,startDate=null,endDate=null){
+  state.snapshotClusterId=id;state.snapshotRange={days,startDate,endDate};
   const d=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"?"+trendQuery(days,startDate,endDate)),x=d.latest||{},series=d.series||[];
   clearCharts();$("#content").innerHTML=pageHead(esc(d.cluster.name),"Cluster · "+esc(d.cluster.location_name)+" · "+esc(id),'<button class="subtle-button" data-view="clusters">← All clusters</button>')+
     `<div class="detail-grid"><div class="detail-card"><small>RAW CAPACITY</small><strong>${bytes(x.raw_total_bytes)}</strong></div><div class="detail-card"><small>RAW FREE</small><strong>${bytes(x.raw_free_bytes)}</strong></div><div class="detail-card"><small>PROJECTED DAYS TO FULL</small><strong>${x.days_to_full==null?"—":fmt(x.days_to_full,0)+" days"}</strong></div></div>`+
     `<div class="panel-grid">${panel("Capacity trend","Daily raw used and free capacity",rangeControl(days,"cluster",id)+'<div class="chart-wrap"><canvas id="cluster-chart"></canvas></div>',days+" DAYS")}${panel("Bucket quota trend","Sum of bucket quotas when all active buckets have metrics",'<div class="chart-wrap"><canvas id="cluster-quota-chart"></canvas></div>')}${panel("Object trend","Total objects across active buckets when metrics are complete",'<div class="chart-wrap"><canvas id="cluster-object-chart"></canvas></div>')}${panel("Cluster health","Latest node availability",`<div class="capacity-list"><div class="capacity-row"><span>Online nodes</span><strong>${x.nodes_online??"—"}</strong></div><div class="capacity-row"><span>Offline nodes</span><strong>${x.nodes_offline??"—"}</strong></div><div class="capacity-row"><span>Growth per day</span><strong>${x.growth_bytes_per_day==null?"—":fmt(x.growth_bytes_per_day/1024**3)+" GiB"}</strong></div><div class="capacity-row"><span>Snapshot date</span><strong>${dateLabel(x.snapshot_date)}</strong></div><div class="capacity-row"><span>Metrics</span><strong>${pill(!!x.metrics_available)}</strong></div></div>`,"LATEST SNAPSHOT")}</div>`+
-    table("Daily snapshots","Stored cluster metrics",["DATE","RAW TOTAL","RAW FREE","USABLE TOTAL","ONLINE","OFFLINE","STATUS"],series.map(r=>`<tr><td>${dateLabel(r.snapshot_date)}</td><td>${bytes(r.raw_total_bytes)}</td><td>${bytes(r.raw_free_bytes)}</td><td>${bytes(r.usable_total_bytes)}</td><td>${r.nodes_online??"—"}</td><td>${r.nodes_offline??"—"}</td><td>${pill(!!r.metrics_available)}</td></tr>`));
+    `<div class="snapshot-link-panel"><div><strong>Daily snapshots</strong><p>Browse the complete daily history and collection status for this cluster.</p></div><button class="primary-small" data-action="open-cluster-snapshots">View daily snapshots →</button></div>`;
   chart("cluster-chart",series.map(r=>dateLabel(r.snapshot_date)),[{label:"Used TiB",data:series.map(r=>r.raw_total_bytes==null||r.raw_free_bytes==null?null:(r.raw_total_bytes-r.raw_free_bytes)/1024**4),color:"#13a58b",fill:true},{label:"Free TiB",data:series.map(r=>r.raw_free_bytes==null?null:r.raw_free_bytes/1024**4),color:"#4779d8"}]);
   chart("cluster-quota-chart",series.map(r=>dateLabel(r.snapshot_date)),[{label:"Bucket quota TiB",data:series.map(r=>r.bucket_quota_bytes==null?null:r.bucket_quota_bytes/1024**4),color:"#d9922e"}]);
   chart("cluster-object-chart",series.map(r=>dateLabel(r.snapshot_date)),[{label:"Objects",data:series.map(r=>r.bucket_object_count),color:"#4779d8",fill:true}]);
+}
+async function showClusterSnapshots(id,days=90,startDate=null,endDate=null){
+  state.snapshotClusterId=id;state.snapshotRange={days,startDate,endDate};
+  const d=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"?"+trendQuery(days,startDate,endDate));
+  const rows=(d.series||[]).map(r=>`<tr><td>${dateLabel(r.snapshot_date)}</td><td>${bytes(r.raw_total_bytes)}</td><td>${bytes(r.raw_free_bytes)}</td><td>${bytes(r.usable_total_bytes)}</td><td>${bytes(r.usable_free_bytes)}</td><td>${r.nodes_online??"—"}</td><td>${r.nodes_offline??"—"}</td><td>${r.growth_bytes_per_day==null?"—":fmt(r.growth_bytes_per_day/1024**3)+" GiB"}</td><td>${r.days_to_full==null?"—":fmt(r.days_to_full,0)+" days"}</td><td>${pill(!!r.metrics_available)}</td></tr>`);
+  clearCharts();
+  $("#content").innerHTML=pageHead(esc(d.cluster.name)+" — Daily snapshots","Historical daily cluster metrics · "+esc(d.cluster.location_name),'<button class="subtle-button" data-action="back-to-cluster">← Back to cluster</button>')+
+    rangeControl(days,"cluster-snapshots",id)+
+    table("Daily snapshots",rows.length+" snapshot(s) · "+(startDate&&endDate?dateLabel(startDate)+" – "+dateLabel(endDate):"Last "+days+" days"),["DATE","RAW TOTAL","RAW FREE","USABLE TOTAL","USABLE FREE","ONLINE","OFFLINE","GROWTH / DAY","DAYS TO FULL","STATUS"],rows,"No daily snapshots are available for this date range.");
 }
 async function renderUsers(){
   const data=await api("/api/auth/users");
@@ -165,6 +175,8 @@ document.addEventListener("click",async e=>{
   const bucket=e.target.closest("[data-bucket]");if(bucket){try{await showBucket(bucket.dataset.bucket);}catch(err){toast(err.message,true);}return;}
   const assign=e.target.closest("[data-assign]");if(assign){assignBucketModal(Number(assign.dataset.assign));return;}
   const action=e.target.closest("[data-action]")?.dataset.action;
+  if(action==="open-cluster-snapshots"){showClusterSnapshots(state.snapshotClusterId,state.snapshotRange.days,state.snapshotRange.startDate,state.snapshotRange.endDate).catch(err=>toast(err.message,true));return;}
+  if(action==="back-to-cluster"){showCluster(state.snapshotClusterId,state.snapshotRange.days,state.snapshotRange.startDate,state.snapshotRange.endDate).catch(err=>toast(err.message,true));return;}
   if(action==="refresh"){render().catch(err=>toast(err.message,true));}
   if(action==="apply-trend-dates"){
     const el=e.target.closest("[data-action='apply-trend-dates']");
@@ -172,7 +184,7 @@ document.addEventListener("click",async e=>{
     if(!start||!end){toast("Choose both a start date and an end date.",true);return;}
     if(start>end){toast("Start date must be on or before end date.",true);return;}
     const kind=el.dataset.trendKind,id=el.dataset.trendId,mode=el.dataset.trendAttribution||"current";
-    const run=kind==="cluster"?showCluster(id,90,start,end):kind==="tenant"?showTenant(Number(id),mode,90,start,end):showBucket(Number(id),90,start,end);
+    const run=kind==="cluster"||kind==="cluster-snapshots"?(kind==="cluster-snapshots"?showClusterSnapshots(id,90,start,end):showCluster(id,90,start,end)):kind==="tenant"?showTenant(Number(id),mode,90,start,end):showBucket(Number(id),90,start,end);
     run.catch(err=>toast(err.message,true));
   }
   if(action==="new-tenant")createTenantModal();
@@ -186,7 +198,7 @@ $("#login-form").addEventListener("submit",async e=>{e.preventDefault();$("#logi
 $("#logout-button").addEventListener("click",async()=>{try{await api("/api/auth/logout",{method:"POST"});}catch{}showLogin();});
 $("#refresh-button").addEventListener("click",()=>render().catch(e=>toast(e.message,true)));
 $("#content").addEventListener("change",e=>{
-  if(e.target.id==="trend-range" && e.target.value!=="custom"){const el=e.target,days=Number(el.value),kind=el.dataset.trendKind,id=el.dataset.trendId,mode=el.dataset.trendAttribution||"current";const run=kind==="cluster"?showCluster(id,days):kind==="tenant"?showTenant(Number(id),mode,days):showBucket(Number(id),days);run.catch(err=>toast(err.message,true));return;}
+  if(e.target.id==="trend-range" && e.target.value!=="custom"){const el=e.target,days=Number(el.value),kind=el.dataset.trendKind,id=el.dataset.trendId,mode=el.dataset.trendAttribution||"current";const run=kind==="cluster"||kind==="cluster-snapshots"?(kind==="cluster-snapshots"?showClusterSnapshots(id,days):showCluster(id,days)):kind==="tenant"?showTenant(Number(id),mode,days):showBucket(Number(id),days);run.catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-user-role]")){
     const id=Number(e.target.dataset.userRole),role=e.target.value;
     api("/api/auth/users/"+id,{method:"PATCH",body:JSON.stringify({role})}).then(()=>toast("User role updated")).catch(err=>{toast(err.message,true);renderUsers();});
