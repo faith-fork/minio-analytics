@@ -336,3 +336,42 @@ def test_normal_admin_cannot_access_master_admin_settings(client):
     assert response.status_code == 200
     assert response.json()["user"]["is_master_admin"] is False
     assert client.get("/api/master-admin/settings").status_code == 403
+
+
+def test_master_admin_can_create_list_and_download_verified_backup(
+    admin_client: TestClient, viewer_client: TestClient, tmp_path
+) -> None:
+    import sqlite3
+    from app.api import master_admin
+
+    backup_dir = tmp_path / "backups"
+    master_admin.BACKUP_DIR = backup_dir
+
+    assert viewer_client.get("/api/master-admin/backups").status_code == 403
+    assert viewer_client.post("/api/master-admin/backups").status_code == 403
+
+    created = admin_client.post("/api/master-admin/backups")
+    assert created.status_code == 201
+    payload = created.json()
+    assert payload["integrity"] == "ok"
+    assert payload["filename"].endswith(".db")
+
+    backup_path = backup_dir / payload["filename"]
+    assert backup_path.is_file()
+    with sqlite3.connect(backup_path) as connection:
+        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        assert connection.execute(
+            "SELECT username FROM users WHERE username='admin-test'"
+        ).fetchone()[0] == "admin-test"
+
+    listed = admin_client.get("/api/master-admin/backups")
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 1
+    assert listed.json()["items"][0]["filename"] == payload["filename"]
+
+    downloaded = admin_client.get(payload["download_url"])
+    assert downloaded.status_code == 200
+    assert downloaded.content[:16] == b"SQLite format 3\\x00"
+
+    invalid = admin_client.get("/api/master-admin/backups/..%2Fsecret.db/download")
+    assert invalid.status_code in (400, 404)
