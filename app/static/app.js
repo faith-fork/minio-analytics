@@ -1,6 +1,6 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
-const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], health:null, charts:[] };
+const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], health:null, charts:[] };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
 const bytes = n => n == null ? "—" : (n/1024**4).toFixed(2)+" TiB";
 const pct = (used,total) => used == null || !total ? null : Math.max(0,Math.min(100,used/total*100));
@@ -73,11 +73,14 @@ async function showTenant(id){
 }
 async function renderBuckets(){
   const [buckets,tenants]=await Promise.all([api("/api/buckets"),api("/api/tenants")]);state.buckets=buckets.items;state.tenants=tenants.items;
-  const rows=state.buckets.map(b=>`<tr><td><span class="cell-strong">${esc(b.bucket_name)}</span><br><span class="cell-muted">${esc(b.cluster_name)}</span></td><td>${esc(b.location_name)}</td><td>${esc(b.tenant_name||"Unassigned")}</td><td>${pill(b.is_active?"Active":"Inactive")}</td><td><button class="table-link" data-bucket="${b.id}">Details →</button></td>${state.user.role==="admin"?'<td><button class="table-link" data-assign="'+b.id+'">Assign</button></td>':""}</tr>`);
-  const headers=["BUCKET / CLUSTER","LOCATION","CURRENT TENANT","STATUS",""];if(state.user.role==="admin")headers.push("MANAGE");
+  state.selectedBuckets=state.selectedBuckets.filter(id=>state.buckets.some(b=>b.id===id));
+  const admin=state.user.role==="admin";
+  const rows=state.buckets.map(b=>`<tr>${admin?`<td><input type="checkbox" class="bucket-select" data-select-bucket="${b.id}" aria-label="Select ${esc(b.bucket_name)}" ${state.selectedBuckets.includes(b.id)?"checked":""}></td>`:""}<td><span class="cell-strong">${esc(b.bucket_name)}</span><br><span class="cell-muted">${esc(b.cluster_name)}</span></td><td>${esc(b.location_name)}</td><td>${esc(b.tenant_name||"Unassigned")}</td><td>${pill(b.is_active?"Active":"Inactive")}</td><td><button class="table-link" data-bucket="${b.id}">Details →</button></td>${admin?`<td><button class="table-link" data-assign="${b.id}">Assign</button></td>`:""}</tr>`);
+  const headers=admin?["<input type=\"checkbox\" id=\"select-all-buckets\" aria-label=\"Select all buckets\">","BUCKET / CLUSTER","LOCATION","CURRENT TENANT","STATUS","","MANAGE"]:["BUCKET / CLUSTER","LOCATION","CURRENT TENANT","STATUS",""];
   $("#content").innerHTML=pageHead("Buckets","Inventory and current tenant ownership across your MinIO clusters.")+
-    `<div class="toolbar" style="margin-bottom:14px"><input id="bucket-filter" class="form-control" placeholder="Filter buckets by name or cluster"></div>`+
+    `<div class="toolbar" style="margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap"><input id="bucket-filter" class="form-control" placeholder="Filter buckets by name or cluster"><span id="bucket-selection-count" class="cell-muted">${state.selectedBuckets.length} selected</span>${admin?'<button class="primary-small" data-action="bulk-assign" '+(state.selectedBuckets.length?'':'disabled')+'>Assign selected buckets</button>':""}</div>`+
     table("Bucket inventory",buckets.count+" active bucket(s)",headers,rows);
+  $("#select-all-buckets").checked=state.buckets.length>0&&state.selectedBuckets.length===state.buckets.length;
 }
 async function showBucket(id){
   const [d,h]=await Promise.all([api("/api/analytics/buckets/"+id+"?days=90"),api("/api/buckets/"+id+"/history")]);const series=d.series||[],latest=series.at(-1)||{};clearCharts();
@@ -104,6 +107,18 @@ async function assignBucketModal(id){
   const b=state.buckets.find(x=>x.id===id);const options=state.tenants.filter(t=>t.is_active).map(t=>`<option value="${t.id}" ${t.id===b?.tenant_id?"selected":""}>${esc(t.name)}</option>`).join("");
   openModal("Assign bucket","Change current ownership. Historical snapshots will not be rewritten.",`<label>Bucket</label><input value="${esc(b?.bucket_name||"")}" disabled><label>Tenant</label><select name="tenant_id"><option value="">Unassigned</option>${options}</select><label>Change note (optional)</label><textarea name="note" maxlength="1000"></textarea>`,async d=>{await api("/api/buckets/"+id+"/tenant",{method:"PUT",body:JSON.stringify({tenant_id:d.tenant_id?Number(d.tenant_id):null,note:d.note||null})});toast("Bucket assignment updated");await renderBuckets();});
 }
+function bulkAssignBucketsModal(){
+  const ids=[...state.selectedBuckets];
+  if(!ids.length)return;
+  const options=state.tenants.filter(t=>t.is_active).map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join("");
+  openModal("Bulk assign buckets",`Assign ${ids.length} selected bucket(s) to one tenant. Existing snapshot attribution will not be changed.`,`<label>Target tenant</label><select name="tenant_id"><option value="">Unassigned</option>${options}</select><label>Change note (optional)</label><textarea name="note" maxlength="1000" placeholder="Reason for this bulk change"></textarea>`,async d=>{
+    const result=await api("/api/buckets/bulk-tenant",{method:"PUT",body:JSON.stringify({bucket_ids:ids,tenant_id:d.tenant_id?Number(d.tenant_id):null,note:d.note||null})});
+    state.selectedBuckets=[];
+    toast(`Bulk assignment complete: ${result.changed_count} changed, ${result.unchanged_count} unchanged`);
+    await renderBuckets();
+  });
+}
+
 document.addEventListener("click",async e=>{
   const view=e.target.closest("[data-view]");if(view){e.preventDefault();setView(view.dataset.view);return;}
   const cluster=e.target.closest("[data-cluster]");if(cluster){try{await showCluster(cluster.dataset.cluster);}catch(err){toast(err.message,true);}return;}
@@ -113,10 +128,26 @@ document.addEventListener("click",async e=>{
   const action=e.target.closest("[data-action]")?.dataset.action;
   if(action==="refresh"){render().catch(err=>toast(err.message,true));}
   if(action==="new-tenant")createTenantModal();
+  if(action==="bulk-assign")bulkAssignBucketsModal();
   if(action==="close-modal")$("#modal-root").innerHTML="";
 });
 $("#login-form").addEventListener("submit",async e=>{e.preventDefault();$("#login-error").textContent="";const form=new FormData(e.currentTarget);try{const d=await api("/api/auth/login",{method:"POST",body:JSON.stringify({username:form.get("username"),password:form.get("password")})});showApp(d.user);setView("overview");}catch(err){$("#login-error").textContent=err.message;}});
 $("#logout-button").addEventListener("click",async()=>{try{await api("/api/auth/logout",{method:"POST"});}catch{}showLogin();});
 $("#refresh-button").addEventListener("click",()=>render().catch(e=>toast(e.message,true)));
-$("#content").addEventListener("input",e=>{if(e.target.id==="bucket-filter"){const q=e.target.value.toLowerCase();$$("tbody tr",$("#content")).forEach(row=>row.classList.toggle("hidden",!row.textContent.toLowerCase().includes(q)));}});
+$("#content").addEventListener("change",e=>{
+  if(e.target.matches("[data-select-bucket]")){
+    const id=Number(e.target.dataset.selectBucket);
+    state.selectedBuckets=e.target.checked?[...new Set([...state.selectedBuckets,id])]:state.selectedBuckets.filter(x=>x!==id);
+    const count=$("#bucket-selection-count");if(count)count.textContent=state.selectedBuckets.length+" selected";
+    const button=$("[data-action='bulk-assign']");if(button)button.disabled=!state.selectedBuckets.length;
+    const all=$("#select-all-buckets");if(all)all.checked=state.buckets.length>0&&state.selectedBuckets.length===state.buckets.length;
+  }
+  if(e.target.id==="select-all-buckets"){
+    state.selectedBuckets=e.target.checked?state.buckets.map(b=>b.id):[];
+    $(".bucket-select",$("#content")).forEach(el=>el.checked=e.target.checked);
+    const count=$("#bucket-selection-count");if(count)count.textContent=state.selectedBuckets.length+" selected";
+    const button=$("[data-action='bulk-assign']");if(button)button.disabled=!state.selectedBuckets.length;
+  }
+});
+$("#content").addEventListener("input",e=>{if(e.target.id==="bucket-filter"){const q=e.target.value.toLowerCase();$("tbody tr",$("#content")).forEach(row=>row.classList.toggle("hidden",!row.textContent.toLowerCase().includes(q)));}});
 (async()=>{try{const d=await api("/api/auth/me");showApp(d.user);await setView("overview");}catch{showLogin();}})();
