@@ -6,9 +6,10 @@ A lightweight analytics dashboard for multi-location, multi-cluster MinIO enviro
 
 - Collect daily cluster and bucket metrics from Prometheus.
 - Maintain bucket inventory independently of daily metric collection.
-- Map buckets to customers/tenants through an administrative UI.
-- Preserve historical tenant attribution at snapshot time.
-- Present fleet, location, cluster, tenant, bucket, and collection-health analytics.
+- Map buckets to customers/tenants through an administrator-only UI, including bulk assignment.
+- Preserve historical tenant attribution at snapshot time and audit every ownership change.
+- Provide authenticated administrator and read-only viewer experiences.
+- Present fleet, cluster, tenant, bucket, and collection-health analytics.
 - Keep Prometheus queries out of the interactive dashboard path; the UI reads historical data from SQLite.
 
 ## Initial technology choices
@@ -185,6 +186,24 @@ uvicorn app.main:app --host 0.0.0.0 --port 8001
 
 Use a persistent, root-readable environment file or systemd credential for a long-running deployment; do not generate a new secret on every restart, because that invalidates existing sessions.
 
+### Tenant and bucket management
+
+- `GET /api/tenants` — list active tenants; administrators can include inactive tenants.
+- `POST /api/tenants` — create a tenant (administrator).
+- `PATCH /api/tenants/{tenant_id}` — update tenant details or status (administrator).
+- `GET /api/buckets` — list bucket inventory with optional cluster/tenant filters.
+- `PUT /api/buckets/{bucket_id}/tenant` — assign or unassign one bucket (administrator).
+- `PUT /api/buckets/bulk-tenant` — assign or unassign up to 500 buckets atomically (administrator).
+- `GET /api/buckets/{bucket_id}/history` — read the audit history for a bucket.
+
+Bulk assignment validates the active tenant and every selected active bucket before making changes. The transaction updates current ownership and inserts one audit event per changed bucket. Unchanged assignments do not create duplicate history events. Existing daily snapshot attribution is never rewritten.
+
+### Browser dashboard
+
+Open `http://<server>:8001/` from a trusted internal network during lab validation. The dashboard provides overview, cluster, tenant, bucket, and collection-health views. Administrators can create tenants and assign buckets; viewers have read-only access.
+
+Chart.js is currently loaded from a CDN, so charts require the browser to reach that CDN. The API and non-chart dashboard data remain served locally.
+
 ### Authentication endpoints
 
 - `POST /api/auth/login` — JSON body: `{"username":"admin","password":"..."}`; sets the session cookie.
@@ -193,7 +212,7 @@ Use a persistent, root-readable environment file or systemd credential for a lon
 - `GET /health` — database health check.
 - `GET /docs` — interactive API documentation (keep internal; do not expose publicly).
 
-Login failures return a generic error. User records and role checks are read from SQLite. Analytics and administration routes will use the shared `get_current_user` and `require_admin` dependencies.
+Login failures return a generic error. User records and role checks are read from SQLite. Analytics and read-only inventory endpoints require authentication; tenant creation, tenant updates, and bucket assignment require the administrator role.
 
 ## Data and safety principles
 
@@ -204,6 +223,6 @@ Login failures return a generic error. User records and role checks are read fro
 - Store tenant attribution with each daily bucket snapshot so reassignment does not rewrite history.
 - Use SQLite WAL mode and take regular database backups.
 
-## Status
+## Current implementation status
 
-Initial database schema, Prometheus client, configuration loader, and cluster collector are in the repository. Lab deployment and collector validation are in progress.
+The lab has validated daily cluster and bucket collection, SQLite persistence and backups, systemd scheduling, authentication and role enforcement, tenant/bucket management (including bulk assignment), all analytics APIs, and the browser dashboard for viewer and administrator workflows. Production hardening, automated regression tests, HTTPS/reverse-proxy deployment, and broader multi-location validation remain before production use.
