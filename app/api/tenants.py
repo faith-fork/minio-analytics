@@ -24,7 +24,7 @@ class TenantUpdate(BaseModel):
 
 
 class BucketAssignment(BaseModel):
-    tenant_id: Optional[int] = Field(default=None, ge=1)
+    tenant_id: Optional[int] = Field(ge=1)
     note: Optional[str] = Field(default=None, max_length=1000)
 
 
@@ -76,7 +76,8 @@ def create_tenant(
             )
             row = connection.execute(
                 """
-                SELECT id, name, description, is_active, created_at, updated_at
+                SELECT id, name, description, is_active, created_at, updated_at,
+                       0 AS bucket_count
                 FROM tenants WHERE id = ?
                 """,
                 (cursor.lastrowid,),
