@@ -49,11 +49,15 @@ async function renderClusters(){
   const rows=state.clusters.map(x=>`<tr><td><span class="cell-strong">${esc(x.cluster_name)}</span><br><span class="cell-muted">${esc(x.cluster_id)}</span></td><td>${esc(x.location_name)}</td><td>${pill(!!x.metrics_available)}</td><td>${bytes(x.raw_total_bytes)}</td><td>${bytes(x.raw_total_bytes-x.raw_free_bytes)}</td><td>${x.nodes_online??"—"} / ${x.nodes_offline??"—"}</td><td>${x.growth_bytes_per_day==null?"—":fmt(x.growth_bytes_per_day/1024**3)+" GiB"}</td><td><button class="table-link" data-cluster="${esc(x.cluster_id)}">View details →</button></td></tr>`);
   $("#content").innerHTML=pageHead("Clusters","Capacity, node health and daily growth across registered clusters.")+table("Registered clusters",state.clusters.length+" cluster(s)",["CLUSTER","LOCATION","STATUS","RAW CAPACITY","RAW USED","NODES UP / DOWN","GROWTH / DAY",""],rows);
 }
-async function showCluster(id){
-  const d=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"?days=90"),x=d.latest||{},series=d.series||[];
+function rangeControl(days,kind,id,attribution="current") {
+  const options=[[30,"Last 30 days"],[60,"Last 60 days"],[90,"Last 90 days"],[180,"Last 6 months"],[365,"Last 12 months"]];
+  return '<div class="toolbar" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin:10px 0"><label for="trend-range" class="cell-muted">Trend period</label><select id="trend-range" class="form-control" style="max-width:190px" data-trend-kind="'+kind+'" data-trend-id="'+esc(id)+'" data-trend-attribution="'+attribution+'">'+options.map(([value,label])=>'<option value="'+value+'" '+(Number(days)===value?'selected':'')+'>'+label+'</option>').join('')+'</select></div>';
+}
+async function showCluster(id,days=90){
+  const d=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"?days="+days),x=d.latest||{},series=d.series||[];
   clearCharts();$("#content").innerHTML=pageHead(esc(d.cluster.name),"Cluster · "+esc(d.cluster.location_name)+" · "+esc(id),'<button class="subtle-button" data-view="clusters">← All clusters</button>')+
     `<div class="detail-grid"><div class="detail-card"><small>RAW CAPACITY</small><strong>${bytes(x.raw_total_bytes)}</strong></div><div class="detail-card"><small>RAW FREE</small><strong>${bytes(x.raw_free_bytes)}</strong></div><div class="detail-card"><small>PROJECTED DAYS TO FULL</small><strong>${x.days_to_full==null?"—":fmt(x.days_to_full,0)+" days"}</strong></div></div>`+
-    `<div class="panel-grid">${panel("Capacity trend","Daily raw used and free capacity",'<div class="chart-wrap"><canvas id="cluster-chart"></canvas></div>',"90 DAYS")}${panel("Cluster health","Latest node availability",`<div class="capacity-list"><div class="capacity-row"><span>Online nodes</span><strong>${x.nodes_online??"—"}</strong></div><div class="capacity-row"><span>Offline nodes</span><strong>${x.nodes_offline??"—"}</strong></div><div class="capacity-row"><span>Growth per day</span><strong>${x.growth_bytes_per_day==null?"—":fmt(x.growth_bytes_per_day/1024**3)+" GiB"}</strong></div><div class="capacity-row"><span>Snapshot date</span><strong>${dateLabel(x.snapshot_date)}</strong></div><div class="capacity-row"><span>Metrics</span><strong>${pill(!!x.metrics_available)}</strong></div></div>`,"LATEST SNAPSHOT")}</div>`+
+    `<div class="panel-grid">${panel("Capacity trend","Daily raw used and free capacity",rangeControl(days,"cluster",id)+'<div class="chart-wrap"><canvas id="cluster-chart"></canvas></div>',days+" DAYS")}${panel("Cluster health","Latest node availability",`<div class="capacity-list"><div class="capacity-row"><span>Online nodes</span><strong>${x.nodes_online??"—"}</strong></div><div class="capacity-row"><span>Offline nodes</span><strong>${x.nodes_offline??"—"}</strong></div><div class="capacity-row"><span>Growth per day</span><strong>${x.growth_bytes_per_day==null?"—":fmt(x.growth_bytes_per_day/1024**3)+" GiB"}</strong></div><div class="capacity-row"><span>Snapshot date</span><strong>${dateLabel(x.snapshot_date)}</strong></div><div class="capacity-row"><span>Metrics</span><strong>${pill(!!x.metrics_available)}</strong></div></div>`,"LATEST SNAPSHOT")}</div>`+
     table("Daily snapshots","Stored cluster metrics",["DATE","RAW TOTAL","RAW FREE","USABLE TOTAL","ONLINE","OFFLINE","STATUS"],series.map(r=>`<tr><td>${dateLabel(r.snapshot_date)}</td><td>${bytes(r.raw_total_bytes)}</td><td>${bytes(r.raw_free_bytes)}</td><td>${bytes(r.usable_total_bytes)}</td><td>${r.nodes_online??"—"}</td><td>${r.nodes_offline??"—"}</td><td>${pill(!!r.metrics_available)}</td></tr>`));
   chart("cluster-chart",series.map(r=>dateLabel(r.snapshot_date)),[{label:"Used TiB",data:series.map(r=>r.raw_total_bytes==null||r.raw_free_bytes==null?null:(r.raw_total_bytes-r.raw_free_bytes)/1024**4),color:"#13a58b",fill:true},{label:"Free TiB",data:series.map(r=>r.raw_free_bytes==null?null:r.raw_free_bytes/1024**4),color:"#4779d8"}]);
 }
@@ -70,8 +74,8 @@ async function renderTenants(){
     table("Tenant usage","Current bucket ownership · latest available metrics snapshot",["TENANT","BUCKETS","WITH METRICS","USED","OBJECTS","SNAPSHOT",""],rows)+
     table("Tenant directory","Current tenant configuration",["TENANT","DESCRIPTION","CURRENT BUCKETS","STATUS"],state.tenants.map(t=>`<tr><td class="cell-strong">${esc(t.name)}</td><td>${esc(t.description||"—")}</td><td>${t.bucket_count}</td><td>${pill(t.is_active?"Active":"Inactive")}</td></tr>`));
 }
-async function showTenant(id,attribution="current"){
-  const d=await api("/api/analytics/tenants/"+id+"?days=90&attribution="+encodeURIComponent(attribution));clearCharts();
+async function showTenant(id,attribution="current",days=90){
+  const d=await api("/api/analytics/tenants/"+id+"?days="+days+"&attribution="+encodeURIComponent(attribution));clearCharts();
   const current=attribution==="current";
   const subtitle=current
     ?"Historical bucket usage attributed using current tenant ownership."
@@ -81,7 +85,7 @@ async function showTenant(id,attribution="current"){
     ?"No stored bucket snapshots found for buckets currently assigned to this tenant."
     :"No snapshots were recorded under this tenant's ownership during this period.";
   $("#content").innerHTML=pageHead(esc(d.tenant.name),subtitle,actions)+
-    `<div class="detail-grid"><div class="detail-card"><small>DESCRIPTION</small><strong style="font-size:14px">${esc(d.tenant.description||"—")}</strong></div><div class="detail-card"><small>STATUS</small><strong style="font-size:14px">${d.tenant.is_active?"Active":"Inactive"}</strong></div><div class="detail-card"><small>HISTORY WINDOW</small><strong>90 days</strong></div></div>`+
+    `${rangeControl(days,"tenant",id,attribution)}<div class="detail-grid"><div class="detail-card"><small>DESCRIPTION</small><strong style="font-size:14px">${esc(d.tenant.description||"—")}</strong></div><div class="detail-card"><small>STATUS</small><strong style="font-size:14px">${d.tenant.is_active?"Active":"Inactive"}</strong></div><div class="detail-card"><small>HISTORY WINDOW</small><strong>${days} days</strong></div></div>`+
     panel("Tenant usage trend",current?"Daily usage of buckets currently assigned to this tenant":"Daily usage based on historical snapshot attribution",'<div class="chart-wrap"><canvas id="tenant-chart"></canvas></div>')+
     table("Daily tenant snapshots",current?"Current ownership is applied retrospectively; totals require metrics for every currently assigned bucket.":"Missing metrics remain unavailable, not zero.",["DATE","BUCKETS","USED","OBJECTS","UNAVAILABLE BUCKETS"],d.series.map(r=>`<tr><td>${dateLabel(r.snapshot_date)}</td><td>${r.bucket_count}</td><td>${bytes(r.used_bytes)}</td><td>${fmt(r.object_count,0)}</td><td>${r.unavailable_bucket_metrics}</td></tr>`),emptyMessage);
   chart("tenant-chart",d.series.map(r=>dateLabel(r.snapshot_date)),[{label:"Used TiB",data:d.series.map(r=>r.used_bytes==null?null:r.used_bytes/1024**4),color:"#13a58b",fill:true}]);
@@ -97,11 +101,11 @@ async function renderBuckets(){
     table("Bucket inventory",buckets.count+" active bucket(s)",headers,rows);
   const selectAll=$("#select-all-buckets");if(selectAll)selectAll.checked=state.buckets.length>0&&state.selectedBuckets.length===state.buckets.length;
 }
-async function showBucket(id){
-  const [d,h]=await Promise.all([api("/api/analytics/buckets/"+id+"?days=90"),api("/api/buckets/"+id+"/history")]);const series=d.series||[],latest=series.at(-1)||{};clearCharts();
+async function showBucket(id,days=90){
+  const [d,h]=await Promise.all([api("/api/analytics/buckets/"+id+"?days="+days),api("/api/buckets/"+id+"/history")]);const series=d.series||[],latest=series.at(-1)||{};clearCharts();
   $("#content").innerHTML=pageHead(esc(d.bucket.bucket_name),"Cluster · "+esc(d.bucket.cluster_name)+" · Current tenant: "+esc(d.bucket.current_tenant_name||"Unassigned"),'<button class="subtle-button" data-view="buckets">← All buckets</button>')+
     `<div class="detail-grid"><div class="detail-card"><small>USED</small><strong>${bytes(latest.used_bytes)}</strong></div><div class="detail-card"><small>QUOTA</small><strong>${bytes(latest.quota_bytes)}</strong></div><div class="detail-card"><small>OBJECTS</small><strong>${fmt(latest.object_count,0)}</strong></div></div>`+
-    panel("Bucket usage trend","Daily usage in TiB",'<div class="chart-wrap"><canvas id="bucket-chart"></canvas></div>')+
+    panel("Bucket usage trend","Daily usage in TiB",rangeControl(days,"bucket",id)+'<div class="chart-wrap"><canvas id="bucket-chart"></canvas></div>')+
     table("Daily snapshots","Historical tenant attribution is retained per snapshot.",["DATE","TENANT AT SNAPSHOT","USED","QUOTA","OBJECTS","VERSIONS","DELETE MARKERS"],series.map(r=>`<tr><td>${dateLabel(r.snapshot_date)}</td><td>${esc(r.tenant_name_at_snapshot||"Unassigned")}</td><td>${bytes(r.used_bytes)}</td><td>${bytes(r.quota_bytes)}</td><td>${fmt(r.object_count,0)}</td><td>${r.version_count??"—"}</td><td>${r.delete_marker_count??"—"}</td></tr>`))+
     table("Assignment history","Administrative ownership changes",["CHANGED AT","TENANT","CHANGED BY","NOTE"],h.items.map(r=>`<tr><td>${esc(r.changed_at)}</td><td>${esc(r.tenant_name||"Unassigned")}</td><td>${esc(r.changed_by)}</td><td>${esc(r.note||"—")}</td></tr>`));
   chart("bucket-chart",series.map(r=>dateLabel(r.snapshot_date)),[{label:"Used TiB",data:series.map(r=>r.used_bytes==null?null:r.used_bytes/1024**4),color:"#13a58b",fill:true},{label:"Quota TiB",data:series.map(r=>r.quota_bytes==null?null:r.quota_bytes/1024**4),color:"#d9922e"}]);
@@ -160,6 +164,7 @@ $("#login-form").addEventListener("submit",async e=>{e.preventDefault();$("#logi
 $("#logout-button").addEventListener("click",async()=>{try{await api("/api/auth/logout",{method:"POST"});}catch{}showLogin();});
 $("#refresh-button").addEventListener("click",()=>render().catch(e=>toast(e.message,true)));
 $("#content").addEventListener("change",e=>{
+  if(e.target.id==="trend-range"){const el=e.target,days=Number(el.value),kind=el.dataset.trendKind,id=el.dataset.trendId,mode=el.dataset.trendAttribution||"current";const run=kind==="cluster"?showCluster(id,days):kind==="tenant"?showTenant(Number(id),mode,days):showBucket(Number(id),days);run.catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-user-role]")){
     const id=Number(e.target.dataset.userRole),role=e.target.value;
     api("/api/auth/users/"+id,{method:"PATCH",body:JSON.stringify({role})}).then(()=>toast("User role updated")).catch(err=>{toast(err.message,true);renderUsers();});
