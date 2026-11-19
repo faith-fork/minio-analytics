@@ -208,7 +208,7 @@ def cluster_analytics(
 
 @router.get("/tenants")
 def tenant_analytics(_: dict = Depends(get_current_user)) -> dict:
-    """Summarize each bucket using its most recent snapshot attribution."""
+    """Summarize latest bucket metrics grouped by each bucket's current tenant."""
     with transaction() as connection:
         rows = connection.execute(
             """
@@ -220,35 +220,39 @@ def tenant_analytics(_: dict = Depends(get_current_user)) -> dict:
                        ) AS rn
                 FROM bucket_daily_metrics m
             )
-            SELECT r.tenant_id_at_snapshot AS tenant_id,
+            SELECT b.tenant_id,
                    t.name AS tenant_name,
-                   COUNT(*) AS bucket_count,
+                   COUNT(b.id) AS bucket_count,
                    SUM(CASE WHEN r.metrics_available = 1 THEN 1 ELSE 0 END)
                        AS buckets_with_metrics,
                    CASE
-                       WHEN SUM(CASE WHEN r.metrics_available = 1 THEN 1 ELSE 0 END) = COUNT(*)
-                            AND COUNT(r.used_bytes) = COUNT(*)
+                       WHEN COUNT(r.bucket_id) = COUNT(b.id)
+                            AND SUM(CASE WHEN r.metrics_available = 1 THEN 1 ELSE 0 END) = COUNT(b.id)
+                            AND COUNT(r.used_bytes) = COUNT(b.id)
                        THEN SUM(r.used_bytes)
                        ELSE NULL
                    END AS used_bytes,
                    CASE
-                       WHEN SUM(CASE WHEN r.metrics_available = 1 THEN 1 ELSE 0 END) = COUNT(*)
-                            AND COUNT(r.object_count) = COUNT(*)
+                       WHEN COUNT(r.bucket_id) = COUNT(b.id)
+                            AND SUM(CASE WHEN r.metrics_available = 1 THEN 1 ELSE 0 END) = COUNT(b.id)
+                            AND COUNT(r.object_count) = COUNT(b.id)
                        THEN SUM(r.object_count)
                        ELSE NULL
                    END AS object_count,
                    MAX(r.snapshot_date) AS latest_snapshot_date
-            FROM ranked r
-            LEFT JOIN tenants t ON t.id = r.tenant_id_at_snapshot
-            WHERE r.rn = 1
-            GROUP BY r.tenant_id_at_snapshot, t.name
-            ORDER BY CASE WHEN r.tenant_id_at_snapshot IS NULL THEN 1 ELSE 0 END,
+            FROM buckets b
+            LEFT JOIN tenants t ON t.id = b.tenant_id
+            LEFT JOIN ranked r ON r.bucket_id = b.id AND r.rn = 1
+            GROUP BY b.tenant_id, t.name
+            ORDER BY CASE WHEN b.tenant_id IS NULL THEN 1 ELSE 0 END,
                      t.name COLLATE NOCASE
             """
         ).fetchall()
-    return {"items": [_dict(row) for row in rows], "count": len(rows),
-            "attribution": "latest stored bucket snapshot"}
-
+    return {
+        "items": [_dict(row) for row in rows],
+        "count": len(rows),
+        "attribution": "current bucket ownership; usage from each bucket's latest stored snapshot",
+    }
 
 @router.get("/tenants/{tenant_id}")
 def tenant_analytics_detail(
