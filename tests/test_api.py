@@ -287,6 +287,9 @@ def test_cluster_topology_api_returns_empty_state_before_first_collection(
 
 
 def test_master_admin_settings_require_privilege_and_password(admin_client, viewer_client):
+    # Both fixtures share one TestClient session; explicitly select the admin first.
+    admin_login = admin_client.post("/api/auth/login", json={"username": "admin-test", "password": "Admin-Test-Password-123!"})
+    assert admin_login.status_code == 200
     settings = admin_client.get("/api/master-admin/settings")
     assert settings.status_code == 200
     assert settings.json()["settings"] == {
