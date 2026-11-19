@@ -45,7 +45,7 @@ async function renderOverview(){
 }
 async function renderClusters(){
   state.clusters=(await api("/api/analytics/clusters")).items;
-  const rows=state.clusters.map(x=>`<tr><td><span class="cell-strong">${esc(x.cluster_name)}</span><br><span class="cell-muted">${esc(x.cluster_id)}</span></td><td>${esc(x.location_name)}</td><td>${pill(!!x.metrics_available)}</td><td>${bytes(x.raw_total_bytes)}</td><td>${bytes(x.raw_total_bytes-x.raw_free_bytes)}</td><td>${x.nodes_online??"—"} / ${x.nodes_offline??"—"}</td><td>${x.growth_bytes_per_day==null?"—":bytes(x.growth_bytes_per_day*1)/"—"}</td><td><button class="table-link" data-cluster="${esc(x.cluster_id)}">View details →</button></td></tr>`);
+  const rows=state.clusters.map(x=>`<tr><td><span class="cell-strong">${esc(x.cluster_name)}</span><br><span class="cell-muted">${esc(x.cluster_id)}</span></td><td>${esc(x.location_name)}</td><td>${pill(!!x.metrics_available)}</td><td>${bytes(x.raw_total_bytes)}</td><td>${bytes(x.raw_total_bytes-x.raw_free_bytes)}</td><td>${x.nodes_online??"—"} / ${x.nodes_offline??"—"}</td><td>${x.growth_bytes_per_day==null?"—":fmt(x.growth_bytes_per_day/1024**3)+" GiB"}</td><td><button class="table-link" data-cluster="${esc(x.cluster_id)}">View details →</button></td></tr>`);
   $("#content").innerHTML=pageHead("Clusters","Capacity, node health and daily growth across registered clusters.")+table("Registered clusters",state.clusters.length+" cluster(s)",["CLUSTER","LOCATION","STATUS","RAW CAPACITY","RAW USED","NODES UP / DOWN","GROWTH / DAY",""],rows);
 }
 async function showCluster(id){
