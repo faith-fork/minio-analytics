@@ -316,7 +316,7 @@ def tenant_analytics_detail(
                 ORDER BY d.snapshot_date
                 """,
                 (tenant_id, start),
-            ).fetchall()           ).fetchall()
+            ).fetchall()
             attribution_description = (
                 "current bucket ownership applied retrospectively to stored daily snapshots"
             )
