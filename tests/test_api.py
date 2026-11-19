@@ -55,6 +55,13 @@ def test_admin_can_create_user_reset_password_and_deactivate(
     assert login.status_code == 200
     assert login.json()["user"]["role"] == "viewer"
 
+    # The previous login changed this client session to the new viewer.
+    admin_login = admin_client.post(
+        "/api/auth/login",
+        json={"username": "admin-test", "password": "Admin-Test-Password-123!"},
+    )
+    assert admin_login.status_code == 200
+
     deactivate = admin_client.post(
         f"/api/auth/users/{user_id}/active", json={"is_active": False}
     )
