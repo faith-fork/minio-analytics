@@ -4,12 +4,12 @@ A lightweight analytics dashboard for multi-location, multi-cluster MinIO enviro
 
 ## Goals
 
-- Collect daily cluster and bucket metrics from Prometheus.
+- Collect daily cluster, bucket, node, drive, pool, and erasure-set metrics from Prometheus.
 - Maintain bucket inventory independently of daily metric collection.
 - Map buckets to customers/tenants through an administrator-only UI, including bulk assignment.
 - Preserve historical tenant attribution at snapshot time and audit every ownership change.
 - Provide authenticated administrator and read-only viewer experiences.
-- Present fleet, cluster, tenant, bucket, and collection-health analytics.
+- Present fleet, cluster topology/health, tenant, bucket, and collection-health analytics.
 - Keep Prometheus queries out of the interactive dashboard path; the UI reads historical data from SQLite.
 
 ## Initial technology choices
@@ -230,6 +230,20 @@ uvicorn app.main:app --host 0.0.0.0 --port 8001
 ```
 
 Use a persistent, root-readable environment file or systemd credential for a long-running deployment; do not generate a new secret on every restart, because that invalidates existing sessions.
+
+
+### Cluster topology and health
+
+The daily collector also records infrastructure topology from MinIO metrics and Node Exporter:
+
+- Nodes: MinIO metrics-target scrape availability, Node Exporter scrape availability, CPU utilization (five-minute rate), memory, and one-minute load.
+- Drives: per-drive MinIO total/used/free bytes and availability/I/O/timeout error counters.
+- Filesystems: per-mount total, available, free bytes, read-only state, and utilization for MinIO data mounts.
+- Pools and erasure sets: pool inventory derived from discovered sets; set status is retained as the raw metric value, with online/healing drives and read/write quorum.
+- Drive identity is cluster + MinIO server + drive path. Filesystem mounts are correlated from `/mnt/datadiskN` to the MinIO path `/mnt/datadiskN/minio`.
+- Replicated MinIO gauges are deduplicated by their logical identity and conflicting replicas are treated as a collection error. Missing metrics remain NULL.
+- Node Exporter reachability and MinIO metrics-target reachability are shown separately; neither is presented as a substitute for MinIO's own node/erasure health.
+- Topology snapshots are stored in dedicated SQLite daily tables and served by `GET /api/analytics/clusters/{cluster_id}/topology`.
 
 ### Tenant and bucket management
 
