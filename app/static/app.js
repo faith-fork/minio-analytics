@@ -22,7 +22,7 @@ function metric(label,value,foot,icon="◈",good=false){return `<div class="metr
 function pill(status){const cls=status==="success"||status===true?"":status==="partial"?"warn":status==="failed"||status===false?"bad":"neutral";const label=status===true?"Available":status===false?"Unavailable":String(status??"Unknown");return `<span class="status-pill ${cls}"><i></i>${esc(label)}</span>`;}
 function panel(title,subtitle,body,tag=""){return `<section class="panel"><div class="panel-header"><div><h3>${title}</h3><p>${subtitle||""}</p></div>${tag?`<span class="panel-tag">${tag}</span>`:""}</div>${body}</section>`;}
 function table(title,subtitle,headers,rows,empty="No records found."){return `<section class="table-panel"><div class="table-heading"><div><h3>${title}</h3><p>${subtitle||""}</p></div></div><div class="table-scroll"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.length?rows.join(""):`<tr><td colspan="${headers.length}" class="empty-state">${empty}</td></tr>`}</tbody></table></div></section>`;}
-function chart(id,labels,sets,type="line"){if(!window.Chart)return;const canvas=$("#"+id);if(!canvas)return;const instance=new Chart(canvas,{type,data:{labels,datasets:sets.map(s=>({label:s.label,data:s.data,borderColor:s.color,backgroundColor:s.fill||s.color+"18",borderWidth:2,borderDash:s.dash?[7,5]:[],pointRadius:3,tension:.32,fill:!!s.fill}))},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{position:"bottom",labels:{usePointStyle:true,boxWidth:7,font:{size:10}}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:"#94a0af"}},y:{grid:{color:"#edf1f5"},ticks:{font:{size:9},color:"#94a0af"}}}}});state.charts.push(instance);}
+function chart(id,labels,sets,type="line",yMin=null){if(!window.Chart)return;const canvas=$("#"+id);if(!canvas)return;const instance=new Chart(canvas,{type,data:{labels,datasets:sets.map(s=>({label:s.label,data:s.data,borderColor:s.color,backgroundColor:s.fill||s.color+"18",borderWidth:2,borderDash:s.dash?[7,5]:[],pointRadius:3,tension:.32,fill:!!s.fill}))},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{position:"bottom",labels:{usePointStyle:true,boxWidth:7,font:{size:10}}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:"#94a0af"}},y:{...(yMin===null?{}:{min:yMin}),grid:{color:"#edf1f5"},ticks:{font:{size:9},color:"#94a0af"}}}}});state.charts.push(instance);}
 function clearCharts(){state.charts.forEach(c=>c.destroy());state.charts=[];}
 function setView(view){state.view=view;$$(".nav-link").forEach(b=>b.classList.toggle("active",b.dataset.view===view));$("#page-breadcrumb").textContent=view.replace("-"," ").toUpperCase();render().catch(e=>toast(e.message,true));}
 async function loadOverview(){state.overview=await api("/api/analytics/overview");state.clusters=(await api("/api/analytics/clusters")).items;}
@@ -165,6 +165,7 @@ async function renderTenants(){
 }
 async function showTenant(id,attribution="current",days=90,startDate=null,endDate=null){
   state.snapshotContext={type:"tenant",id,attribution,days,startDate,endDate};
+  state.tenantCapacityScale=state.tenantCapacityScale||"zero";
   const d=await api("/api/analytics/tenants/"+id+"?"+trendQuery(days,startDate,endDate,"attribution="+encodeURIComponent(attribution)));clearCharts();
   const current=attribution==="current";
   const subtitle=current
@@ -173,16 +174,18 @@ async function showTenant(id,attribution="current",days=90,startDate=null,endDat
   const actions=`<div class="heading-actions"><button class="subtle-button" data-tenant-mode="current" data-tenant-id="${id}" ${current?'disabled':''}>Current ownership</button><button class="subtle-button" data-tenant-mode="historical" data-tenant-id="${id}" ${!current?'disabled':''}>Historical ownership</button><button class="subtle-button" data-view="tenants">← All tenants</button></div>`;
   const hasHistoricalSnapshots=Array.isArray(d.series)&&d.series.length>0;
   const noHistoricalAttribution=!current&&!hasHistoricalSnapshots;
+  const hasQuota=(d.series||[]).some(r=>r.quota_bytes!=null);
+  const capacityControls='<div class="tenant-chart-controls"><span>Y-axis scale</span><button type="button" data-tenant-scale="zero" class="'+(state.tenantCapacityScale==="zero"?"active":"")+'">Zero-based</button><button type="button" data-tenant-scale="zoom" class="'+(state.tenantCapacityScale==="zoom"?"active":"")+'">Zoomed</button></div>';
   const charts=noHistoricalAttribution
     ? panel("No historical attribution available","No bucket snapshots were attributed to this tenant during the selected period.",'<div class="empty-state"><strong>No historical ownership records found</strong><p>Bucket ownership was assigned after the relevant daily snapshots. Historical reporting will populate as new daily snapshots are collected under this tenant\'s ownership.</p><p>To view the historical usage of buckets assigned to this tenant today, switch to <strong>Current ownership</strong>.</p></div>')
-    : panel("Tenant capacity and quota trend",current?"Daily usage and summed bucket quotas for currently assigned buckets":"Daily usage and quotas based on historical snapshot attribution",'<div class="chart-wrap"><canvas id="tenant-chart"></canvas></div>')+
+    : panel("Tenant capacity and quota trend",current?"Daily usage and summed bucket quotas for currently assigned buckets":"Daily usage and quotas based on historical snapshot attribution",capacityControls+'<div class="chart-wrap"><canvas id="tenant-chart"></canvas></div>'+(hasQuota?'':'<p class="chart-note">Quota not configured for the buckets attributed to this tenant.</p>'))+
       panel("Tenant object trend","Daily object count across attributed buckets",'<div class="chart-wrap"><canvas id="tenant-object-chart"></canvas></div>');
   $("#content").innerHTML=pageHead(esc(d.tenant.name),subtitle,actions)+
     `${rangeControl(days,"tenant",id,attribution)}<div class="detail-grid"><div class="detail-card"><small>DESCRIPTION</small><strong style="font-size:14px">${esc(d.tenant.description||"—")}</strong></div><div class="detail-card"><small>STATUS</small><strong style="font-size:14px">${d.tenant.is_active?"Active":"Inactive"}</strong></div><div class="detail-card"><small>HISTORY WINDOW</small><strong>${days} days</strong></div></div>`+
     charts+
     `<div class="snapshot-link-panel"><div><strong>Daily snapshots</strong><p>Browse daily tenant usage, quota, object counts and metric availability.</p></div><button class="primary-small" data-action="open-tenant-snapshots">View daily snapshots →</button></div>`;
   if(!noHistoricalAttribution){
-    chart("tenant-chart",d.series.map(r=>dateLabel(r.snapshot_date)),[{label:"Used TiB",data:d.series.map(r=>r.used_bytes==null?null:r.used_bytes/1024**4),color:"#13a58b",fill:true},{label:"Quota TiB",data:d.series.map(r=>r.quota_bytes==null?null:r.quota_bytes/1024**4),color:"#d9922e"}]);
+    chart("tenant-chart",d.series.map(r=>dateLabel(r.snapshot_date)),[{label:"Used TiB",data:d.series.map(r=>r.used_bytes==null?null:r.used_bytes/1024**4),color:"#13a58b",fill:true},...(hasQuota?[{label:"Quota TiB",data:d.series.map(r=>r.quota_bytes==null?null:r.quota_bytes/1024**4),color:"#d9922e"}]:[])],"line",state.tenantCapacityScale==="zero"?0:undefined);
     chart("tenant-object-chart",d.series.map(r=>dateLabel(r.snapshot_date)),[{label:"Objects",data:d.series.map(r=>r.object_count),color:"#4779d8",fill:true}]);
   }
 }
@@ -267,6 +270,7 @@ document.addEventListener("click",async e=>{
   const cluster=e.target.closest("[data-cluster]");if(cluster){try{await showCluster(cluster.dataset.cluster);}catch(err){toast(err.message,true);}return;}
   const tenant=e.target.closest("[data-tenant]");if(tenant){try{await showTenant(tenant.dataset.tenant);}catch(err){toast(err.message,true);}return;}
   const tenantMode=e.target.closest("[data-tenant-mode]");if(tenantMode){try{await showTenant(Number(tenantMode.dataset.tenantId),tenantMode.dataset.tenantMode);}catch(err){toast(err.message,true);}return;}
+  const tenantScale=e.target.closest("[data-tenant-scale]");if(tenantScale){state.tenantCapacityScale=tenantScale.dataset.tenantScale;const c=state.snapshotContext;if(c?.type==="tenant")showTenant(c.id,c.attribution,c.days,c.startDate,c.endDate).catch(err=>toast(err.message,true));return;}
   const bucket=e.target.closest("[data-bucket]");if(bucket){try{await showBucket(bucket.dataset.bucket);}catch(err){toast(err.message,true);}return;}
   const assign=e.target.closest("[data-assign]");if(assign){assignBucketModal(Number(assign.dataset.assign));return;}
   const topologyTab=e.target.closest("[data-topology-tab]");if(topologyTab){showClusterTopology(state.topologyClusterId,topologyTab.dataset.topologyTab).catch(err=>toast(err.message,true));return;}
