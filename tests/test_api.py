@@ -159,6 +159,23 @@ def test_single_assignment_and_snapshot_attribution_are_separate(
     assert bucket_history["bucket"]["current_tenant_id"] == tenant_id
     assert bucket_history["series"][0]["tenant_id_at_snapshot"] is None
 
+    current_trend = admin_client.get(
+        "/api/analytics/tenants/" + str(tenant_id) + "?days=3650"
+    ).json()
+    assert current_trend["attribution"] == "current"
+    assert current_trend["series"][0]["used_bytes"] == 100
+    assert current_trend["series"][0]["bucket_count"] == 1
+
+    historical_trend = admin_client.get(
+        "/api/analytics/tenants/" + str(tenant_id) + "?days=3650&attribution=historical"
+    ).json()
+    assert historical_trend["attribution"] == "historical"
+    assert historical_trend["series"] == []
+
+    invalid_mode = admin_client.get(
+        "/api/analytics/tenants/" + str(tenant_id) + "?attribution=unknown"
+    )
+    assert invalid_mode.status_code == 422
 
 def test_viewer_can_read_analytics_but_not_manage_users(
     viewer_client: TestClient,
