@@ -296,6 +296,8 @@ def test_master_admin_settings_require_privilege_and_password(admin_client, view
         "node_interval_hours": 4,
         "daily_collection_time": "00:15",
     }
+    viewer_login = viewer_client.post("/api/auth/login", json={"username": "viewer-test", "password": "Viewer-Test-Password-123!"})
+    assert viewer_login.status_code == 200
     denied = viewer_client.get("/api/master-admin/settings")
     assert denied.status_code == 403
     admin_login = admin_client.post("/api/auth/login", json={"username": "admin-test", "password": "Admin-Test-Password-123!"})
