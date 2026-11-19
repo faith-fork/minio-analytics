@@ -220,3 +220,82 @@ def persist_bucket_snapshots(
         "inventory_upserts": inventory_upserts,
         "metrics_upserts": metrics_upserts,
     }
+
+
+def persist_cluster_snapshot(
+    snapshot: object,
+    snapshot_date: str | date | None = None,
+) -> dict[str, int | str]:
+    """Persist one cluster's daily capacity snapshot idempotently.
+
+    Failed collections are stored with NULL metric values and an explicit
+    availability flag/error; they are never represented as zero capacity.
+    """
+    initialize_database()
+
+    if snapshot_date is None:
+        day = _snapshot_date(snapshot.snapshot_ts)
+    elif isinstance(snapshot_date, date):
+        day = snapshot_date.isoformat()
+    else:
+        day = date.fromisoformat(snapshot_date).isoformat()
+
+    values = {
+        "snapshot_date": day,
+        "cluster_id": snapshot.cluster_id,
+        "snapshot_ts": _timestamp(snapshot.snapshot_ts),
+        "collected_at": _timestamp(snapshot.collected_at),
+        "raw_total_bytes": snapshot.raw_total_bytes,
+        "raw_free_bytes": snapshot.raw_free_bytes,
+        "usable_total_bytes": snapshot.usable_total_bytes,
+        "usable_free_bytes": snapshot.usable_free_bytes,
+        "nodes_online": snapshot.nodes_online,
+        "nodes_offline": snapshot.nodes_offline,
+        "growth_bytes_per_day": snapshot.growth_bytes_per_day,
+        "days_to_full": snapshot.days_to_full,
+        "metrics_available": int(bool(snapshot.metrics_available)),
+        "error_text": snapshot.error_text,
+    }
+
+    with transaction() as connection:
+        connection.execute(
+            """
+            INSERT INTO cluster_daily_metrics (
+                snapshot_date, cluster_id, snapshot_ts, collected_at,
+                raw_total_bytes, raw_free_bytes,
+                usable_total_bytes, usable_free_bytes,
+                nodes_online, nodes_offline,
+                growth_bytes_per_day, days_to_full,
+                metrics_available, error_text
+            )
+            VALUES (
+                :snapshot_date, :cluster_id, :snapshot_ts, :collected_at,
+                :raw_total_bytes, :raw_free_bytes,
+                :usable_total_bytes, :usable_free_bytes,
+                :nodes_online, :nodes_offline,
+                :growth_bytes_per_day, :days_to_full,
+                :metrics_available, :error_text
+            )
+            ON CONFLICT(snapshot_date, cluster_id) DO UPDATE SET
+                snapshot_ts = excluded.snapshot_ts,
+                collected_at = excluded.collected_at,
+                raw_total_bytes = excluded.raw_total_bytes,
+                raw_free_bytes = excluded.raw_free_bytes,
+                usable_total_bytes = excluded.usable_total_bytes,
+                usable_free_bytes = excluded.usable_free_bytes,
+                nodes_online = excluded.nodes_online,
+                nodes_offline = excluded.nodes_offline,
+                growth_bytes_per_day = excluded.growth_bytes_per_day,
+                days_to_full = excluded.days_to_full,
+                metrics_available = excluded.metrics_available,
+                error_text = excluded.error_text
+            """,
+            values,
+        )
+
+    return {
+        "cluster_id": snapshot.cluster_id,
+        "snapshot_date": day,
+        "metrics_upserts": 1,
+        "metrics_available": values["metrics_available"],
+    }
