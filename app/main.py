@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.auth import router as auth_router
 from app.api.analytics import router as analytics_router
 from app.api.tenants import router as tenant_router
+from app.api.master_admin import router as master_admin_router
 from app.database.database import get_connection, initialize_database
 
 
@@ -55,6 +56,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(tenant_router)
 app.include_router(analytics_router)
+app.include_router(master_admin_router)
 
 @app.get("/health", tags=["health"])
 @app.get("/healthz", tags=["health"])
