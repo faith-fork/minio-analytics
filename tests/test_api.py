@@ -378,7 +378,7 @@ def test_master_admin_can_create_list_and_download_verified_backup(
 
     downloaded = admin_client.get(payload["download_url"])
     assert downloaded.status_code == 200
-    assert downloaded.content[:16] == b"SQLite format 3\\x00"
+    assert downloaded.content[:16] == b"SQLite format 3\x00"
 
     invalid = admin_client.get("/api/master-admin/backups/..%2Fsecret.db/download")
     assert invalid.status_code in (400, 404)
