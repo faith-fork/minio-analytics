@@ -277,21 +277,30 @@ def tenant_analytics_detail(
             # totals so missing bucket-days are not silently undercounted.
             rows = connection.execute(
                 """
-                SELECT m.snapshot_date,
-                       COUNT(DISTINCT b.id) AS bucket_count,
+                WITH owned_buckets AS (
+                    SELECT id FROM buckets WHERE tenant_id = ?
+                ),
+                snapshot_dates AS (
+                    SELECT DISTINCT m.snapshot_date
+                    FROM bucket_daily_metrics m
+                    JOIN owned_buckets b ON b.id = m.bucket_id
+                    WHERE m.snapshot_date >= ?
+                )
+                SELECT d.snapshot_date,
+                       COUNT(b.id) AS bucket_count,
                        CASE
-                           WHEN COUNT(m.bucket_id) = COUNT(DISTINCT b.id)
+                           WHEN COUNT(m.bucket_id) = COUNT(b.id)
                                 AND SUM(CASE WHEN m.metrics_available = 1
                                              AND m.used_bytes IS NOT NULL
-                                             THEN 1 ELSE 0 END) = COUNT(DISTINCT b.id)
+                                             THEN 1 ELSE 0 END) = COUNT(b.id)
                            THEN SUM(m.used_bytes)
                            ELSE NULL
                        END AS used_bytes,
                        CASE
-                           WHEN COUNT(m.bucket_id) = COUNT(DISTINCT b.id)
+                           WHEN COUNT(m.bucket_id) = COUNT(b.id)
                                 AND SUM(CASE WHEN m.metrics_available = 1
                                              AND m.object_count IS NOT NULL
-                                             THEN 1 ELSE 0 END) = COUNT(DISTINCT b.id)
+                                             THEN 1 ELSE 0 END) = COUNT(b.id)
                            THEN SUM(m.object_count)
                            ELSE NULL
                        END AS object_count,
@@ -299,16 +308,15 @@ def tenant_analytics_detail(
                                       OR m.metrics_available = 0
                                       OR m.used_bytes IS NULL
                                 THEN 1 ELSE 0 END) AS unavailable_bucket_metrics
-                FROM buckets b
+                FROM snapshot_dates d
+                CROSS JOIN owned_buckets b
                 LEFT JOIN bucket_daily_metrics m
-                    ON m.bucket_id = b.id AND m.snapshot_date >= ?
-                WHERE b.tenant_id = ?
-                  AND m.snapshot_date IS NOT NULL
-                GROUP BY m.snapshot_date
-                ORDER BY m.snapshot_date
+                    ON m.bucket_id = b.id AND m.snapshot_date = d.snapshot_date
+                GROUP BY d.snapshot_date
+                ORDER BY d.snapshot_date
                 """,
-                (start, tenant_id),
-            ).fetchall()
+                (tenant_id, start),
+            ).fetchall()           ).fetchall()
             attribution_description = (
                 "current bucket ownership applied retrospectively to stored daily snapshots"
             )
