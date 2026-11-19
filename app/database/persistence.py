@@ -299,3 +299,156 @@ def persist_cluster_snapshot(
         "metrics_upserts": 1,
         "metrics_available": values["metrics_available"],
     }
+
+
+def persist_topology_snapshot(
+    snapshot: object,
+    snapshot_date: str | date | None = None,
+) -> dict[str, int]:
+    """Persist node, drive, pool and erasure-set telemetry idempotently."""
+    initialize_database()
+    if snapshot_date is None:
+        day = _snapshot_date(snapshot.snapshot_ts)
+    elif isinstance(snapshot_date, date):
+        day = snapshot_date.isoformat()
+    else:
+        day = date.fromisoformat(snapshot_date).isoformat()
+
+    snapshot_ts = _timestamp(snapshot.snapshot_ts)
+    collected_at = _timestamp(snapshot.collected_at)
+    cluster_id = snapshot.cluster_id
+
+    with transaction() as connection:
+        for row in snapshot.nodes:
+            connection.execute(
+                """
+                INSERT INTO node_daily_metrics (
+                    snapshot_date, cluster_id, node_name, node_exporter_instance,
+                    minio_instance, node_exporter_up, minio_scrape_up,
+                    cpu_utilization_pct, memory_total_bytes, memory_available_bytes,
+                    memory_used_bytes, load1, snapshot_ts, collected_at
+                ) VALUES (
+                    :snapshot_date, :cluster_id, :node_name, :node_exporter_instance,
+                    :minio_instance, :node_exporter_up, :minio_scrape_up,
+                    :cpu_utilization_pct, :memory_total_bytes, :memory_available_bytes,
+                    :memory_used_bytes, :load1, :snapshot_ts, :collected_at
+                )
+                ON CONFLICT(snapshot_date, cluster_id, node_name) DO UPDATE SET
+                    node_exporter_instance=excluded.node_exporter_instance,
+                    minio_instance=excluded.minio_instance,
+                    node_exporter_up=excluded.node_exporter_up,
+                    minio_scrape_up=excluded.minio_scrape_up,
+                    cpu_utilization_pct=excluded.cpu_utilization_pct,
+                    memory_total_bytes=excluded.memory_total_bytes,
+                    memory_available_bytes=excluded.memory_available_bytes,
+                    memory_used_bytes=excluded.memory_used_bytes,
+                    load1=excluded.load1,
+                    snapshot_ts=excluded.snapshot_ts,
+                    collected_at=excluded.collected_at
+                """,
+                {"snapshot_date": day, "cluster_id": cluster_id,
+                 "snapshot_ts": snapshot_ts, "collected_at": collected_at, **row},
+            )
+
+        for row in snapshot.drives:
+            connection.execute(
+                """
+                INSERT INTO drive_daily_metrics (
+                    snapshot_date, cluster_id, node_name, server, drive_path, mountpoint,
+                    total_bytes, used_bytes, free_bytes, availability_errors, io_errors,
+                    timeout_errors, filesystem_total_bytes, filesystem_available_bytes,
+                    filesystem_free_bytes, filesystem_readonly, filesystem_used_bytes,
+                    filesystem_used_pct, snapshot_ts, collected_at
+                ) VALUES (
+                    :snapshot_date, :cluster_id, :node_name, :server, :drive_path, :mountpoint,
+                    :total_bytes, :used_bytes, :free_bytes, :availability_errors, :io_errors,
+                    :timeout_errors, :filesystem_total_bytes, :filesystem_available_bytes,
+                    :filesystem_free_bytes, :filesystem_readonly, :filesystem_used_bytes,
+                    :filesystem_used_pct, :snapshot_ts, :collected_at
+                )
+                ON CONFLICT(snapshot_date, cluster_id, server, drive_path) DO UPDATE SET
+                    node_name=excluded.node_name, mountpoint=excluded.mountpoint,
+                    total_bytes=excluded.total_bytes, used_bytes=excluded.used_bytes,
+                    free_bytes=excluded.free_bytes,
+                    availability_errors=excluded.availability_errors,
+                    io_errors=excluded.io_errors, timeout_errors=excluded.timeout_errors,
+                    filesystem_total_bytes=excluded.filesystem_total_bytes,
+                    filesystem_available_bytes=excluded.filesystem_available_bytes,
+                    filesystem_free_bytes=excluded.filesystem_free_bytes,
+                    filesystem_readonly=excluded.filesystem_readonly,
+                    filesystem_used_bytes=excluded.filesystem_used_bytes,
+                    filesystem_used_pct=excluded.filesystem_used_pct,
+                    snapshot_ts=excluded.snapshot_ts, collected_at=excluded.collected_at
+                """,
+                {"snapshot_date": day, "cluster_id": cluster_id,
+                 "snapshot_ts": snapshot_ts, "collected_at": collected_at, **row},
+            )
+
+        for row in snapshot.pools:
+            connection.execute(
+                """
+                INSERT INTO pool_daily_metrics (
+                    snapshot_date, cluster_id, pool_id, erasure_set_count,
+                    online_drives, healing_drives, snapshot_ts, collected_at
+                ) VALUES (
+                    :snapshot_date, :cluster_id, :pool_id, :erasure_set_count,
+                    :online_drives, :healing_drives, :snapshot_ts, :collected_at
+                )
+                ON CONFLICT(snapshot_date, cluster_id, pool_id) DO UPDATE SET
+                    erasure_set_count=excluded.erasure_set_count,
+                    online_drives=excluded.online_drives,
+                    healing_drives=excluded.healing_drives,
+                    snapshot_ts=excluded.snapshot_ts, collected_at=excluded.collected_at
+                """,
+                {"snapshot_date": day, "cluster_id": cluster_id,
+                 "snapshot_ts": snapshot_ts, "collected_at": collected_at, **row},
+            )
+
+        for row in snapshot.erasure_sets:
+            connection.execute(
+                """
+                INSERT INTO erasure_set_daily_metrics (
+                    snapshot_date, cluster_id, pool_id, set_id, status_value,
+                    online_drives, healing_drives, read_quorum, write_quorum,
+                    snapshot_ts, collected_at
+                ) VALUES (
+                    :snapshot_date, :cluster_id, :pool_id, :set_id, :status_value,
+                    :online_drives, :healing_drives, :read_quorum, :write_quorum,
+                    :snapshot_ts, :collected_at
+                )
+                ON CONFLICT(snapshot_date, cluster_id, pool_id, set_id) DO UPDATE SET
+                    status_value=excluded.status_value,
+                    online_drives=excluded.online_drives,
+                    healing_drives=excluded.healing_drives,
+                    read_quorum=excluded.read_quorum,
+                    write_quorum=excluded.write_quorum,
+                    snapshot_ts=excluded.snapshot_ts, collected_at=excluded.collected_at
+                """,
+                {"snapshot_date": day, "cluster_id": cluster_id,
+                 "snapshot_ts": snapshot_ts, "collected_at": collected_at, **row},
+            )
+
+        connection.execute(
+            """
+            INSERT INTO topology_daily_runs (
+                snapshot_date, cluster_id, snapshot_ts, collected_at,
+                family_errors_json, node_count, drive_count, pool_count, erasure_set_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(snapshot_date, cluster_id) DO UPDATE SET
+                snapshot_ts=excluded.snapshot_ts, collected_at=excluded.collected_at,
+                family_errors_json=excluded.family_errors_json,
+                node_count=excluded.node_count, drive_count=excluded.drive_count,
+                pool_count=excluded.pool_count, erasure_set_count=excluded.erasure_set_count
+            """,
+            (day, cluster_id, snapshot_ts, collected_at,
+             json.dumps(snapshot.family_errors, sort_keys=True, separators=(",", ":")),
+             len(snapshot.nodes), len(snapshot.drives), len(snapshot.pools),
+             len(snapshot.erasure_sets)),
+        )
+
+    return {
+        "nodes": len(snapshot.nodes),
+        "drives": len(snapshot.drives),
+        "pools": len(snapshot.pools),
+        "erasure_sets": len(snapshot.erasure_sets),
+    }
