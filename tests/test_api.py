@@ -339,13 +339,13 @@ def test_normal_admin_cannot_access_master_admin_settings(client):
 
 
 def test_master_admin_can_create_list_and_download_verified_backup(
-    admin_client: TestClient, viewer_client: TestClient, tmp_path
+    admin_client: TestClient, viewer_client: TestClient, tmp_path, monkeypatch
 ) -> None:
     import sqlite3
     from app.api import master_admin
 
     backup_dir = tmp_path / "backups"
-    master_admin.BACKUP_DIR = backup_dir
+    monkeypatch.setattr(master_admin, "BACKUP_DIR", backup_dir)
 
     assert viewer_client.get("/api/master-admin/backups").status_code == 403
     assert viewer_client.post("/api/master-admin/backups").status_code == 403
