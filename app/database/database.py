@@ -29,24 +29,52 @@ def get_connection() -> sqlite3.Connection:
     return connection
 
 
+def _apply_migrations(connection: sqlite3.Connection) -> None:
+    """Apply additive, idempotent migrations without rebuilding existing tables."""
+    columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(bucket_daily_metrics)")
+    }
+    additions = {
+        "object_size_distribution_json": (
+            "TEXT NOT NULL DEFAULT '{}'"
+        ),
+        "version_count_distribution_json": (
+            "TEXT NOT NULL DEFAULT '{}'"
+        ),
+    }
+    for name, definition in additions.items():
+        if name not in columns:
+            connection.execute(
+                f"ALTER TABLE bucket_daily_metrics ADD COLUMN {name} {definition}"
+            )
+
+    connection.execute(
+        "INSERT OR IGNORE INTO schema_version(version) VALUES (?)", (2,)
+    )
+
+
 def initialize_database() -> None:
-    """Create the initial schema. Safe to call repeatedly during application startup."""
+    """Create the schema and apply safe additive migrations; safe to call repeatedly."""
     schema = SCHEMA_PATH.read_text(encoding="utf-8")
     connection = get_connection()
     try:
         connection.executescript(schema)
         connection.execute(
-            "INSERT OR IGNORE INTO schema_version(version) VALUES (?)",
-            (1,),
+            "INSERT OR IGNORE INTO schema_version(version) VALUES (?)", (1,)
         )
+        _apply_migrations(connection)
         connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
     finally:
         connection.close()
 
 
 @contextmanager
 def transaction() -> Iterator[sqlite3.Connection]:
-    """Yield a connection and commit on success or roll back on failure."""
+    """Yield a SQLite connection and commit on success or roll back on failure."""
     connection = get_connection()
     try:
         yield connection
