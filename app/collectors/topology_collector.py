@@ -119,6 +119,12 @@ def collect_topology_snapshot(
         mem_available = unique("node_memory_MemAvailable_bytes", node_selector,
                                 ("instance",), "nodes")
         load1 = unique("node_load1", node_selector, ("instance",), "nodes")
+        drives_online = unique(
+            "minio_node_drive_online_total", minio_node_selector, ("server",), "nodes"
+        )
+        drives_offline = unique(
+            "minio_node_drive_offline_total", minio_node_selector, ("server",), "nodes"
+        )
 
         node_exporter_hosts = {_host(key[0]) for key in node_up}
         minio_hosts = {_host(key[0]) for key in minio_up}
@@ -149,6 +155,12 @@ def collect_topology_snapshot(
                 "memory_available_bytes": available,
                 "memory_used_bytes": total - available if total is not None and available is not None else None,
                 "load1": load1.get(node_key) if node_key else None,
+                "drives_online": (
+                    drives_online.get((minio_instance,)) if minio_instance else None
+                ),
+                "drives_offline": (
+                    drives_offline.get((minio_instance,)) if minio_instance else None
+                ),
             })
 
         # Per-drive MinIO metrics.
