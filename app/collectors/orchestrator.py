@@ -85,6 +85,7 @@ def collect_location(
         run_id = str(uuid.uuid4())
         started_at = datetime.now(timezone.utc)
         cluster_snapshot = None
+        last_cluster_snapshot = None
         bucket_snapshots = None
         errors: list[str] = []
         attempts_used = 0
@@ -103,6 +104,7 @@ def collect_location(
                     cluster=cluster,
                     snapshot_ts=snapshot_ts,
                 )
+                last_cluster_snapshot = candidate_cluster
                 if not candidate_cluster.metrics_available:
                     attempt_errors.append(
                         "cluster metrics: " + (candidate_cluster.error_text or "unavailable")
@@ -136,12 +138,9 @@ def collect_location(
             )
 
         # Persist each successful metric family, even if its sibling failed.
-        if cluster_snapshot is not None:
-            persist_cluster_snapshot(cluster_snapshot, snapshot_date=day)
-        elif attempts_used:
-            # The cluster collector normally returns an unavailable snapshot
-            # rather than raising. Retry exhaustion is represented in run history.
-            pass
+        snapshot_to_persist = cluster_snapshot or last_cluster_snapshot
+        if snapshot_to_persist is not None:
+            persist_cluster_snapshot(snapshot_to_persist, snapshot_date=day)
 
         if bucket_snapshots is not None:
             persist_bucket_snapshots(bucket_snapshots, snapshot_date=day)
