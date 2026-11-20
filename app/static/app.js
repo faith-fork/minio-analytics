@@ -353,7 +353,8 @@ async function renderHealth(){
   const trendPanels=[
     trendChart("health-node-availability","Node Exporter availability","Percentage of nodes with Node Exporter reporting",null),
     trendChart("health-minio-availability","MinIO scrape availability","Percentage of MinIO node scrape targets reporting",null),
-    trendChart("health-drive-health","Drive availability & errors","Online/offline drive counts and number of drives reporting errors",""),
+    trendChart("health-drive-availability","Drive availability","Online and offline drive counts across the cluster",null),
+    trendChart("health-drive-errors","Drive error counters","Cumulative availability, I/O and timeout error counters reported by drives",""),
     trendChart("health-cpu-memory","CPU & memory utilization","Average CPU utilization and memory utilization across cluster nodes",null),
     trendChart("health-filesystem","Filesystem utilization","Average utilization across monitored MinIO data filesystems",null)
   ].join("");
@@ -370,12 +371,14 @@ async function renderHealth(){
   if(trendRows.length){
     chart("health-node-availability",trendLabels,[{label:"Node Exporter up",data:trendRows.map(x=>x.node_exporter_availability_pct),color:"#16a085"}],"line",0,"%");
     chart("health-minio-availability",trendLabels,[{label:"MinIO scrape up",data:trendRows.map(x=>x.minio_scrape_availability_pct),color:"#4776c7"}],"line",0,"%");
-    chart("health-drive-health",trendLabels,[
+    chart("health-drive-availability",trendLabels,[
       {label:"Drives online",data:trendRows.map(x=>x.drives_online),color:"#16a085"},
-      {label:"Drives offline",data:trendRows.map(x=>x.drives_offline),color:"#d9534f"},
-      {label:"Availability error drives",data:trendRows.map(x=>x.availability_error_drives),color:"#d99a35"},
-      {label:"I/O error drives",data:trendRows.map(x=>x.io_error_drives),color:"#8b6ccf"},
-      {label:"Timeout error drives",data:trendRows.map(x=>x.timeout_error_drives),color:"#64748b"}
+      {label:"Drives offline",data:trendRows.map(x=>x.drives_offline),color:"#d9534f"}
+    ],"line",0,"");
+    chart("health-drive-errors",trendLabels,[
+      {label:"Availability errors (cumulative)",data:trendRows.map(x=>x.availability_errors),color:"#d99a35"},
+      {label:"I/O errors (cumulative)",data:trendRows.map(x=>x.io_errors),color:"#8b6ccf"},
+      {label:"Timeout errors (cumulative)",data:trendRows.map(x=>x.timeout_errors),color:"#64748b"}
     ],"line",0,"");
     chart("health-cpu-memory",trendLabels,[
       {label:"CPU utilization",data:trendRows.map(x=>x.avg_cpu_pct),color:"#4776c7"},
