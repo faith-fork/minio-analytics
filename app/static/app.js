@@ -132,7 +132,7 @@ async function renderCapacityReport(){
   ].join("");
   const rows=(d.items||[]).map(x=>{
     const coverage=x.active_bucket_count===0?"No active buckets":fmt(x.buckets_with_metrics,0)+" / "+fmt(x.active_bucket_count,0)+" buckets";
-    return '<tr><td><span class="cell-strong">'+esc(x.cluster_name)+'</span><br><span class="cell-muted">'+esc(x.location_name)+'</span></td>'+
+    return '<tr><td><span class="cell-strong">'+esc(x.cluster_name)+'</span></td><td><span class="cell-muted">'+esc(x.location_name)+'</span></td>'+
       '<td>'+tibValue(x.installed_capacity_bytes)+'</td><td>'+tibValue(x.cap_capacity_bytes)+'</td>'+
       '<td>'+tibValue(x.provisioned_bytes)+'</td>'+
       (showUsedUsable?'<td>'+tibValue(x.used_cap_bytes)+'</td>':'')+
@@ -158,7 +158,7 @@ async function renderCapacityReport(){
   const factorControls=state.user?.role==="admin"?'<form id="capacity-factors-form" class="capacity-factor-controls"><strong>Capacity planning factors</strong><label>DP<input name="dp" type="number" min="0.01" max="100" step="0.01" value="'+esc(f.dp)+'" required></label><label>RF<input name="rf" type="number" min="0.01" max="100" step="0.01" value="'+esc(f.rf)+'" required></label><label>Eff<input name="eff" type="number" min="0.001" max="1" step="0.001" value="'+esc(f.eff)+'" required></label><button class="primary-small" type="submit">Save & recalculate</button></form>':'';
 
   const columnControls='<div class="report-column-toolbar"><details class="report-column-menu"><summary>Columns <span>▾</span></summary><div class="report-column-options"><label><input type="checkbox" data-report-column="used_usable" '+(showUsedUsable?"checked":"")+'><span>USED USABLE</span></label><label><input type="checkbox" data-report-column="used_bkt" '+(showUsedBkt?"checked":"")+'><span>USED BKT</span></label></div></details></div>';
-  const headers=["CLUSTER / LOCATION","INSTALLED (TiB)","USABLE (TiB)","PROVISIONED (TiB)",...(showUsedUsable?["USED USABLE (TiB)"]:[]),...(showUsedBkt?["USED BKT (TiB)"]:[]),"USABLE FREE (TiB)","USAGE %","PROV %","BUCKET COVERAGE"];
+  const headers=["CLUSTER","LOCATION","INSTALLED (TiB)","USABLE (TiB)","PROVISIONED (TiB)",...(showUsedUsable?["USED USABLE (TiB)"]:[]),...(showUsedBkt?["USED BKT (TiB)"]:[]),"USABLE FREE (TiB)","USAGE %","PROV %","BUCKET COVERAGE"];
   $("#content").innerHTML=pageHead("Consolidated Provisioned Report","Fleet-wide installed, usable and provisioned capacity from the latest stored SQLite snapshots. Data as of "+esc(dataAsOf)+" IST. Generated on "+esc(generatedAt)+" IST.",reportFactors+'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
     reportTabs("capacity-report")+
     factorControls+
@@ -186,7 +186,7 @@ async function renderRawCapacityReport(){
     const growth=signedTiB(x.trend_growth_bytes_per_day);
     const change=signedTiB(x.change_vs_yesterday_bytes);
     const projection=x.projected_days_to_full==null?"N/A":fmt(x.projected_days_to_full,0);
-    return '<tr><td><span class="cell-strong">'+esc(x.cluster_name)+'</span><br><span class="cell-muted">'+esc(x.location_name)+'</span></td>'+
+    return '<tr><td><span class="cell-strong">'+esc(x.cluster_name)+'</span></td><td><span class="cell-muted">'+esc(x.location_name)+'</span></td>'+
       '<td>'+tibValue(x.raw_total_bytes)+'</td><td>'+tibValue(x.raw_used_bytes)+'</td><td>'+tibValue(x.raw_free_bytes)+'</td>'+
       '<td>'+usedPct+'</td><td>'+change+'</td><td>'+growth+(x.trend_sample_count!=null?' <span class="cell-muted">('+fmt(x.trend_sample_count,0)+' samples)</span>':'')+'</td><td>'+projection+'</td>'+
       '<td>'+nodes+'</td><td>'+status+'</td></tr>';
@@ -203,7 +203,7 @@ async function renderRawCapacityReport(){
     '</ul><p>Capacity and growth units are shown in the column headers. A dash indicates missing data. Historical calculations use the scheduled SQLite snapshots aligned to 00:00 IST.</p></div>';
   $("#content").innerHTML=pageHead("Consolidated RAW Capacity Report","Fleet-wide raw capacity, used and free storage from the latest stored cluster snapshots. Data as of "+esc(dataAsOf)+" IST. Generated on "+esc(generatedAt)+" IST.",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
     reportTabs("raw-capacity-report")+'<div class="metric-grid raw-capacity-grid">'+cards+'</div>'+
-    table("Raw capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · "+fmt(d.available_cluster_count,0)+" with complete raw metrics",["CLUSTER / LOCATION","RAW CAPACITY (TiB)","RAW USED (TiB)","RAW FREE (TiB)","RAW USED %","CHANGE VS YESTERDAY (TiB)","TREND GROWTH (TiB/day)","PROJECTED DAYS TO FULL","NODES","STATUS"],rows,"No enabled clusters are registered.")+notes;
+    table("Raw capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · "+fmt(d.available_cluster_count,0)+" with complete raw metrics",["CLUSTER","LOCATION","RAW CAPACITY (TiB)","RAW USED (TiB)","RAW FREE (TiB)","RAW USED %","CHANGE VS YESTERDAY (TiB)","TREND GROWTH (TiB/day)","PROJECTED DAYS TO FULL","NODES","STATUS"],rows,"No enabled clusters are registered.")+notes;
 }
 async function renderBucketUsageReport(){
   const d=await api("/api/analytics/bucket-usage-report"),allItems=d.items||[],filters=state.bucketUsageFilters;
