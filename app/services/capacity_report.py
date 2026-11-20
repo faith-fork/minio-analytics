@@ -4,7 +4,8 @@ from app.database.database import transaction
 
 DATA_PROTECTION_FACTOR = 1.33
 RISK_FACTOR = 0.85
-EFFECTIVE_FACTOR = 0.993
+# Planning allowance: reserve 1% of RAW capacity for filesystem overhead.
+EFFECTIVE_FACTOR = 0.99
 INSTALLED_CAPACITY_FACTOR = EFFECTIVE_FACTOR * (RISK_FACTOR / DATA_PROTECTION_FACTOR)
 
 
