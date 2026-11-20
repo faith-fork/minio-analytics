@@ -99,6 +99,27 @@ The collector makes at most two attempts per cluster (initial attempt plus one r
 
 The default timestamp is intended for manual validation. The production systemd timer must explicitly calculate and pass the intended midnight-IST snapshot timestamp; do not use the timer's execution time as the snapshot time.
 
+## Prometheus connection configuration migration
+
+Prometheus connection metadata can be imported from the existing location YAML into SQLite without changing the daily collector's configuration source.
+
+Preview the import first:
+
+```bash
+source .venv/bin/activate
+python -m scripts.import_prometheus_config --config config/locations.yaml
+```
+
+Apply the import only after reviewing the preview:
+
+```bash
+python -m scripts.import_prometheus_config --config config/locations.yaml --apply
+```
+
+The import is idempotent and preserves existing location and cluster IDs. It stores each location's Prometheus endpoint and associates its clusters with the discovered identity label/value. Existing YAML remains authoritative for collection in this increment; the database records are staged for the subsequent, separately validated collector cutover. No live endpoint, credential, or populated configuration file should be committed.
+
+SQLite schema version 7 adds `prometheus_connections` and `cluster_prometheus_bindings`. TLS verification is enabled by default for imported endpoints. Use `--no-verify-tls` only for a deliberately configured lab endpoint with a certificate that cannot be validated.
+
 ## Historical Prometheus backfill
 
 Prometheus history can be imported into SQLite using the dedicated backfill command. The default imports the previous 60 completed IST dates (ending yesterday), oldest first:
