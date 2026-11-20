@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
 from app.collectors.prometheus import MetricSample, PrometheusError
 from app.collectors.prometheus_discovery import (
@@ -115,7 +115,7 @@ def test_discovery_reports_partial_metric_query_errors():
 
 def test_discovery_endpoint_requires_admin_and_is_read_only(client, admin_client, viewer_client, monkeypatch):
     from app.api import clusters as cluster_api
-    from app.collectors.prometheus_discovery import IDENTIFICATION_METRICS
+    from app.main import app
 
     def fake_discovery(base_url):
         assert base_url == "http://prometheus.internal:9090"
@@ -131,9 +131,10 @@ def test_discovery_endpoint_requires_admin_and_is_read_only(client, admin_client
         }
 
     monkeypatch.setattr(cluster_api, "discover_minio_clusters", fake_discovery)
-    assert client.post("/api/clusters/discover", json={
-        "hostname": "prometheus.internal"
-    }).status_code == 401
+    with TestClient(app, base_url="https://testserver") as anonymous_client:
+        assert anonymous_client.post("/api/clusters/discover", json={
+            "hostname": "prometheus.internal"
+        }).status_code == 401
     assert viewer_client.post("/api/clusters/discover", json={
         "hostname": "prometheus.internal"
     }).status_code == 403
