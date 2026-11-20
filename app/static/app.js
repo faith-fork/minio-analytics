@@ -125,7 +125,7 @@ async function renderCapacityReport(){
       '<td>'+esc(coverage)+'</td></tr>';
   });
   const formulas='<div class="report-footnotes"><strong>Calculation formulas</strong><ul>'+
-    '<li>Installed Capacity = RAW total capacity from the latest cluster snapshot.</li>'+
+    '<li>Installed Capacity = RAW total capacity from the latest cluster snapshot × 0.993 × (RF 0.85 ÷ DP 1.33).</li>'+
     '<li>Usable Capacity = usable total capacity after erasure-coding / storage protection.</li>'+
     '<li>Provisioned = sum of quota bytes across all active buckets; shown only when every active bucket has quota data.</li>'+
     '<li>Used Usable = Usable Capacity − Usable Free.</li>'+
@@ -135,8 +135,9 @@ async function renderCapacityReport(){
     '<li>Avg Used % = arithmetic average of the available per-cluster Usage % values; unavailable values are excluded.</li>'+
     '</ul><p>Usage % colour: green below 70%; amber from 70% to below 80%; red at 80% and above.</p><p>All capacity values are displayed in TiB. N/A (—) indicates a missing snapshot or incomplete metric coverage; it is never treated as zero. Cluster capacity uses the latest cluster snapshot, while bucket totals use the latest bucket snapshot for that cluster.</p></div>';
   const generatedAt=new Date().toLocaleString("en-IN",{timeZone:"Asia/Kolkata",day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+  const dataAsOf=d.data_as_of?new Date(d.data_as_of).toLocaleString("en-IN",{timeZone:"Asia/Kolkata",day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}):"Unavailable — snapshot missing for one or more clusters";
   const reportFactors='<span class="report-factor-meta" title="Data Protection · Risk Factor · Effective">DP = 1.33&nbsp;&nbsp; RF = 0.85&nbsp;&nbsp; Eff = 0.993</span>';
-  $("#content").innerHTML=pageHead("Consolidated Provisioned Report","Fleet-wide installed, usable and provisioned capacity from the latest stored SQLite snapshots. Generated on "+esc(generatedAt)+" IST.",reportFactors+'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
+  $("#content").innerHTML=pageHead("Consolidated Provisioned Report","Fleet-wide installed, usable and provisioned capacity from the latest stored SQLite snapshots. Data as of "+esc(dataAsOf)+" IST. Generated on "+esc(generatedAt)+" IST.",reportFactors+'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
     '<div class="metric-grid capacity-report-grid">'+cards+'</div>'+
     table("Capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · latest available cluster and bucket snapshots",["CLUSTER / LOCATION","INSTALLED","USABLE","PROVISIONED","USED USABLE","USED BKT","USABLE FREE","USAGE %","PROV %","SNAPSHOT DATES","BUCKET COVERAGE"],rows,"No enabled clusters are registered.")+
     formulas;
