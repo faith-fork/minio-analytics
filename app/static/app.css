@@ -27,3 +27,11 @@
 .histogram-chart-wrap{height:320px;min-height:260px}
 .histogram-summary{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border,#e5eaf0);color:var(--muted,#718096);font-size:11px}
 .histogram-summary strong{font-size:18px;color:var(--text,#172033);font-weight:700}
+
+/* Object-size distribution graph/table switch */
+.histogram-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin:0 0 10px;color:var(--muted);font-size:11px}
+.histogram-toolbar .tenant-chart-controls{margin:0}
+.histogram-table{white-space:normal}
+.histogram-table th,.histogram-table td{padding:12px 16px}
+.histogram-table .histogram-number{text-align:right;font-variant-numeric:tabular-nums}
+.histogram-table tbody tr:hover{background:#f7fbfa}
