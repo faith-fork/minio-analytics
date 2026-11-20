@@ -108,6 +108,22 @@ def get_consolidated_capacity_report() -> dict:
         ).fetchall()
 
     items = [dict(row) for row in rows]
+    for item in items:
+        installed = item["installed_capacity_bytes"]
+        used_usable = item["used_cap_bytes"]
+        provisioned = item["provisioned_bytes"]
+        item["usage_pct"] = (
+            used_usable / installed * 100
+            if installed is not None and installed > 0 and used_usable is not None
+            else None
+        )
+        item["provisioned_pct"] = (
+            provisioned / installed * 100
+            if installed is not None and installed > 0 and provisioned is not None
+            else None
+        )
+    usage_values = [item["usage_pct"] for item in items if item["usage_pct"] is not None]
+    avg_used_pct = sum(usage_values) / len(usage_values) if usage_values else None
     metric_fields = (
         "installed_capacity_bytes",
         "cap_capacity_bytes",
@@ -129,6 +145,7 @@ def get_consolidated_capacity_report() -> dict:
     return {
         "generated_from": "sqlite",
         "cluster_count": cluster_count,
+        "avg_used_pct": avg_used_pct,
         "totals_bytes": totals,
         "items": items,
     }
