@@ -34,7 +34,7 @@ function objectSizeHistogram(data,title){
   return panel(title,"Latest snapshot · "+dateLabel(data.snapshot_date)+" · Object count by object-size range",'<div class="chart-wrap histogram-chart-wrap"><canvas id="object-size-histogram"></canvas></div><div class="histogram-summary"><strong>'+(data.total_objects==null?"—":fmt(data.total_objects,0))+'</strong><span>objects represented in histogram</span><span>'+data.buckets_available+'/'+data.buckets_expected+' buckets with distribution data</span></div>'+note);
 }
 function drawObjectSizeHistogram(data){
-  if(!data||data.status!=="available"||!data.distribution?.length)return;
+  if(!data||!["available","partial"].includes(data.status)||!data.distribution?.length)return;
   const canvas=$("#object-size-histogram");if(!canvas||!window.Chart)return;
   const rows=[...data.distribution].sort((a,b)=>a.object_count-b.object_count);
   const instance=new Chart(canvas,{type:"bar",data:{labels:rows.map(x=>histogramRangeLabel(x.range)),datasets:[{label:"Objects",data:rows.map(x=>x.object_count),backgroundColor:"#13a58b",borderRadius:4,barThickness:"flex",maxBarThickness:24}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{afterLabel:ctx=>{const x=rows[ctx.dataIndex];return x.percentage==null?"":x.percentage.toFixed(2)+"% of objects";}}}},scales:{x:{beginAtZero:true,grid:{color:"#edf1f5"},ticks:{font:{size:10},callback:v=>new Intl.NumberFormat("en-IN",{notation:"compact"}).format(v)}},y:{grid:{display:false},ticks:{font:{size:10},color:"#64748b"}}}}});
