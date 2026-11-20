@@ -24,6 +24,22 @@ function panel(title,subtitle,body,tag=""){return `<section class="panel"><div c
 function table(title,subtitle,headers,rows,empty="No records found."){return `<section class="table-panel"><div class="table-heading"><div><h3>${title}</h3><p>${subtitle||""}</p></div></div><div class="table-scroll"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.length?rows.join(""):`<tr><td colspan="${headers.length}" class="empty-state">${empty}</td></tr>`}</tbody></table></div></section>`;}
 function chart(id,labels,sets,type="line",yMin=null){if(!window.Chart)return;const canvas=$("#"+id);if(!canvas)return;const instance=new Chart(canvas,{type,data:{labels,datasets:sets.map(s=>({label:s.label,data:s.data,borderColor:s.color,backgroundColor:s.fill||s.color+"18",borderWidth:2,borderDash:s.dash?[7,5]:[],pointRadius:3,tension:.32,fill:!!s.fill}))},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{position:"bottom",labels:{usePointStyle:true,boxWidth:7,font:{size:10}}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:"#94a0af"}},y:{...(yMin===null?{}:{min:yMin}),grid:{color:"#edf1f5"},ticks:{font:{size:9},color:"#94a0af"}}}}});state.charts.push(instance);}
 function clearCharts(){state.charts.forEach(c=>c.destroy());state.charts=[];}
+function histogramRangeLabel(value){
+  return String(value||"").replace(/_/g," ").replace(/LESS THAN/gi,"< ").replace(/GREATER THAN/gi,"> ").replace(/BETWEEN/gi,"").replace(/AND/gi,"–").replace(/\\s+/g," ").trim();
+}
+function objectSizeHistogram(data,title){
+  if(!data||data.status==="unavailable"||!data.distribution?.length)
+    return panel(title,"Object-size distribution from the latest stored snapshot",'<div class="empty-state"><strong>Object-size distribution unavailable</strong><p>The MinIO size-distribution metric is missing for this snapshot.</p></div>');
+  const note=data.status==="partial"?'<div class="chart-note"><strong>Partial histogram:</strong> '+data.buckets_available+' of '+data.buckets_expected+' buckets reported a distribution. Totals and percentages are withheld to avoid under-reporting.</div>':"";
+  return panel(title,"Latest snapshot · "+dateLabel(data.snapshot_date)+" · Object count by object-size range",'<div class="chart-wrap histogram-chart-wrap"><canvas id="object-size-histogram"></canvas></div><div class="histogram-summary"><strong>'+(data.total_objects==null?"—":fmt(data.total_objects,0))+'</strong><span>objects represented in histogram</span><span>'+data.buckets_available+'/'+data.buckets_expected+' buckets with distribution data</span></div>'+note);
+}
+function drawObjectSizeHistogram(data){
+  if(!data||data.status!=="available"||!data.distribution?.length)return;
+  const canvas=$("#object-size-histogram");if(!canvas||!window.Chart)return;
+  const rows=[...data.distribution].sort((a,b)=>a.object_count-b.object_count);
+  const instance=new Chart(canvas,{type:"bar",data:{labels:rows.map(x=>histogramRangeLabel(x.range)),datasets:[{label:"Objects",data:rows.map(x=>x.object_count),backgroundColor:"#13a58b",borderRadius:4,barThickness:"flex",maxBarThickness:24}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{afterLabel:ctx=>{const x=rows[ctx.dataIndex];return x.percentage==null?"":x.percentage.toFixed(2)+"% of objects";}}}},scales:{x:{beginAtZero:true,grid:{color:"#edf1f5"},ticks:{font:{size:10},callback:v=>new Intl.NumberFormat("en-IN",{notation:"compact"}).format(v)}},y:{grid:{display:false},ticks:{font:{size:10},color:"#64748b"}}}}});
+  state.charts.push(instance);
+}
 function setView(view){state.view=view;$$(".nav-link").forEach(b=>b.classList.toggle("active",b.dataset.view===view));$("#page-breadcrumb").textContent=view.replace("-"," ").toUpperCase();render().catch(e=>toast(e.message,true));}
 async function loadOverview(){state.overview=await api("/api/analytics/overview");state.clusters=(await api("/api/analytics/clusters")).items;}
 async function render(){
@@ -85,10 +101,10 @@ function trendQuery(days,startDate,endDate,extra="") {
 }
 async function showCluster(id,days=90,startDate=null,endDate=null){
   state.snapshotClusterId=id;state.snapshotRange={days,startDate,endDate};
-  const d=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"?"+trendQuery(days,startDate,endDate)),x=d.latest||{},series=d.series||[];
+  const [d,hist]=await Promise.all([api("/api/analytics/clusters/"+encodeURIComponent(id)+"?"+trendQuery(days,startDate,endDate)),api("/api/analytics/object-size-distribution/cluster/"+encodeURIComponent(id))]),x=d.latest||{},series=d.series||[];
   clearCharts();$("#content").innerHTML=pageHead(esc(d.cluster.name),"Cluster · "+esc(d.cluster.location_name)+" · "+esc(id),'<button class="subtle-button" data-view="clusters">← All clusters</button>')+
     `<div class="detail-grid"><div class="detail-card"><small>RAW CAPACITY</small><strong>${bytes(x.raw_total_bytes)}</strong></div><div class="detail-card"><small>RAW FREE</small><strong>${bytes(x.raw_free_bytes)}</strong></div><div class="detail-card"><small>PROJECTED DAYS TO FULL</small><strong>${x.days_to_full==null||x.days_to_full<=0?"N/A":fmt(x.days_to_full,0)+" days"}</strong></div></div>`+
-    `<div class="panel-grid">${panel("Capacity trend","Daily raw used, free and total capacity",rangeControl(days,"cluster",id)+'<div class="chart-wrap"><canvas id="cluster-chart"></canvas></div>',days+" DAYS")}${panel("Bucket quota trend","Sum of bucket quotas when all active buckets have metrics",'<div class="chart-wrap"><canvas id="cluster-quota-chart"></canvas></div>')}${panel("Object trend","Total objects across active buckets when metrics are complete",'<div class="chart-wrap"><canvas id="cluster-object-chart"></canvas></div>')}${panel("Growth trend","30-day estimated growth rate · GiB/day",'<div class="chart-wrap"><canvas id="cluster-growth-chart"></canvas></div>')}${panel("Days to full trend","Projection from the trailing 30-day capacity trend",'<div class="chart-wrap"><canvas id="cluster-days-full-chart"></canvas></div>')}${panel("Cluster health","Latest node availability",`<div class="capacity-list"><div class="capacity-row"><span>Online nodes</span><strong>${x.nodes_online??"—"}</strong></div><div class="capacity-row"><span>Offline nodes</span><strong>${x.nodes_offline??"—"}</strong></div><div class="capacity-row"><span>30-day estimated growth</span><strong>${x.growth_bytes_per_day==null?"—":fmt(x.growth_bytes_per_day/1024**3)+" GiB/day"}</strong></div><div class="capacity-row"><span>Snapshot date</span><strong>${dateLabel(x.snapshot_date)}</strong></div><div class="capacity-row"><span>Metrics</span><strong>${pill(!!x.metrics_available)}</strong></div></div>`,"LATEST SNAPSHOT")}</div>`+
+    `<div class="panel-grid">${panel("Capacity trend","Daily raw used, free and total capacity",rangeControl(days,"cluster",id)+'<div class="chart-wrap"><canvas id="cluster-chart"></canvas></div>',days+" DAYS")}${panel("Bucket quota trend","Sum of bucket quotas when all active buckets have metrics",'<div class="chart-wrap"><canvas id="cluster-quota-chart"></canvas></div>')}${panel("Object trend","Total objects across active buckets when metrics are complete",'<div class="chart-wrap"><canvas id="cluster-object-chart"></canvas></div>')+objectSizeHistogram(hist,"Cluster object size distribution")}${panel("Growth trend","30-day estimated growth rate · GiB/day",'<div class="chart-wrap"><canvas id="cluster-growth-chart"></canvas></div>')}${panel("Days to full trend","Projection from the trailing 30-day capacity trend",'<div class="chart-wrap"><canvas id="cluster-days-full-chart"></canvas></div>')}${panel("Cluster health","Latest node availability",`<div class="capacity-list"><div class="capacity-row"><span>Online nodes</span><strong>${x.nodes_online??"—"}</strong></div><div class="capacity-row"><span>Offline nodes</span><strong>${x.nodes_offline??"—"}</strong></div><div class="capacity-row"><span>30-day estimated growth</span><strong>${x.growth_bytes_per_day==null?"—":fmt(x.growth_bytes_per_day/1024**3)+" GiB/day"}</strong></div><div class="capacity-row"><span>Snapshot date</span><strong>${dateLabel(x.snapshot_date)}</strong></div><div class="capacity-row"><span>Metrics</span><strong>${pill(!!x.metrics_available)}</strong></div></div>`,"LATEST SNAPSHOT")}</div>`+
     `<div class="snapshot-link-panel"><div><strong>Cluster health and topology</strong><p>Inspect node resources, individual drives, storage pools and erasure-set quorum.</p></div><button class="primary-small" data-action="open-cluster-topology">View cluster health →</button></div>`+
     `<div class="snapshot-link-panel"><div><strong>Daily snapshots</strong><p>Browse the complete daily history and collection status for this cluster.</p></div><button class="primary-small" data-action="open-cluster-snapshots">View daily snapshots →</button></div>`;
   const trendLabels=series.map(r=>dateLabel(r.snapshot_date));
@@ -96,7 +112,7 @@ async function showCluster(id,days=90,startDate=null,endDate=null){
   chart("cluster-growth-chart",trendLabels,[{label:"Estimated growth GiB/day",data:series.map(r=>r.growth_bytes_per_day==null?null:r.growth_bytes_per_day/1024**3),color:"#d9922e",fill:true}]);
   chart("cluster-days-full-chart",trendLabels,[{label:"Projected days to full",data:series.map(r=>r.days_to_full==null||r.days_to_full<=0?null:r.days_to_full),color:"#4779d8"}]);
   chart("cluster-quota-chart",series.map(r=>dateLabel(r.snapshot_date)),[{label:"Bucket quota TiB",data:series.map(r=>r.bucket_quota_bytes==null?null:r.bucket_quota_bytes/1024**4),color:"#d9922e"}]);
-  chart("cluster-object-chart",series.map(r=>dateLabel(r.snapshot_date)),[{label:"Objects",data:series.map(r=>r.bucket_object_count),color:"#4779d8",fill:true}]);
+  chart("cluster-object-chart",series.map(r=>dateLabel(r.snapshot_date)),[{label:"Objects",data:series.map(r=>r.bucket_object_count),color:"#4779d8",fill:true}]);drawObjectSizeHistogram(hist);
 }
 
 
@@ -166,7 +182,7 @@ async function renderTenants(){
 async function showTenant(id,attribution="current",days=90,startDate=null,endDate=null){
   state.snapshotContext={type:"tenant",id,attribution,days,startDate,endDate};
   state.tenantCapacityScale=state.tenantCapacityScale||"zero";
-  const d=await api("/api/analytics/tenants/"+id+"?"+trendQuery(days,startDate,endDate,"attribution="+encodeURIComponent(attribution)));clearCharts();
+  const [d,hist]=await Promise.all([api("/api/analytics/tenants/"+id+"?"+trendQuery(days,startDate,endDate,"attribution="+encodeURIComponent(attribution))),api("/api/analytics/object-size-distribution/tenant/"+id+"?attribution="+encodeURIComponent(attribution))]);clearCharts();
   const current=attribution==="current";
   const subtitle=current
     ?"Historical bucket usage attributed using current tenant ownership."
@@ -179,14 +195,14 @@ async function showTenant(id,attribution="current",days=90,startDate=null,endDat
   const charts=noHistoricalAttribution
     ? panel("No historical attribution available","No bucket snapshots were attributed to this tenant during the selected period.",'<div class="empty-state"><strong>No historical ownership records found</strong><p>Bucket ownership was assigned after the relevant daily snapshots. Historical reporting will populate as new daily snapshots are collected under this tenant\'s ownership.</p><p>To view the historical usage of buckets assigned to this tenant today, switch to <strong>Current ownership</strong>.</p></div>')
     : panel("Tenant capacity and quota trend",current?"Daily usage and summed bucket quotas for currently assigned buckets · GiB":"Daily usage and quotas based on historical snapshot attribution · GiB",capacityControls+'<div class="chart-wrap"><canvas id="tenant-chart"></canvas></div>'+(hasQuota?'':'<div class="chart-note"><span class="chart-note-icon">ⓘ</span><strong>Quota not configured for the buckets attributed to this tenant.</strong></div>'))+
-      panel("Tenant object trend","Daily object count across attributed buckets",'<div class="chart-wrap"><canvas id="tenant-object-chart"></canvas></div>');
+      panel("Tenant object trend","Daily object count across attributed buckets",'<div class="chart-wrap"><canvas id="tenant-object-chart"></canvas></div>')+objectSizeHistogram(hist,"Tenant object size distribution");
   $("#content").innerHTML=pageHead(esc(d.tenant.name),subtitle,actions)+
     `${rangeControl(days,"tenant",id,attribution)}<div class="detail-grid"><div class="detail-card"><small>DESCRIPTION</small><strong style="font-size:14px">${esc(d.tenant.description||"—")}</strong></div><div class="detail-card"><small>STATUS</small><strong style="font-size:14px">${d.tenant.is_active?"Active":"Inactive"}</strong></div><div class="detail-card"><small>HISTORY WINDOW</small><strong>${days} days</strong></div></div>`+
     charts+
     `<div class="snapshot-link-panel"><div><strong>Daily snapshots</strong><p>Browse daily tenant usage, quota, object counts and metric availability.</p></div><button class="primary-small" data-action="open-tenant-snapshots">View daily snapshots →</button></div>`;
   if(!noHistoricalAttribution){
     chart("tenant-chart",d.series.map(r=>dateLabel(r.snapshot_date)),[{label:"Used GiB",data:d.series.map(r=>r.used_bytes==null?null:r.used_bytes/1024**3),color:"#13a58b",fill:true},...(hasQuota?[{label:"Quota GiB",data:d.series.map(r=>r.quota_bytes==null?null:r.quota_bytes/1024**3),color:"#d9922e"}]:[])],"line",state.tenantCapacityScale==="zero"?0:undefined);
-    chart("tenant-object-chart",d.series.map(r=>dateLabel(r.snapshot_date)),[{label:"Objects",data:d.series.map(r=>r.object_count),color:"#4779d8",fill:true}]);
+    chart("tenant-object-chart",d.series.map(r=>dateLabel(r.snapshot_date)),[{label:"Objects",data:d.series.map(r=>r.object_count),color:"#4779d8",fill:true}]);drawObjectSizeHistogram(hist);
   }
 }
 async function showTenantSnapshots(id,attribution="current",days=90,startDate=null,endDate=null){
@@ -212,15 +228,15 @@ async function renderBuckets(){
 }
 async function showBucket(id,days=90,startDate=null,endDate=null){
   state.snapshotContext={type:"bucket",id,attribution:"current",days,startDate,endDate};
-  const [d,h]=await Promise.all([api("/api/analytics/buckets/"+id+"?"+trendQuery(days,startDate,endDate)),api("/api/buckets/"+id+"/history")]);const series=d.series||[],latest=series.at(-1)||{};clearCharts();
+  const [d,h,hist]=await Promise.all([api("/api/analytics/buckets/"+id+"?"+trendQuery(days,startDate,endDate)),api("/api/buckets/"+id+"/history"),api("/api/analytics/object-size-distribution/bucket/"+id)]);const series=d.series||[],latest=series.at(-1)||{};clearCharts();
   $("#content").innerHTML=pageHead(esc(d.bucket.bucket_name),"Cluster · "+esc(d.bucket.cluster_name)+" · Current tenant: "+esc(d.bucket.current_tenant_name||"Unassigned"),'<button class="subtle-button" data-view="buckets">← All buckets</button>')+
     `<div class="detail-grid"><div class="detail-card"><small>USED</small><strong>${bytes(latest.used_bytes)}</strong></div><div class="detail-card"><small>QUOTA</small><strong>${bytes(latest.quota_bytes)}</strong></div><div class="detail-card"><small>OBJECTS</small><strong>${fmt(latest.object_count,0)}</strong></div></div>`+
     panel("Bucket usage and quota trend","Daily usage and quota in TiB",rangeControl(days,"bucket",id)+'<div class="chart-wrap"><canvas id="bucket-chart"></canvas></div>')+
-    panel("Bucket object trend","Daily object count",'<div class="chart-wrap"><canvas id="bucket-object-chart"></canvas></div>')+
+    panel("Bucket object trend","Daily object count",'<div class="chart-wrap"><canvas id="bucket-object-chart"></canvas></div>')+objectSizeHistogram(hist,"Bucket object size distribution")+
     `<div class="snapshot-link-panel"><div><strong>Daily snapshots</strong><p>Browse daily usage, quota, object counts and snapshot-time tenant attribution.</p></div><button class="primary-small" data-action="open-bucket-snapshots">View daily snapshots →</button></div>`+
     table("Assignment history","Administrative ownership changes",["CHANGED AT","TENANT","CHANGED BY","NOTE"],h.items.map(r=>`<tr><td>${esc(r.changed_at)}</td><td>${esc(r.tenant_name||"Unassigned")}</td><td>${esc(r.changed_by)}</td><td>${esc(r.note||"—")}</td></tr>`));
   chart("bucket-chart",series.map(r=>dateLabel(r.snapshot_date)),[{label:"Used TiB",data:series.map(r=>r.used_bytes==null?null:r.used_bytes/1024**4),color:"#13a58b",fill:true},{label:"Quota TiB",data:series.map(r=>r.quota_bytes==null?null:r.quota_bytes/1024**4),color:"#d9922e"}]);
-  chart("bucket-object-chart",series.map(r=>dateLabel(r.snapshot_date)),[{label:"Objects",data:series.map(r=>r.object_count),color:"#4779d8",fill:true}]);
+  chart("bucket-object-chart",series.map(r=>dateLabel(r.snapshot_date)),[{label:"Objects",data:series.map(r=>r.object_count),color:"#4779d8",fill:true}]);drawObjectSizeHistogram(hist);
 }
 async function showBucketSnapshots(id,days=90,startDate=null,endDate=null){
   state.snapshotContext={type:"bucket",id,attribution:"current",days,startDate,endDate};
