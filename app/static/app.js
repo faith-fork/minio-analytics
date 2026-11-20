@@ -113,9 +113,9 @@ async function renderCapacityReport(){
   const cards=[
     metric("INSTALLED CAPACITY",bytes(t.installed_capacity_bytes),"RAW total capacity","▤"),
     metric("PROVISIONED",bytes(t.provisioned_bytes),"Sum of active bucket quotas","◫"),
-    metric("USED USABLE (TiB)",bytes(t.used_cap_bytes),"Usable total minus usable free","◒"),
-    metric("USED BKT (TiB)",bytes(t.used_bucket_bytes),"Sum of active bucket usage","▤"),
-    metric("USABLE FREE (TiB)",bytes(t.free_capacity_bytes),"Usable free capacity","◇"),
+    metric("USED USABLE",bytes(t.used_cap_bytes),"Usable total minus usable free","◒"),
+    metric("USED BKT",bytes(t.used_bucket_bytes),"Sum of active bucket usage","▤"),
+    metric("USABLE FREE",bytes(t.free_capacity_bytes),"Usable free capacity","◇"),
     metric("AVG USED %",d.avg_used_pct==null?"—":fmt(d.avg_used_pct,1)+"%","Average of cluster Usage %","◔")
   ].join("");
   const rows=(d.items||[]).map(x=>{
@@ -263,7 +263,7 @@ async function showCluster(id,days=90,startDate=null,endDate=null){
   const healthBody='<div class="capacity-list"><div class="capacity-row"><span>Online nodes</span><strong>'+(x.nodes_online??"—")+'</strong></div><div class="capacity-row"><span>Offline nodes</span><strong>'+(x.nodes_offline??"—")+'</strong></div><div class="capacity-row"><span>30-day estimated growth</span><strong>'+(x.growth_bytes_per_day==null?"—":fmt(x.growth_bytes_per_day/1024**3)+" GiB/day")+'</strong></div><div class="capacity-row"><span>Snapshot date</span><strong>'+dateLabel(x.snapshot_date)+'</strong></div><div class="capacity-row"><span>Metrics</span><strong>'+pill(!!x.metrics_available)+'</strong></div></div>';
   const topologyBody='<div class="cluster-action-card"><div class="cluster-action-icon">⌁</div><div><strong>Infrastructure topology</strong><p>Inspect node resources, individual drives, storage pools and erasure-set quorum.</p></div><button class="primary-small" data-action="open-cluster-topology">View cluster health →</button></div>';
   $("#content").innerHTML=pageHead(esc(d.cluster.name),"Cluster · "+esc(d.cluster.location_name)+" · "+esc(id),'<button class="subtle-button" data-view="clusters">← All clusters</button>')+
-    `<div class="detail-grid"><div class="detail-card"><small>RAW CAPACITY</small><strong>${tibValue(x.raw_total_bytes)}</strong></div><div class="detail-card"><small>RAW FREE</small><strong>${tibValue(x.raw_free_bytes)}</strong></div><div class="detail-card"><small>PROJECTED DAYS TO FULL</small><strong>${x.days_to_full==null||x.days_to_full<=0?"N/A":fmt(x.days_to_full,0)+" days"}</strong></div></div>`+
+    `<div class="detail-grid"><div class="detail-card"><small>RAW CAPACITY</small><strong>${bytes(x.raw_total_bytes)}</strong></div><div class="detail-card"><small>RAW FREE</small><strong>${bytes(x.raw_free_bytes)}</strong></div><div class="detail-card"><small>PROJECTED DAYS TO FULL</small><strong>${x.days_to_full==null||x.days_to_full<=0?"N/A":fmt(x.days_to_full,0)+" days"}</strong></div></div>`+
     section("Infrastructure status","See cluster availability first, then drill into nodes, drives, pools and erasure sets.",'<div class="panel-grid cluster-health-grid">'+
       panel("Cluster health","Latest infrastructure snapshot",healthBody,"LATEST SNAPSHOT")+
       '<section class="panel cluster-action-panel">'+topologyBody+'</section></div>')+
