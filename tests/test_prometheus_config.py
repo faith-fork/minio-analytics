@@ -71,8 +71,8 @@ def test_import_yaml_configuration_preserves_cluster_ids_and_binds_endpoints(
     configured = list_prometheus_configuration()
 
     assert result == {
-        "locations_synced": 2,
-        "clusters_synced": 3,
+        "locations_imported": 2,
+        "clusters_imported": 3,
         "connections_imported": 2,
         "cluster_bindings_imported": 3,
     }
