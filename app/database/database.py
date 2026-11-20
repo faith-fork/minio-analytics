@@ -67,6 +67,7 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
         ON cluster_prometheus_bindings(connection_id);
     """)
     c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (7)")
+    c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (8)")
 def initialize_database() -> None:
     c=get_connection()
     try:

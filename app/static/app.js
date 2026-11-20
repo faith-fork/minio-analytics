@@ -125,7 +125,7 @@ async function renderCapacityReport(){
       '<td>'+esc(coverage)+'</td></tr>';
   });
   const formulas='<div class="report-footnotes"><strong>Calculation formulas</strong><ul>'+
-    '<li>Installed Capacity = RAW total capacity from the latest cluster snapshot × Eff × (RF ÷ DP). Current factors: Eff ${fmt(f.eff,3)}, RF ${fmt(f.rf,3)}, DP ${fmt(f.dp,3)}.</li>'+
+    '<li>Installed Capacity = RAW total capacity from the latest cluster snapshot × Eff × (RF ÷ DP). Current factors: Eff '+fmt(f.eff,3)+', RF '+fmt(f.rf,3)+', DP '+fmt(f.dp,3)+'.</li>'+
     '<li>Usable Capacity = usable total capacity after erasure-coding / storage protection.</li>'+
     '<li>Provisioned = sum of quota bytes across all active buckets; shown only when every active bucket has quota data.</li>'+
     '<li>Used Usable = Usable Capacity − Usable Free.</li>'+
