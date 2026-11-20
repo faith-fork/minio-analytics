@@ -101,7 +101,7 @@
 .health-history-panel{margin-top:20px}
 .health-history-filters{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;padding:15px 17px;border-bottom:1px solid var(--line);background:#fbfcfd}
 .health-history-filters label{display:flex;flex-direction:column;gap:6px;min-width:135px;color:var(--muted);font-size:9px;font-weight:700;letter-spacing:.55px}
-.health-history-filters input,.health-history-filters select{height:35px;min-width:135px;padding:0 9px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);font:500 11px inherit;letter-spacing:0}
+.health-history-filters input,.health-history-filters select{height:35px;min-width:135px;padding:0 9px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);font-family:inherit;font-size:11px;font-weight:500;letter-spacing:0}
 .health-history-filters label:nth-child(4){min-width:105px}
 .health-history-filters label:nth-child(4) select{min-width:105px}
 .health-filter-actions{display:flex;gap:7px;margin-left:auto}
