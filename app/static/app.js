@@ -1,6 +1,6 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
-const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, healthTrendFilters:{clusterId:"",startDate:"",endDate:""}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null} };
+const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null} };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
 const bytes = n => n == null ? "—" : (n/1024**4).toFixed(2)+" TiB";
 const pct = (used,total) => used == null || !total ? null : Math.max(0,Math.min(100,used/total*100));
@@ -309,17 +309,6 @@ async function renderHealth(){
   if(f.endDate)params.set("end_date",f.endDate);
   if(f.status)params.set("status",f.status);
   state.health=await api("/api/analytics/collection-health?"+params.toString());
-  const tf=state.healthTrendFilters;
-  const trendParams=new URLSearchParams();
-  if(tf.clusterId)trendParams.set("cluster_id",tf.clusterId);
-  if(tf.startDate)trendParams.set("start_date",tf.startDate);
-  if(tf.endDate)trendParams.set("end_date",tf.endDate);
-  let trends=await api("/api/analytics/collection-health/trends?"+trendParams.toString());
-  if(!tf.clusterId&&trends.clusters?.length){
-    tf.clusterId=trends.clusters[0].cluster_id;
-    trendParams.set("cluster_id",tf.clusterId);
-    trends=await api("/api/analytics/collection-health/trends?"+trendParams.toString());
-  }
   const h=state.health,s=h.schedule||{},jobs=s.jobs||{};
   const node=jobs.node_health||{},daily=jobs.daily_collection||{};
   const counts=h.status_counts||{},pg=h.pagination||{};
@@ -346,18 +335,6 @@ async function renderHealth(){
     return `<tr><td>${timestampLabel(r.started_at)}</td><td>${esc(r.location_name||"—")}</td><td>${esc(r.cluster_name||"—")}</td><td>${dateLabel(r.snapshot_date)}</td><td>${pill(r.status)}</td><td>${r.attempt}</td><td>${r.metrics_collected}</td><td>${issueMarkup}</td></tr>`;
   });
   const filterMarkup=`<section class="table-panel health-history-panel"><div class="table-heading"><div><h3>Recent daily executions</h3><p>${fmt(pg.total_items||0,0)} matching cluster-level runs · Filter by snapshot date and status</p></div></div><div class="health-history-filters"><label>FROM DATE<input id="health-start-date" type="date" value="${esc(f.startDate)}"></label><label>TO DATE<input id="health-end-date" type="date" value="${esc(f.endDate)}"></label><label>STATUS<select id="health-status"><option value="">All statuses</option><option value="success" ${f.status==="success"?"selected":""}>Success</option><option value="partial" ${f.status==="partial"?"selected":""}>Partial</option><option value="failed" ${f.status==="failed"?"selected":""}>Failed</option></select></label><label>ROWS PER PAGE<select id="health-page-size"><option value="10" ${f.pageSize===10?"selected":""}>10</option><option value="20" ${f.pageSize===20?"selected":""}>20</option><option value="50" ${f.pageSize===50?"selected":""}>50</option><option value="100" ${f.pageSize===100?"selected":""}>100</option></select></label><div class="health-filter-actions"><button class="primary-small" data-action="apply-health-filters">Apply filters</button><button class="subtle-button" data-action="reset-health-filters">Reset</button></div></div><div class="table-scroll"><table><thead><tr>${["STARTED AT","LOCATION","CLUSTER","SNAPSHOT DATE","STATUS","ATTEMPT","METRICS","ERROR DETAILS"].map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody>${runRows.length?runRows.join(""):`<tr><td colspan="8" class="empty-state">No collection runs match these filters.</td></tr>`}</tbody></table></div><div class="health-pagination"><span>Page ${pg.page||1} of ${pg.total_pages||1} · Showing ${runRows.length} of ${fmt(pg.total_items||0,0)}</span><div><button class="subtle-button" data-health-page="${Math.max(1,(pg.page||1)-1)}" ${!pg.has_previous?"disabled":""}>← Previous</button><button class="subtle-button" data-health-page="${(pg.page||1)+1}" ${!pg.has_next?"disabled":""}>Next →</button></div></div></section>`;
-  const trendRows=trends.samples||[];
-  const trendLabels=trendRows.map(x=>timestampLabel(x.snapshot_ts));
-  const trendChart=(id,title,subtitle,sets,suffix="%")=>trendRows.length?panel(title,subtitle,`<div class="chart-wrap health-trend-chart"><canvas id="${id}"></canvas></div>`):panel(title,subtitle,'<div class="chart-empty-state"><strong>No historical samples available</strong><p>There are no stored infrastructure samples in the selected date range.</p></div>');
-  const trendControls=`<section class="panel health-trends-panel"><div class="panel-header"><div><h3>Historical infrastructure trends</h3><p>Four-hour node and drive samples stored in SQLite · ${fmt(trends.sample_count||0,0)} samples</p></div></div><div class="health-trend-filters"><label>CLUSTER<select id="health-trend-cluster">${(trends.clusters||[]).map(x=>`<option value="${esc(x.cluster_id)}" ${tf.clusterId===x.cluster_id?"selected":""}>${esc(x.cluster_name)} · ${esc(x.location_name)}</option>`).join("")}</select></label><label>FROM DATE<input id="health-trend-start" type="date" value="${esc(tf.startDate)}"></label><label>TO DATE<input id="health-trend-end" type="date" value="${esc(tf.endDate)}"></label><button class="primary-small" data-action="apply-health-trends">Apply</button><button class="subtle-button" data-action="reset-health-trends">Last 30 days</button></div></section>`;
-  const trendPanels=[
-    trendChart("health-node-availability","Node Exporter availability","Percentage of nodes with Node Exporter reporting",null),
-    trendChart("health-minio-availability","MinIO scrape availability","Percentage of MinIO node scrape targets reporting",null),
-    trendChart("health-drive-availability","Drive availability","Online and offline drive counts across the cluster",null),
-    trendChart("health-drive-errors","Drive error counters","Cumulative availability, I/O and timeout error counters reported by drives",""),
-    trendChart("health-cpu-memory","CPU & memory utilization","Average CPU utilization and memory utilization across cluster nodes",null),
-    trendChart("health-filesystem","Filesystem utilization","Average utilization across monitored MinIO data filesystems",null)
-  ].join("");
   $("#content").innerHTML=pageHead("Collection health","Scheduler cadence, collection freshness and infrastructure telemetry status.",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
     `<div class="metric-grid">${metric("SUCCESSFUL DAILY RUNS",fmt(counts.success||0,0),"Persisted successful cluster runs","✓",true)}${metric("PARTIAL RUNS",fmt(counts.partial||0,0),"One or more metric families unavailable","◒")}${metric("FAILED RUNS",fmt(counts.failed||0,0),"Collector runs that failed","!")}${metric("RECENT EXECUTIONS",fmt(pg.total_items||0,0),"Matching runs in current filter","◷")}</div>`+
     '<div class="health-section-heading"><h2>Scheduler</h2><p>Settings are read from SQLite. The scheduler checks for due work every minute.</p></div>'+
@@ -368,24 +345,7 @@ async function renderHealth(){
     table("Infrastructure telemetry","Latest node-health snapshots",["CLUSTER / LOCATION","SNAPSHOT","STATUS","NODE EXPORTER UP","MINIO SCRAPE UP","DRIVES","AVAIL / I/O / TIMEOUT","FAMILY ERRORS"],nodeRows,"No node-health samples recorded.")+
     '<div class="health-section-heading"><h2>Historical infrastructure trends</h2><p>Explore the four-hour telemetry history for a selected cluster.</p></div>'+
     trendControls+trendPanels+filterMarkup;
-  if(trendRows.length){
-    chart("health-node-availability",trendLabels,[{label:"Node Exporter up",data:trendRows.map(x=>x.node_exporter_availability_pct),color:"#16a085"}],"line",0,"%");
-    chart("health-minio-availability",trendLabels,[{label:"MinIO scrape up",data:trendRows.map(x=>x.minio_scrape_availability_pct),color:"#4776c7"}],"line",0,"%");
-    chart("health-drive-availability",trendLabels,[
-      {label:"Drives online",data:trendRows.map(x=>x.drives_online),color:"#16a085"},
-      {label:"Drives offline",data:trendRows.map(x=>x.drives_offline),color:"#d9534f"}
-    ],"line",0,"");
-    chart("health-drive-errors",trendLabels,[
-      {label:"Availability errors (cumulative)",data:trendRows.map(x=>x.availability_errors),color:"#d99a35"},
-      {label:"I/O errors (cumulative)",data:trendRows.map(x=>x.io_errors),color:"#8b6ccf"},
-      {label:"Timeout errors (cumulative)",data:trendRows.map(x=>x.timeout_errors),color:"#64748b"}
-    ],"line",0,"");
-    chart("health-cpu-memory",trendLabels,[
-      {label:"CPU utilization",data:trendRows.map(x=>x.avg_cpu_pct),color:"#4776c7"},
-      {label:"Memory utilization",data:trendRows.map(x=>x.memory_used_pct),color:"#16a085"}
-    ],"line",0,"%");
-    chart("health-filesystem",trendLabels,[{label:"Filesystem used",data:trendRows.map(x=>x.filesystem_used_weighted_pct??x.filesystem_used_pct),color:"#d99a35"}],"line",0,"%");
-  }
+
 }
 
 function openModal(title,description,fields,onSubmit){
@@ -447,18 +407,6 @@ document.addEventListener("click",async e=>{
   const healthPage=e.target.closest("[data-health-page]");
   if(healthPage){
     state.healthFilters.page=Number(healthPage.dataset.healthPage)||1;
-    renderHealth().catch(err=>toast(err.message,true));
-    return;
-  }
-  if(action==="apply-health-trends"){
-    const start=$("#health-trend-start")?.value||"",end=$("#health-trend-end")?.value||"";
-    if(start&&end&&start>end){toast("Trend start date must be on or before end date.",true);return;}
-    state.healthTrendFilters={clusterId:$("#health-trend-cluster")?.value||"",startDate:start,endDate:end};
-    renderHealth().catch(err=>toast(err.message,true));
-    return;
-  }
-  if(action==="reset-health-trends"){
-    state.healthTrendFilters={clusterId:$("#health-trend-cluster")?.value||"",startDate:"",endDate:""};
     renderHealth().catch(err=>toast(err.message,true));
     return;
   }
