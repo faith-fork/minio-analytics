@@ -73,20 +73,25 @@ def discover_minio_clusters(
                 "Prometheus is reachable, but MinIO cluster discovery failed. " + detail
             )
 
-        # Prefer the canonical cluster label. Otherwise retain known alternatives.
-        label_priority = {name: index for index, name in enumerate(IDENTITY_LABELS)}
-        ordered = sorted(
-            discovered.items(),
-            key=lambda item: (label_priority[item[0][0]], item[0][1].casefold()),
+        # Select one identity dimension for the whole endpoint. Prefer the
+        # canonical cluster label; use site/environment only when it is absent.
+        selected_label = next(
+            (label for label in IDENTITY_LABELS
+             if any(key[0] == label for key in discovered)),
+            None,
         )
+        selected = [
+            (key, metrics) for key, metrics in discovered.items()
+            if key[0] == selected_label
+        ]
+        ordered = sorted(selected, key=lambda item: item[0][1].casefold())
         clusters = [
             {
                 "label_name": label,
                 "label_value": value,
                 "metrics_found": sorted(metrics),
-                "metric_samples": len(metrics),
             }
-            for (label, value), metrics in ordered
+            for ((label, value), metrics) in ordered
         ]
         label_names = sorted({item["label_name"] for item in clusters})
         return {
