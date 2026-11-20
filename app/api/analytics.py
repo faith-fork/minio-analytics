@@ -473,6 +473,157 @@ def bucket_analytics(
     return {"bucket": _dict(bucket), "days": days, "start_date": start, "end_date": end, "series": series}
 
 
+
+@router.get("/object-size-distribution/{scope}/{entity_id}")
+def object_size_distribution(
+    scope: str,
+    entity_id: str,
+    attribution: str = Query(default="current", pattern="^(current|historical)$"),
+    _: dict = Depends(get_current_user),
+) -> dict:
+    """Aggregate the latest stored MinIO object-size histogram for an entity."""
+    if scope not in {"bucket", "tenant", "cluster"}:
+        raise HTTPException(status_code=404, detail="Unknown distribution scope")
+
+    with transaction() as connection:
+        if scope == "bucket":
+            try:
+                bucket_id = int(entity_id)
+            except ValueError:
+                raise HTTPException(status_code=422, detail="Invalid bucket ID")
+            entity = connection.execute(
+                "SELECT id, bucket_name AS name FROM buckets WHERE id = ?",
+                (bucket_id,),
+            ).fetchone()
+            if entity is None:
+                raise HTTPException(status_code=404, detail="Bucket not found")
+            bucket_ids = [bucket_id]
+            latest = connection.execute(
+                "SELECT MAX(snapshot_date) FROM bucket_daily_metrics WHERE bucket_id = ?",
+                (bucket_id,),
+            ).fetchone()[0]
+        elif scope == "cluster":
+            entity = connection.execute(
+                "SELECT id, name FROM clusters WHERE id = ?", (entity_id,)
+            ).fetchone()
+            if entity is None:
+                raise HTTPException(status_code=404, detail="Cluster not found")
+            bucket_ids = [
+                row[0] for row in connection.execute(
+                    "SELECT id FROM buckets WHERE cluster_id = ? AND is_active = 1",
+                    (entity_id,),
+                )
+            ]
+            latest = connection.execute(
+                "SELECT MAX(snapshot_date) FROM bucket_daily_metrics WHERE cluster_id = ?",
+                (entity_id,),
+            ).fetchone()[0]
+        else:
+            try:
+                tenant_id = int(entity_id)
+            except ValueError:
+                raise HTTPException(status_code=422, detail="Invalid tenant ID")
+            entity = connection.execute(
+                "SELECT id, name FROM tenants WHERE id = ?", (tenant_id,)
+            ).fetchone()
+            if entity is None:
+                raise HTTPException(status_code=404, detail="Tenant not found")
+            if attribution == "current":
+                bucket_ids = [
+                    row[0] for row in connection.execute(
+                        "SELECT id FROM buckets WHERE tenant_id = ? AND is_active = 1",
+                        (tenant_id,),
+                    )
+                ]
+                latest = connection.execute(
+                    """SELECT MAX(m.snapshot_date)
+                       FROM bucket_daily_metrics m
+                       JOIN buckets b ON b.id = m.bucket_id
+                       WHERE b.tenant_id = ? AND b.is_active = 1""",
+                    (tenant_id,),
+                ).fetchone()[0]
+            else:
+                bucket_ids = [
+                    row[0] for row in connection.execute(
+                        """SELECT DISTINCT bucket_id FROM bucket_daily_metrics
+                           WHERE tenant_id_at_snapshot = ?""",
+                        (tenant_id,),
+                    )
+                ]
+                latest = connection.execute(
+                    """SELECT MAX(snapshot_date) FROM bucket_daily_metrics
+                       WHERE tenant_id_at_snapshot = ?""",
+                    (tenant_id,),
+                ).fetchone()[0]
+
+        if not bucket_ids or not latest:
+            return {
+                "scope": scope, "entity": _dict(entity), "attribution": attribution,
+                "snapshot_date": latest, "distribution": [], "total_objects": None,
+                "buckets_expected": len(bucket_ids), "buckets_available": 0,
+                "buckets_missing": len(bucket_ids), "status": "unavailable",
+            }
+
+        placeholders = ",".join("?" for _ in bucket_ids)
+        rows = connection.execute(
+            f"""SELECT bucket_id, object_size_distribution_json,
+                       metrics_available, object_count
+                FROM bucket_daily_metrics
+                WHERE snapshot_date = ? AND bucket_id IN ({placeholders})""",
+            [latest, *bucket_ids],
+        ).fetchall()
+
+    distributions = []
+    available_bucket_ids = set()
+    totals: dict[str, int] = {}
+    object_totals = []
+    for row in rows:
+        if not row["metrics_available"]:
+            continue
+        try:
+            item = json.loads(row["object_size_distribution_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            item = {}
+        if not isinstance(item, dict) or not item:
+            continue
+        available_bucket_ids.add(row["bucket_id"])
+        for range_name, count in item.items():
+            try:
+                value = int(count)
+            except (TypeError, ValueError):
+                continue
+            if value < 0:
+                continue
+            totals[range_name] = totals.get(range_name, 0) + value
+        if row["object_count"] is not None:
+            object_totals.append(int(row["object_count"]))
+
+    expected = len(bucket_ids)
+    available = len(available_bucket_ids)
+    complete = available == expected and bool(totals)
+    total = sum(totals.values()) if complete else None
+    distribution = [
+        {
+            "range": name,
+            "object_count": count,
+            "percentage": (count / total * 100) if total else None,
+        }
+        for name, count in sorted(totals.items(), key=lambda item: item[0])
+    ]
+    return {
+        "scope": scope,
+        "entity": _dict(entity),
+        "attribution": attribution,
+        "snapshot_date": latest,
+        "distribution": distribution,
+        "total_objects": total,
+        "buckets_expected": expected,
+        "buckets_available": available,
+        "buckets_missing": expected - available,
+        "status": "available" if complete else ("partial" if available else "unavailable"),
+    }
+
+
 @router.get("/collection-health")
 def collection_health(
     limit: int = Query(default=20, ge=1, le=200),
