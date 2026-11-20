@@ -21,3 +21,9 @@
 
 /* Match selected ownership mode buttons to the active chart-scale control */
 .heading-actions .subtle-button.active{background:var(--accent-soft,#e7f7f3);border-color:var(--accent,#13a58b);color:var(--accent,#087f6b);font-weight:700}
+
+
+/* Object-size histogram */
+.histogram-chart-wrap{height:320px;min-height:260px}
+.histogram-summary{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border,#e5eaf0);color:var(--muted,#718096);font-size:11px}
+.histogram-summary strong{font-size:18px;color:var(--text,#172033);font-weight:700}
