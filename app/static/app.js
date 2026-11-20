@@ -319,7 +319,7 @@ async function renderHealth(){
   const nodeRows=(h.node_health||[]).map(n=>{
     const c=n.counts||{},errors=n.family_errors||{};
     const down=(c.node_exporter_down||0)+(c.minio_scrape_down||0);
-    const status=Object.keys(errors).length||down>0?"partial":"success";
+    const status=Object.keys(errors).length||down>0||!c.node_count||!c.drive_count?"partial":"success";
     const errorText=Object.entries(errors).map(([k,v])=>k+": "+v).join("; ");
     return `<tr><td><span class="cell-strong">${esc(n.cluster_name)}</span><br><span class="cell-muted">${esc(n.location_name)}</span></td><td>${timestampLabel(n.snapshot_ts)}</td><td>${pill(status)}</td><td>${fmt(c.node_exporter_up,0)} / ${fmt(c.node_count,0)}</td><td>${fmt(c.minio_scrape_up,0)} / ${fmt(c.node_count,0)}</td><td>${fmt(c.drive_count,0)}</td><td>${fmt(c.availability_error_drives,0)} / ${fmt(c.io_error_drives,0)} / ${fmt(c.timeout_error_drives,0)}</td><td>${esc(errorText||"—")}</td></tr>`;
   });
