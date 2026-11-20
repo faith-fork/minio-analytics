@@ -172,20 +172,28 @@ async function renderRawCapacityReport(){
     const usedPct=x.raw_used_pct==null?"—":'<span class="status-pill '+(x.raw_used_pct>=80?"bad":x.raw_used_pct>=70?"warn":"")+'">'+fmt(x.raw_used_pct,1)+"%"+'</span>';
     const nodes=x.nodes_online==null||x.nodes_offline==null?"—":fmt(x.nodes_online,0)+" online / "+fmt(x.nodes_offline,0)+" offline";
     const status=x.metrics_available?'<span class="status-pill">Available</span>':'<span class="status-pill bad">Unavailable</span>';
+    const signedTiB=n=>n==null?"—":(n>=0?"+":"−")+bytes(Math.abs(n));
+    const growth=signedTiB(x.trend_growth_bytes_per_day);
+    const change=signedTiB(x.change_vs_yesterday_bytes);
+    const projection=x.projected_days_to_full==null?"N/A":fmt(x.projected_days_to_full,0);
     return '<tr><td><span class="cell-strong">'+esc(x.cluster_name)+'</span><br><span class="cell-muted">'+esc(x.location_name)+'</span></td>'+
       '<td>'+bytes(x.raw_total_bytes)+'</td><td>'+bytes(x.raw_used_bytes)+'</td><td>'+bytes(x.raw_free_bytes)+'</td>'+
-      '<td>'+usedPct+'</td><td>'+nodes+'</td><td>'+dateLabel(x.snapshot_date)+'</td><td>'+status+'</td></tr>';
+      '<td>'+usedPct+'</td><td>'+change+'</td><td>'+growth+(x.trend_sample_count!=null?' <span class="cell-muted">('+fmt(x.trend_sample_count,0)+' samples)</span>':'')+'</td><td>'+projection+'</td>'+
+      '<td>'+nodes+'</td><td>'+dateLabel(x.snapshot_date)+'</td><td>'+status+'</td></tr>';
   });
   const notes='<div class="report-footnotes"><strong>Calculation and coverage notes</strong><ul>'+
     '<li>Raw capacity and raw free values are taken from each enabled cluster’s latest stored cluster snapshot.</li>'+
-    '<li>Raw Used = Raw Capacity − Raw Free.</li>'+
+    '<li>Raw Used = Raw Capacity − Raw Free. The collector already applies the 0.993 raw-efficiency adjustment to stored raw capacity; it is not applied a second time in this report.</li>'+
+    '<li>Change vs Yesterday = latest 00:00 IST Used − previous day 00:00 IST Used. It is unavailable if either daily snapshot is missing.</li>'+
+    '<li>Trend Growth/Day = linear-regression slope of daily Used values over the latest 30 calendar days, using actual day offsets and available 00:00 IST snapshots. Negative growth is retained; fewer than two samples is unavailable.</li>'+
+    '<li>Projected Days to Full = current RAW Free ÷ positive Trend Growth/Day, rounded down to whole days. It is N/A for zero or negative growth, or insufficient history.</li>'+
     '<li>Fleet totals and Raw Used % are shown only when every enabled cluster has both raw capacity and raw free metrics. Missing values are never treated as zero.</li>'+
     '<li>Fleet Raw Used % = total Raw Used ÷ total Raw Capacity × 100; this is a capacity-weighted fleet percentage.</li>'+
     '<li>Cluster node counts are displayed as reported by the same cluster snapshot and are not used to calculate raw capacity.</li>'+
-    '</ul><p>All capacity values are displayed in TiB. A dash indicates missing snapshot data or incomplete metric coverage. Raw capacity follows the collector’s stored MinIO raw-capacity metric, including its configured collection adjustment.</p></div>';
+    '</ul><p>All capacity and growth values are displayed in TiB (growth in TiB/day). A dash indicates missing data. Historical calculations use the scheduled SQLite snapshots aligned to 00:00 IST.</p></div>';
   $("#content").innerHTML=pageHead("Consolidated RAW Capacity Report","Fleet-wide raw capacity, used and free storage from the latest stored cluster snapshots. Data as of "+esc(dataAsOf)+" IST. Generated on "+esc(generatedAt)+" IST.",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
     reportTabs("raw-capacity-report")+'<div class="metric-grid raw-capacity-grid">'+cards+'</div>'+
-    table("Raw capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · "+fmt(d.available_cluster_count,0)+" with complete raw metrics",["CLUSTER / LOCATION","RAW CAPACITY","RAW USED","RAW FREE","RAW USED %","NODES","SNAPSHOT DATE","STATUS"],rows,"No enabled clusters are registered.")+notes;
+    table("Raw capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · "+fmt(d.available_cluster_count,0)+" with complete raw metrics",["CLUSTER / LOCATION","RAW CAPACITY","RAW USED","RAW FREE","RAW USED %","CHANGE VS YESTERDAY","TREND GROWTH / DAY","PROJECTED DAYS TO FULL","NODES","SNAPSHOT DATE","STATUS"],rows,"No enabled clusters are registered.")+notes;
 }
 async function renderBucketUsageReport(){
   const d=await api("/api/analytics/bucket-usage-report"),allItems=d.items||[],filters=state.bucketUsageFilters;
