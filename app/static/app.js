@@ -193,6 +193,19 @@ async function showClusterTopology(id, section="overview"){
   });
   const poolRows=pools.map(p=>'<tr><td>'+esc(p.pool_id)+'</td><td>'+p.erasure_set_count+'</td><td>'+(p.online_drives??'—')+'</td><td>'+(p.healing_drives??'—')+'</td></tr>');
   const setRows=sets.map(s=>'<tr><td>'+esc(s.pool_id)+'</td><td>'+esc(s.set_id)+'</td><td>'+(s.status_value??'—')+'</td><td>'+(s.online_drives??'—')+'</td><td>'+(s.healing_drives??'—')+'</td><td>'+(s.read_quorum??'—')+'</td><td>'+(s.write_quorum??'—')+'</td></tr>');
+
+  let trendData=null;
+  const trendFilter=state.topologyTrendFilters?.[id]||{startDate:"",endDate:""};
+  if(section==="nodes"||section==="drives"){
+    const trendParams=new URLSearchParams();
+    if(trendFilter.startDate)trendParams.set("start_date",trendFilter.startDate);
+    if(trendFilter.endDate)trendParams.set("end_date",trendFilter.endDate);
+    trendData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/topology/trends?"+trendParams.toString());
+  }
+  const trendControls=trendData?'<section class="panel health-trends-panel"><div class="panel-header"><div><h3>Historical infrastructure trends</h3><p>Four-hour telemetry samples · '+fmt(trendData.sample_count||0,0)+' samples</p></div></div><div class="health-trend-filters"><label>FROM DATE<input id="infra-trend-start" type="date" value="'+esc(trendFilter.startDate)+'"></label><label>TO DATE<input id="infra-trend-end" type="date" value="'+esc(trendFilter.endDate)+'"></label><button class="primary-small" data-action="apply-infra-trends">Apply</button><button class="subtle-button" data-action="reset-infra-trends">Last 30 days</button></div></section>':'';
+  const trendSamples=trendData?.samples||[];
+  const trendLabels=trendSamples.map(x=>timestampLabel(x.snapshot_ts));
+  const trendPanel=(title,description,canvasId)=>'<section class="panel"><div class="panel-header"><div><h3>'+title+'</h3><p>'+description+'</p></div></div>'+(trendSamples.length?'<div class="chart-wrap health-trend-chart"><canvas id="'+canvasId+'"></canvas></div>':'<div class="chart-empty-state"><strong>No historical samples available</strong><p>No telemetry was stored in the selected date range.</p></div>')+'</section>';
   const overview='<div class="detail-grid"><div class="detail-card"><small>NODE / DRIVE SNAPSHOT</small><strong>'+timestampLabel(d.node_snapshot_ts)+'</strong><p class="muted">Collected at '+timestampLabel(d.node_collected_at)+'</p></div><div class="detail-card"><small>POOL / ERASURE-SET SNAPSHOT</small><strong>'+timestampLabel(d.topology_snapshot_ts)+'</strong><p class="muted">Collected at '+timestampLabel(d.topology_collected_at)+'</p></div></div>'+'<div class="metric-grid">'+
     metric("NODES",nodes.length,nodes.filter(n=>n.minio_scrape_up===1).length+" MinIO scrape targets reachable","⌁")+
     metric("DRIVES",drives.length,drivesOnline==null?"Online/offline counts unavailable":drivesOnline+" online · "+drivesOffline+" offline","▤")+
@@ -203,13 +216,34 @@ async function showClusterTopology(id, section="overview"){
     table("Pool inventory","Pool counts derived from discovered erasure-set metrics.",["POOL","ERASURE SETS","ONLINE DRIVES","HEALING DRIVES"],poolRows);
   let body="";
   if(section==="overview") body=overview;
-  if(section==="nodes") body=table("Node health","CPU is calculated from a five-minute rate; memory uses MemAvailable.",["NODE","NODE EXPORTER","MINIO TARGET","CPU","MEMORY USED","LOAD 1M","DRIVES UP","DRIVES DOWN"],nodeRows);
-  if(section==="drives") body=table("Drive health","MinIO drive metrics and matching Linux filesystem mount metrics. Error columns: availability / I/O / timeout.",["NODE","MINIO DRIVE","MINIO TOTAL","MINIO USED","MINIO USED %","FILESYSTEM USED %","FILESYSTEM","ERRORS A / I / T"],driveRows);
+  if(section==="nodes") body=trendControls+'<div class="health-infra-trend-grid">'+
+    trendPanel("Node Exporter availability","Percentage of nodes reporting successfully","infra-node-availability")+
+    trendPanel("MinIO scrape availability","Percentage of MinIO node targets reporting","infra-minio-availability")+
+    trendPanel("CPU utilization","Average CPU utilization across cluster nodes","infra-cpu-trend")+
+    trendPanel("Memory utilization","Aggregate memory used as a percentage of total node memory","infra-memory-trend")+
+    '</div>'+table("Node health","CPU is calculated from a five-minute rate; memory uses MemAvailable.",["NODE","NODE EXPORTER","MINIO TARGET","CPU","MEMORY USED","LOAD 1M","DRIVES UP","DRIVES DOWN"],nodeRows);
+  if(section==="drives") body=trendControls+'<div class="health-infra-trend-grid">'+
+    trendPanel("Drive availability","Online and offline drive counts across the cluster","infra-drive-availability")+
+    trendPanel("Drive error counters","Cumulative availability, I/O and timeout errors reported by drives","infra-drive-errors")+
+    trendPanel("Filesystem utilization","Weighted utilization across monitored MinIO data filesystems","infra-filesystem-trend")+
+    '</div>'+table("Drive health","MinIO drive metrics and matching Linux filesystem mount metrics. Error columns: availability / I/O / timeout.",["NODE","MINIO DRIVE","MINIO TOTAL","MINIO USED","MINIO USED %","FILESYSTEM USED %","FILESYSTEM","ERRORS A / I / T"],driveRows);
   if(section==="pools") body=table("Storage pools","Pool capacity is not inferred where no pool-level capacity metric was discovered.",["POOL","ERASURE SETS","ONLINE DRIVES","HEALING DRIVES"],poolRows);
   if(section==="sets") body=table("Erasure sets","Status is shown as the raw MinIO metric value; quorum values are not interpreted as a health enum.",["POOL","SET","STATUS VALUE","ONLINE DRIVES","HEALING DRIVES","READ QUORUM","WRITE QUORUM"],setRows);
   const errors=Object.keys(d.family_errors||{}).length?'<div class="detail-card" style="margin-bottom:14px"><strong>Some topology metric families are unavailable</strong><p class="muted">'+esc(JSON.stringify(d.family_errors))+'</p></div>':'';
   clearCharts();
   $("#content").innerHTML=pageHead(esc(d.cluster.name)+" — Cluster health","Infrastructure topology · Snapshot "+dateLabel(d.snapshot_date),'<button class="subtle-button" data-action="back-to-cluster-overview">← Back to cluster</button>')+errors+tabHtml+body;
+  if(trendSamples.length&&section==="nodes"){
+    chart("infra-node-availability",trendLabels,[{label:"Node Exporter up",data:trendSamples.map(x=>x.node_exporter_availability_pct),color:"#16a085"}],"line",0,"%");
+    chart("infra-minio-availability",trendLabels,[{label:"MinIO scrape up",data:trendSamples.map(x=>x.minio_scrape_availability_pct),color:"#4776c7"}],"line",0,"%");
+    chart("infra-cpu-trend",trendLabels,[{label:"CPU utilization",data:trendSamples.map(x=>x.avg_cpu_pct),color:"#4776c7"}],"line",0,"%");
+    chart("infra-memory-trend",trendLabels,[{label:"Memory utilization",data:trendSamples.map(x=>x.memory_used_pct),color:"#16a085"}],"line",0,"%");
+  }
+  if(trendSamples.length&&section==="drives"){
+    chart("infra-drive-availability",trendLabels,[{label:"Drives online",data:trendSamples.map(x=>x.drives_online),color:"#16a085"},{label:"Drives offline",data:trendSamples.map(x=>x.drives_offline),color:"#d9534f"}],"line",0,"");
+    chart("infra-drive-errors",trendLabels,[{label:"Availability errors",data:trendSamples.map(x=>x.availability_errors),color:"#d99a35"},{label:"I/O errors",data:trendSamples.map(x=>x.io_errors),color:"#8b6ccf"},{label:"Timeout errors",data:trendSamples.map(x=>x.timeout_errors),color:"#64748b"}],"line",0,"");
+    chart("infra-filesystem-trend",trendLabels,[{label:"Filesystem used",data:trendSamples.map(x=>x.filesystem_weighted_used_pct??x.filesystem_used_pct),color:"#d99a35"}],"line",0,"%");
+  }
+
 }
 
 async function showClusterSnapshots(id,days=90,startDate=null,endDate=null){
