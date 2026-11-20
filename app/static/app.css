@@ -17,8 +17,7 @@
 .chart-note-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 20px;width:20px;height:20px;border-radius:50%;background:#d9efea;color:#087f6b;font-weight:700;font-size:13px}
 
 
-/* Clearly identify the ownership attribution used by tenant trend charts */
-.ownership-mode-badge{display:inline-flex;align-items:center;vertical-align:middle;margin-left:9px;padding:4px 9px;border-radius:5px;font-size:9px;font-weight:800;letter-spacing:.65px;line-height:1.4;white-space:nowrap}
-.ownership-mode-badge.current{background:#e5f6f2;color:#087f6b;border:1px solid #b8e5db}
-.ownership-mode-badge.historical{background:#fff4e5;color:#9a6416;border:1px solid #f0d5a8}
-@media(max-width:700px){.ownership-mode-badge{margin:6px 0 0}}
+
+
+/* Match selected ownership mode buttons to the active chart-scale control */
+.heading-actions .subtle-button.active{background:var(--accent-soft,#e7f7f3);border-color:var(--accent,#13a58b);color:var(--accent,#087f6b);font-weight:700}
