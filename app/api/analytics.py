@@ -48,7 +48,10 @@ def overview(_: dict = Depends(get_current_user)) -> dict:
                    r.raw_total_bytes, r.raw_free_bytes,
                    r.usable_total_bytes, r.usable_free_bytes,
                    r.nodes_online, r.nodes_offline,
-                   r.growth_bytes_per_day, r.days_to_full, r.error_text
+                   r.growth_bytes_per_day,
+                   CASE WHEN r.days_to_full BETWEEN 0 AND 1825
+                        THEN r.days_to_full ELSE NULL END AS days_to_full,
+                   r.error_text
             FROM ranked r
             JOIN clusters c ON c.id = r.cluster_id
             JOIN locations l ON l.id = c.location_id
@@ -186,7 +189,10 @@ def cluster_analytics(
             SELECT snapshot_date, snapshot_ts, collected_at, metrics_available,
                    raw_total_bytes, raw_free_bytes, usable_total_bytes,
                    usable_free_bytes, nodes_online, nodes_offline,
-                   growth_bytes_per_day, days_to_full, error_text
+                   growth_bytes_per_day,
+                   CASE WHEN days_to_full BETWEEN 0 AND 1825
+                        THEN days_to_full ELSE NULL END AS days_to_full,
+                   error_text
             FROM cluster_daily_metrics
             WHERE cluster_id = ?
             ORDER BY snapshot_date DESC, id DESC LIMIT 1
