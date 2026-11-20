@@ -3,6 +3,7 @@ const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
 const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, bucketUsageFilters:{cluster:"",location:"",tenant:""}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null} };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
 const bytes = n => n == null ? "—" : (n/1024**4).toFixed(2)+" TiB";
+const tibValue = n => n == null ? "—" : (n/1024**4).toFixed(2);
 const pct = (used,total) => used == null || !total ? null : Math.max(0,Math.min(100,used/total*100));
 const esc = s => String(s ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const dateLabel = s => s ? new Date(s+"T00:00:00").toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}) : "—";
@@ -18,7 +19,7 @@ function toast(message,error=false){const el=document.createElement("div");el.cl
 function showLogin(){state.user=null;$("#app-shell").classList.add("hidden");$("#login-screen").classList.remove("hidden");}
 function showApp(user){state.user=user;$("#login-screen").classList.add("hidden");$("#app-shell").classList.remove("hidden");$("#user-name").textContent=user.username;$("#user-role").textContent=user.role.toUpperCase();$("#user-avatar").textContent=user.username.slice(0,1).toUpperCase();$$(".admin-only").forEach(el=>el.classList.toggle("hidden",user.role!=="admin"));$$(".master-admin-only").forEach(el=>el.classList.toggle("hidden",!user.is_master_admin));}
 function pageHead(title,subtitle,actions=""){return `<div class="page-heading"><div><h1>${title}</h1><p>${subtitle}</p></div><div class="heading-actions">${actions}</div></div>`;}
-function reportTabs(active){const tabs=[["capacity-report","Consolidated Provisioned"],["bucket-usage-report","Consolidated Bucket Usage"]];return '<div class="report-tabs" role="tablist" aria-label="Consolidated reports">'+tabs.map(([view,label])=>'<button type="button" role="tab" aria-selected="'+(active===view)+'" class="'+(active===view?"active":"")+'" data-report-view="'+view+'">'+label+'</button>').join("")+'</div>';}
+function reportTabs(active){const tabs=[["capacity-report","Consolidated Provisioned"],["bucket-usage-report","Consolidated Bucket Usage"],["raw-capacity-report","Consolidated RAW Capacity"]];return '<div class="report-tabs" role="tablist" aria-label="Consolidated reports">'+tabs.map(([view,label])=>'<button type="button" role="tab" aria-selected="'+(active===view)+'" class="'+(active===view?"active":"")+'" data-report-view="'+view+'">'+label+'</button>').join("")+'</div>';}
 function metric(label,value,foot,icon="◈",good=false){return `<div class="metric-card"><div class="metric-top"><span>${label}</span><span class="metric-icon">${icon}</span></div><div class="metric-value">${value}</div><div class="metric-foot ${good?"good":""}">${foot}</div></div>`;}
 function pill(status){const cls=status==="success"||status===true?"":status==="partial"?"warn":status==="failed"||status===false?"bad":"neutral";const label=status===true?"Available":status===false?"Unavailable":String(status??"Unknown");return `<span class="status-pill ${cls}"><i></i>${esc(label)}</span>`;}
 function panel(title,subtitle,body,tag=""){const chartId=body.match(/<canvas id="([^"]+)"/)?.[1];return `<section class="panel ${chartId?"chart-panel":""}"><div class="panel-header"><div><h3>${title}</h3><p>${subtitle||""}</p></div><div class="panel-header-actions">${tag?`<span class="panel-tag">${tag}</span>`:""}${chartId?`<button type="button" class="chart-expand-button" data-expand-chart="${chartId}" aria-label="Expand ${esc(title)} chart" title="Expand chart">⛶</button>`:""}</div></div>${body}</section>`;}
@@ -78,7 +79,7 @@ function drawObjectSizeHistogram(data){
   const instance=new Chart(canvas,{type:"bar",data:{labels:rows.map(x=>histogramRangeLabel(x.range)),datasets:[{label:"Objects",data:rows.map(x=>x.object_count),backgroundColor:"#13a58b",borderRadius:4,barThickness:"flex",maxBarThickness:24}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{afterLabel:ctx=>{const x=rows[ctx.dataIndex];return x.percentage==null?"":x.percentage.toFixed(2)+"% of objects";}}}},scales:{x:{beginAtZero:true,grid:{color:"#edf1f5"},ticks:{font:{size:10},callback:v=>new Intl.NumberFormat("en-IN",{notation:"compact"}).format(v)}},y:{grid:{display:false},ticks:{font:{size:10},color:"#64748b"}}}}});
   state.charts.push(instance);
 }
-function setView(view){state.view=view;$$(".nav-link").forEach(b=>b.classList.toggle("active",b.dataset.view===(view==="bucket-usage-report"?"capacity-report":view)));$("#page-breadcrumb").textContent=(view==="capacity-report"||view==="bucket-usage-report"?"REPORTS":view.replaceAll("-"," ")).toUpperCase();render().catch(e=>toast(e.message,true));}
+function setView(view){state.view=view;$$(".nav-link").forEach(b=>b.classList.toggle("active",b.dataset.view===(["bucket-usage-report","raw-capacity-report"].includes(view)?"capacity-report":view)));$("#page-breadcrumb").textContent=(["capacity-report","bucket-usage-report","raw-capacity-report"].includes(view)?"REPORTS":view.replaceAll("-"," ")).toUpperCase();render().catch(e=>toast(e.message,true));}
 async function loadOverview(){state.overview=await api("/api/analytics/overview");state.clusters=(await api("/api/analytics/clusters")).items;}
 async function render(){
   clearCharts();$("#content").innerHTML='<div class="loading-state">Loading dashboard data…</div>';
@@ -86,6 +87,7 @@ async function render(){
   else if(state.view==="clusters") await renderClusters();
   else if(state.view==="capacity-report") await renderCapacityReport();
   else if(state.view==="bucket-usage-report") await renderBucketUsageReport();
+  else if(state.view==="raw-capacity-report") await renderRawCapacityReport();
   else if(state.view==="tenants") await renderTenants();
   else if(state.view==="buckets") await renderBuckets();
   else if(state.view==="health") await renderHealth();
@@ -118,17 +120,14 @@ async function renderCapacityReport(){
   ].join("");
   const rows=(d.items||[]).map(x=>{
     const coverage=x.active_bucket_count===0?"No active buckets":fmt(x.buckets_with_metrics,0)+" / "+fmt(x.active_bucket_count,0)+" buckets";
-    const bucketDates=x.bucket_snapshot_date?dateLabel(x.bucket_snapshot_date):"No bucket snapshot";
-    const clusterDate=x.cluster_snapshot_date?dateLabel(x.cluster_snapshot_date):"No cluster snapshot";
     return '<tr><td><span class="cell-strong">'+esc(x.cluster_name)+'</span><br><span class="cell-muted">'+esc(x.location_name)+'</span></td>'+
-      '<td>'+bytes(x.installed_capacity_bytes)+'</td><td>'+bytes(x.cap_capacity_bytes)+'</td>'+
-      '<td>'+bytes(x.provisioned_bytes)+'</td>'+
-      (showUsedUsable?'<td>'+bytes(x.used_cap_bytes)+'</td>':'')+
-      (showUsedBkt?'<td>'+bytes(x.used_bucket_bytes)+'</td>':'')+
-      '<td>'+bytes(x.free_capacity_bytes)+'</td>'+
+      '<td>'+tibValue(x.installed_capacity_bytes)+'</td><td>'+tibValue(x.cap_capacity_bytes)+'</td>'+
+      '<td>'+tibValue(x.provisioned_bytes)+'</td>'+
+      (showUsedUsable?'<td>'+tibValue(x.used_cap_bytes)+'</td>':'')+
+      (showUsedBkt?'<td>'+tibValue(x.used_bucket_bytes)+'</td>':'')+
+      '<td>'+tibValue(x.free_capacity_bytes)+'</td>'+
       '<td>'+(x.usage_pct==null?"—":'<span class="status-pill '+(x.usage_pct>=80?"bad":x.usage_pct>=70?"warn":"")+'">'+fmt(x.usage_pct,1)+"%"+'</span>')+'</td>'+
       '<td>'+(x.provisioned_pct==null?"—":fmt(x.provisioned_pct,1)+"%")+'</td>'+
-      '<td><span class="cell-muted">Cluster: '+esc(clusterDate)+'</span><br><span class="cell-muted">Buckets: '+esc(bucketDates)+'</span></td>'+
       '<td>'+esc(coverage)+'</td></tr>';
   });
   const formulas='<div class="report-footnotes"><strong>Calculation formulas</strong><ul>'+
@@ -140,20 +139,59 @@ async function renderCapacityReport(){
     '<li>Usable Free = usable free bytes from the latest cluster snapshot.</li>'+
     '<li>Usage % = Used Usable ÷ Installed Capacity × 100. Prov % = Provisioned ÷ Installed Capacity × 100.</li>'+
     '<li>Avg Used % = arithmetic average of the available per-cluster Usage % values; unavailable values are excluded.</li>'+
-    '</ul><p>Usage % colour: green below 70%; amber from 70% to below 80%; red at 80% and above.</p><p>All capacity values are displayed in TiB. N/A (—) indicates a missing snapshot or incomplete metric coverage; it is never treated as zero. Cluster capacity uses the latest cluster snapshot, while bucket totals use the latest bucket snapshot for that cluster.</p></div>';
+    '</ul><p>Usage % colour: green below 70%; amber from 70% to below 80%; red at 80% and above.</p><p>Capacity units are shown in the column headers. N/A (—) indicates a missing snapshot or incomplete metric coverage; it is never treated as zero. Cluster capacity uses the latest cluster snapshot, while bucket totals use the latest bucket snapshot for that cluster.</p></div>';
   const generatedAt=new Date().toLocaleString("en-IN",{timeZone:"Asia/Kolkata",day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
   const dataAsOf=d.data_as_of?new Date(d.data_as_of).toLocaleString("en-IN",{timeZone:"Asia/Kolkata",day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}):"Unavailable — snapshot missing for one or more clusters";
   const reportFactors='<span class="report-factor-meta" title="Data Protection · Risk Factor · Effective">DP = '+fmt(f.dp,3)+'&nbsp;&nbsp; RF = '+fmt(f.rf,3)+'&nbsp;&nbsp; Eff = '+fmt(f.eff,3)+'</span>';
   const factorControls=state.user?.role==="admin"?'<form id="capacity-factors-form" class="capacity-factor-controls"><strong>Capacity planning factors</strong><label>DP<input name="dp" type="number" min="0.01" max="100" step="0.01" value="'+esc(f.dp)+'" required></label><label>RF<input name="rf" type="number" min="0.01" max="100" step="0.01" value="'+esc(f.rf)+'" required></label><label>Eff<input name="eff" type="number" min="0.001" max="1" step="0.001" value="'+esc(f.eff)+'" required></label><button class="primary-small" type="submit">Save & recalculate</button></form>':'';
 
   const columnControls='<div class="report-column-toolbar"><details class="report-column-menu"><summary>Columns <span>▾</span></summary><div class="report-column-options"><label><input type="checkbox" data-report-column="used_usable" '+(showUsedUsable?"checked":"")+'><span>USED USABLE</span></label><label><input type="checkbox" data-report-column="used_bkt" '+(showUsedBkt?"checked":"")+'><span>USED BKT</span></label></div></details></div>';
-  const headers=["CLUSTER / LOCATION","INSTALLED","USABLE","PROVISIONED",...(showUsedUsable?["USED USABLE"]:[]),...(showUsedBkt?["USED BKT"]:[]),"USABLE FREE","USAGE %","PROV %","SNAPSHOT DATES","BUCKET COVERAGE"];
+  const headers=["CLUSTER / LOCATION","INSTALLED (TiB)","USABLE (TiB)","PROVISIONED (TiB)",...(showUsedUsable?["USED USABLE (TiB)"]:[]),...(showUsedBkt?["USED BKT (TiB)"]:[]),"USABLE FREE (TiB)","USAGE %","PROV %","BUCKET COVERAGE"];
   $("#content").innerHTML=pageHead("Consolidated Provisioned Report","Fleet-wide installed, usable and provisioned capacity from the latest stored SQLite snapshots. Data as of "+esc(dataAsOf)+" IST. Generated on "+esc(generatedAt)+" IST.",reportFactors+'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
     reportTabs("capacity-report")+
     factorControls+
     '<div class="metric-grid capacity-report-grid">'+cards+'</div>'+columnControls+
     table("Capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · latest available cluster and bucket snapshots",headers,rows,"No enabled clusters are registered.")+
     formulas;
+}
+async function renderRawCapacityReport(){
+  const d=await api("/api/analytics/raw-capacity-report");
+  const t=d.totals_bytes||{};
+  const generatedAt=new Date().toLocaleString("en-IN",{timeZone:"Asia/Kolkata",day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+  const dataAsOf=d.data_as_of?new Date(d.data_as_of).toLocaleString("en-IN",{timeZone:"Asia/Kolkata",day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}):"Unavailable — snapshot missing for one or more clusters";
+  const cards=[
+    metric("RAW CAPACITY",bytes(t.raw_total_bytes),"Sum of latest raw capacity snapshots","▤"),
+    metric("RAW USED",bytes(t.raw_used_bytes),"Raw capacity minus raw free","◒"),
+    metric("RAW FREE",bytes(t.raw_free_bytes),"Sum of latest raw free capacity","◇"),
+    metric("RAW USED %",d.raw_used_pct==null?"—":fmt(d.raw_used_pct,1)+"%","Fleet raw used ÷ raw capacity","◔"),
+    metric("CLUSTER COVERAGE",fmt(d.available_cluster_count,0)+" / "+fmt(d.cluster_count,0),"Clusters with complete raw metrics","◫")
+  ].join("");
+  const rows=(d.items||[]).map(x=>{
+    const usedPct=x.raw_used_pct==null?"—":'<span class="status-pill '+(x.raw_used_pct>=80?"bad":x.raw_used_pct>=70?"warn":"")+'">'+fmt(x.raw_used_pct,1)+"%"+'</span>';
+    const nodes=x.nodes_online==null||x.nodes_offline==null?"—":fmt(x.nodes_online,0)+" online / "+fmt(x.nodes_offline,0)+" offline";
+    const status=x.metrics_available?'<span class="status-pill">Available</span>':'<span class="status-pill bad">Unavailable</span>';
+    const signedTiB=n=>n==null?"—":(n>=0?"+":"−")+tibValue(Math.abs(n));
+    const growth=signedTiB(x.trend_growth_bytes_per_day);
+    const change=signedTiB(x.change_vs_yesterday_bytes);
+    const projection=x.projected_days_to_full==null?"N/A":fmt(x.projected_days_to_full,0);
+    return '<tr><td><span class="cell-strong">'+esc(x.cluster_name)+'</span><br><span class="cell-muted">'+esc(x.location_name)+'</span></td>'+
+      '<td>'+tibValue(x.raw_total_bytes)+'</td><td>'+tibValue(x.raw_used_bytes)+'</td><td>'+tibValue(x.raw_free_bytes)+'</td>'+
+      '<td>'+usedPct+'</td><td>'+change+'</td><td>'+growth+(x.trend_sample_count!=null?' <span class="cell-muted">('+fmt(x.trend_sample_count,0)+' samples)</span>':'')+'</td><td>'+projection+'</td>'+
+      '<td>'+nodes+'</td><td>'+status+'</td></tr>';
+  });
+  const notes='<div class="report-footnotes"><strong>Calculation and coverage notes</strong><ul>'+
+    '<li>Raw capacity and raw free values are taken from each enabled cluster’s latest stored cluster snapshot.</li>'+
+    '<li>Raw Used = Raw Capacity − Raw Free. The collector already applies the 0.993 raw-efficiency adjustment to stored raw capacity; it is not applied a second time in this report.</li>'+
+    '<li>Change vs Yesterday = latest 00:00 IST Used − previous day 00:00 IST Used. It is unavailable if either daily snapshot is missing.</li>'+
+    '<li>Trend Growth/Day = linear-regression slope of daily Used values over the latest 30 calendar days, using actual day offsets and available 00:00 IST snapshots. Negative growth is retained; fewer than two samples is unavailable.</li>'+
+    '<li>Projected Days to Full = current RAW Free ÷ positive Trend Growth/Day, rounded down to whole days. It is N/A for zero or negative growth, or insufficient history.</li>'+
+    '<li>Fleet totals and Raw Used % are shown only when every enabled cluster has both raw capacity and raw free metrics. Missing values are never treated as zero.</li>'+
+    '<li>Fleet Raw Used % = total Raw Used ÷ total Raw Capacity × 100; this is a capacity-weighted fleet percentage.</li>'+
+    '<li>Cluster node counts are displayed as reported by the same cluster snapshot and are not used to calculate raw capacity.</li>'+
+    '</ul><p>Capacity and growth units are shown in the column headers. A dash indicates missing data. Historical calculations use the scheduled SQLite snapshots aligned to 00:00 IST.</p></div>';
+  $("#content").innerHTML=pageHead("Consolidated RAW Capacity Report","Fleet-wide raw capacity, used and free storage from the latest stored cluster snapshots. Data as of "+esc(dataAsOf)+" IST. Generated on "+esc(generatedAt)+" IST.",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
+    reportTabs("raw-capacity-report")+'<div class="metric-grid raw-capacity-grid">'+cards+'</div>'+
+    table("Raw capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · "+fmt(d.available_cluster_count,0)+" with complete raw metrics",["CLUSTER / LOCATION","RAW CAPACITY (TiB)","RAW USED (TiB)","RAW FREE (TiB)","RAW USED %","CHANGE VS YESTERDAY (TiB)","TREND GROWTH (TiB/day)","PROJECTED DAYS TO FULL","NODES","STATUS"],rows,"No enabled clusters are registered.")+notes;
 }
 async function renderBucketUsageReport(){
   const d=await api("/api/analytics/bucket-usage-report"),allItems=d.items||[],filters=state.bucketUsageFilters;
@@ -166,9 +204,9 @@ async function renderBucketUsageReport(){
   const snapshotMap=new Map();items.forEach(x=>snapshotMap.set(x.cluster_id,{date:x.bucket_snapshot_date,ts:x.cluster_bucket_snapshot_ts}));
   const dataAsOf=snapshotMap.size&&[...snapshotMap.values()].every(x=>x.date&&x.ts)?[...snapshotMap.values()].map(x=>x.ts).sort()[0]:null;
   const cards=[metric("USED STORAGE",bytes(totals.used_bytes),"Sum across filtered buckets","◒"),metric("ALLOCATED QUOTA",bytes(totals.quota_bytes),"Sum of filtered bucket quotas","▤"),metric("OBJECTS",totals.object_count==null?"—":fmt(totals.object_count,0),"Across filtered buckets","◫"),metric("VERSIONS",totals.version_count==null?"—":fmt(totals.version_count,0),"Stored object versions","▦"),metric("DELETE MARKERS",totals.delete_marker_count==null?"—":fmt(totals.delete_marker_count,0),"Across filtered buckets","◇"),metric("METRIC COVERAGE",items.length?fmt(withMetrics,0)+" / "+fmt(items.length,0):"0","Filtered buckets with metrics · "+(coverage==null?"—":fmt(coverage,1)+"%"),"◔")].join("");
-  const rows=items.map(x=>{const status=x.status==="Available"?'<span class="status-pill">Available</span>':x.status==="Unavailable"?'<span class="status-pill bad">Unavailable</span>':'<span class="status-pill warn">No snapshot</span>';const tenant=x.metric_bucket_id?(x.tenant_name_at_snapshot||"Unassigned"):"—";return '<tr><td><span class="cell-strong">'+esc(x.bucket_name)+'</span></td><td>'+esc(x.cluster_name)+'</td><td>'+esc(x.location_name)+'</td><td>'+esc(tenant)+'</td><td>'+bytes(x.quota_bytes)+'</td><td>'+bytes(x.used_bytes)+'</td><td>'+(x.usage_pct==null?"—":fmt(x.usage_pct,1)+"%")+'</td><td>'+(x.object_count==null?"—":fmt(x.object_count,0))+'</td><td>'+(x.version_count==null?"—":fmt(x.version_count,0))+'</td><td>'+(x.delete_marker_count==null?"—":fmt(x.delete_marker_count,0))+'</td><td>'+dateLabel(x.bucket_snapshot_date)+'</td><td>'+status+'</td></tr>';});
+  const rows=items.map(x=>{const status=x.status==="Available"?'<span class="status-pill">Available</span>':x.status==="Unavailable"?'<span class="status-pill bad">Unavailable</span>':'<span class="status-pill warn">No snapshot</span>';const tenant=x.metric_bucket_id?(x.tenant_name_at_snapshot||"Unassigned"):"—";return '<tr><td><span class="cell-strong">'+esc(x.bucket_name)+'</span></td><td>'+esc(x.cluster_name)+'</td><td>'+esc(x.location_name)+'</td><td>'+esc(tenant)+'</td><td>'+tibValue(x.quota_bytes)+'</td><td>'+tibValue(x.used_bytes)+'</td><td>'+(x.usage_pct==null?"—":fmt(x.usage_pct,1)+"%")+'</td><td>'+(x.object_count==null?"—":fmt(x.object_count,0))+'</td><td>'+(x.version_count==null?"—":fmt(x.version_count,0))+'</td><td>'+(x.delete_marker_count==null?"—":fmt(x.delete_marker_count,0))+'</td><td>'+status+'</td></tr>';});
   const asOf=dataAsOf?timestampLabel(dataAsOf):"Unavailable — one or more filtered clusters have no bucket snapshot",summary=filters.cluster||filters.location||filters.tenant?"Filtered view · ":"";
-  $("#content").innerHTML=pageHead("Consolidated Bucket Usage Report","Latest stored bucket usage for active buckets across enabled clusters. Data as of "+esc(asOf)+".",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+reportTabs("bucket-usage-report")+filterPanel+'<div class="metric-grid bucket-usage-grid">'+cards+'</div>'+table("Bucket usage by tenant and cluster",summary+fmt(items.length,0)+" of "+fmt(allItems.length,0)+" active bucket(s) · "+fmt(clusterIds.length,0)+" cluster(s) · latest bucket snapshot per cluster",["BUCKET","CLUSTER","LOCATION","TENANT","QUOTA","USED","USAGE %","OBJECTS","VERSIONS","DELETE MARKERS","SNAPSHOT DATE","STATUS"],rows,"No buckets match the selected filters.")+'<div class="report-footnotes"><strong>Calculation and coverage notes</strong><ul><li>Each cluster uses its latest stored bucket snapshot date; all active buckets in that cluster are represented.</li><li>Totals are shown only when every filtered bucket has an available, non-null value for that metric. Missing values are never treated as zero.</li><li>Tenant attribution is taken from the bucket snapshot, not the current bucket assignment.</li><li>Usage % = Used bytes ÷ Quota bytes × 100; it is unavailable when quota is zero or missing.</li></ul><p>All capacity values are displayed in TiB. A dash indicates missing snapshot data or incomplete metric coverage.</p></div>';
+  $("#content").innerHTML=pageHead("Consolidated Bucket Usage Report","Latest stored bucket usage for active buckets across enabled clusters. Data as of "+esc(asOf)+".",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+reportTabs("bucket-usage-report")+filterPanel+'<div class="metric-grid bucket-usage-grid">'+cards+'</div>'+table("Bucket usage by tenant and cluster",summary+fmt(items.length,0)+" of "+fmt(allItems.length,0)+" active bucket(s) · "+fmt(clusterIds.length,0)+" cluster(s) · latest bucket snapshot per cluster",["BUCKET","CLUSTER","LOCATION","TENANT","QUOTA (TiB)","USED (TiB)","USAGE %","OBJECTS","VERSIONS","DELETE MARKERS","STATUS"],rows,"No buckets match the selected filters.")+'<div class="report-footnotes"><strong>Calculation and coverage notes</strong><ul><li>Each cluster uses its latest stored bucket snapshot date; all active buckets in that cluster are represented.</li><li>Totals are shown only when every filtered bucket has an available, non-null value for that metric. Missing values are never treated as zero.</li><li>Tenant attribution is taken from the bucket snapshot, not the current bucket assignment.</li><li>Usage % = Used bytes ÷ Quota bytes × 100; it is unavailable when quota is zero or missing.</li></ul><p>Capacity units are shown in the column headers. A dash indicates missing snapshot data or incomplete metric coverage.</p></div>';
 }
 
 async function renderClusters(){
