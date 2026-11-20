@@ -132,7 +132,7 @@
 @media(max-width:900px){.health-infra-trend-grid{grid-template-columns:1fr}}
 
 /* Consolidated provisioned report: keep all seven summary metrics on one desktop row. */
-.capacity-report-grid{grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}
+.capacity-report-grid{grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
 .capacity-report-grid .metric-card{min-width:0;padding:14px 13px}
 .capacity-report-grid .metric-top{font-size:9px;letter-spacing:.2px}
 .capacity-report-grid .metric-value{font-size:clamp(17px,1.35vw,23px);white-space:nowrap}
