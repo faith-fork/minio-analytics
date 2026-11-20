@@ -31,7 +31,7 @@ def get_consolidated_bucket_usage_report() -> dict:
                    b.id AS bucket_id, b.bucket_name,
                    b.tenant_id AS current_tenant_id,
                    d.snapshot_date AS bucket_snapshot_date,
-                   m.snapshot_ts, m.collected_at,
+                   m.bucket_id AS metric_bucket_id,\n                   m.snapshot_ts, m.collected_at,
                    m.tenant_id_at_snapshot,
                    st.name AS tenant_name_at_snapshot,
                    m.used_bytes, m.quota_bytes, m.object_count,
@@ -78,7 +78,7 @@ def get_consolidated_bucket_usage_report() -> dict:
     buckets_with_metrics = sum(
         item["metrics_available"] == 1 for item in items
     )
-    buckets_with_snapshots = sum(item["bucket_snapshot_date"] is not None for item in items)
+    buckets_with_snapshots = sum(item["metric_bucket_id"] is not None for item in items)
     latest_cluster_dates = {}
     for item in items:
         latest_cluster_dates[item["cluster_id"]] = (
@@ -104,7 +104,7 @@ def get_consolidated_bucket_usage_report() -> dict:
             and used is not None and quota is not None and quota > 0
             else None
         )
-        if item["bucket_snapshot_date"] is None:
+        if item["metric_bucket_id"] is None:
             item["status"] = "No snapshot"
         elif item["metrics_available"] != 1:
             item["status"] = "Unavailable"
