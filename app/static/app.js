@@ -303,12 +303,38 @@ async function showBucketSnapshots(id,days=90,startDate=null,endDate=null){
     table("Daily snapshots",rows.length+" snapshot(s)",["DATE","TENANT AT SNAPSHOT","USED","QUOTA","OBJECTS","VERSIONS","DELETE MARKERS","STATUS"],rows,"No bucket snapshots are available for this date range.");
 }
 async function renderHealth(){
-  state.health=await api("/api/analytics/collection-health?limit=50");const counts=state.health.status_counts;
-  const rows=state.health.recent_runs.map(r=>`<tr><td>${esc(r.started_at)}</td><td>${esc(r.location_name||"—")}</td><td>${esc(r.cluster_name||"—")}</td><td>${dateLabel(r.snapshot_date)}</td><td>${pill(r.status)}</td><td>${r.attempt}</td><td>${r.metrics_collected}</td><td>${esc(r.error_text||"—")}</td></tr>`);
-  $("#content").innerHTML=pageHead("Collection health","Monitor scheduled snapshot runs, retries and metric availability.")+
-    `<div class="metric-grid">${metric("SUCCESSFUL RUNS",fmt(counts.success||0,0),"Recorded successful runs","✓",true)}${metric("PARTIAL RUNS",fmt(counts.partial||0,0),"At least one metric family unavailable","◒")}${metric("FAILED RUNS",fmt(counts.failed||0,0),"Unsuccessful after retry","!")}${metric("RECENT EXECUTIONS",fmt(state.health.count,0),"Latest 50 collection records","◷")}</div>`+
-    table("Recent collection runs","Latest collector execution records",["STARTED AT","LOCATION","CLUSTER","SNAPSHOT DATE","STATUS","ATTEMPT","METRICS","ERROR"],rows);
+  state.health=await api("/api/analytics/collection-health?limit=50");
+  const h=state.health,s=h.schedule||{},jobs=s.jobs||{};
+  const node=jobs.node_health||{},daily=jobs.daily_collection||{};
+  const counts=h.status_counts||{};
+  const jobCard=(title,job,nextLabel,subtitle)=>`<section class="panel scheduler-job"><div class="panel-header"><div><h3>${title}</h3><p>${subtitle}</p></div>${pill(job.last_status||"Not run")}</div><div class="scheduler-job-grid"><div><small>LAST STARTED</small><strong>${timestampLabel(job.last_started_at)}</strong></div><div><small>LAST COMPLETED</small><strong>${timestampLabel(job.last_completed_at)}</strong></div><div><small>${nextLabel}</small><strong>${timestampLabel(job.next_expected_at)}</strong></div></div>${job.last_error?`<p class="health-error-text">${esc(job.last_error)}</p>`:""}</section>`;
+  const dailyRows=(h.cluster_daily_status||[]).map(c=>{
+    const r=c.latest_run;
+    let details={};try{details=typeof r?.details_json==="string"?JSON.parse(r.details_json):(r?.details||{});}catch{}
+    const errors=details.errors||[];
+    const topologyErrors=details.topology_errors||{};
+    const errorSummary=[...errors,...Object.entries(topologyErrors).map(([k,v])=>k+": "+v)].join("; ");
+    return `<tr><td><span class="cell-strong">${esc(c.cluster_name)}</span><br><span class="cell-muted">${esc(c.location_name)}</span></td><td>${r?pill(r.status):pill("Not run")}</td><td>${r?timestampLabel(r.started_at):"—"}</td><td>${r?timestampLabel(r.finished_at):"—"}</td><td>${r?fmt(r.attempt,0):"—"}</td><td>${r?fmt(r.metrics_collected,0):"—"}</td><td>${esc(errorSummary||r?.error_text||"—")}</td></tr>`;
+  });
+  const nodeRows=(h.node_health||[]).map(n=>{
+    const c=n.counts||{},errors=n.family_errors||{};
+    const down=(c.node_exporter_down||0)+(c.minio_scrape_down||0);
+    const status=Object.keys(errors).length||down>0?"partial":"success";
+    const errorText=Object.entries(errors).map(([k,v])=>k+": "+v).join("; ");
+    return `<tr><td><span class="cell-strong">${esc(n.cluster_name)}</span><br><span class="cell-muted">${esc(n.location_name)}</span></td><td>${timestampLabel(n.snapshot_ts)}</td><td>${pill(status)}</td><td>${fmt(c.node_exporter_up,0)} / ${fmt(c.node_count,0)}</td><td>${fmt(c.minio_scrape_up,0)} / ${fmt(c.node_count,0)}</td><td>${fmt(c.drive_count,0)}</td><td>${fmt(c.availability_error_drives,0)} / ${fmt(c.io_error_drives,0)} / ${fmt(c.timeout_error_drives,0)}</td><td>${esc(errorText||"—")}</td></tr>`;
+  });
+  const runRows=(h.recent_runs||[]).map(r=>`<tr><td>${timestampLabel(r.started_at)}</td><td>${esc(r.location_name||"—")}</td><td>${esc(r.cluster_name||"—")}</td><td>${dateLabel(r.snapshot_date)}</td><td>${pill(r.status)}</td><td>${r.attempt}</td><td>${r.metrics_collected}</td><td>${esc(r.error_text||"—")}</td></tr>`);
+  $("#content").innerHTML=pageHead("Collection health","Scheduler cadence, collection freshness and infrastructure telemetry status.",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
+    `<div class="metric-grid">${metric("SUCCESSFUL DAILY RUNS",fmt(counts.success||0,0),"Persisted successful cluster runs","✓",true)}${metric("PARTIAL RUNS",fmt(counts.partial||0,0),"One or more metric families unavailable","◒")}${metric("FAILED RUNS",fmt(counts.failed||0,0),"Collector runs that failed","!")}${metric("RECENT EXECUTIONS",fmt(h.count||0,0),"Latest ${h.count||0} daily run records","◷")}</div>`+
+    '<div class="health-section-heading"><h2>Scheduler</h2><p>Settings are read from SQLite. The scheduler checks for due work every minute.</p></div>'+
+    `<div class="panel-grid scheduler-grid">${jobCard("Node & drive health","node", "NEXT EXPECTED RUN", "Every "+fmt(s.node_interval_hours,0)+" hours · node exporter, MinIO scrape and drive telemetry")}${jobCard("Daily capacity & bucket collection",daily,"NEXT EXPECTED RUN","Daily at "+esc(s.daily_collection_time||"—")+" "+esc(s.timezone||"IST")+" · cluster, bucket and pool snapshots")}</div>`+
+    '<div class="health-section-heading"><h2>Daily collection by cluster</h2><p>Latest persisted daily collector result for each configured cluster.</p></div>'+
+    table("Cluster collection status",(h.cluster_daily_status||[]).length+" cluster(s)",["CLUSTER / LOCATION","STATUS","STARTED","FINISHED","ATTEMPT","METRICS","ERRORS / DETAILS"],dailyRows,"No daily collection runs recorded.")+
+    '<div class="health-section-heading"><h2>Node & drive telemetry</h2><p>Latest high-frequency sample per cluster. Drive error columns show affected drive counts: availability / I/O / timeout.</p></div>'+
+    table("Infrastructure telemetry","Latest node-health snapshots",["CLUSTER / LOCATION","SNAPSHOT","STATUS","NODE EXPORTER UP","MINIO SCRAPE UP","DRIVES","AVAIL / I/O / TIMEOUT","FAMILY ERRORS"],nodeRows,"No node-health samples recorded.")+
+    table("Recent daily executions","Latest 50 cluster-level collector records",["STARTED AT","LOCATION","CLUSTER","SNAPSHOT DATE","STATUS","ATTEMPT","METRICS","ERROR"],runRows,"No collection runs are available.");
 }
+
 function openModal(title,description,fields,onSubmit){
   const root=$("#modal-root");root.innerHTML=`<div class="modal-backdrop"><section class="modal"><h3>${title}</h3><p>${description}</p><form id="modal-form">${fields}<div class="modal-actions"><button type="button" class="secondary-button" data-action="close-modal">Cancel</button><button class="primary-small" type="submit">Save</button></div></form></section></div>`;
   $("#modal-form").addEventListener("submit",async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.currentTarget));try{await onSubmit(data);root.innerHTML="";}catch(err){toast(err.message,true);}});
