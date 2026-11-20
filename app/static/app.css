@@ -80,3 +80,18 @@
 .chart-empty-state p{max-width:420px;font-size:11px;line-height:1.6;margin:0}
 @media(max-width:1050px){.trend-controls{flex-wrap:wrap}.trend-controls .form-control{width:145px}}
 @media(max-width:700px){.chart-expand-backdrop{padding:8px}.chart-expand-dialog{height:96vh;border-radius:9px}.chart-expand-dialog>header{height:56px;flex-basis:56px;padding:0 14px}.chart-expand-content{padding:14px}.chart-panel .chart-wrap,.cluster-chart-grid .chart-wrap{height:220px}.trend-controls{gap:7px}.trend-controls .form-control{flex:1 1 125px;width:auto}.trend-controls select.form-control{flex:1 1 160px;width:auto}}
+
+
+/* Collection health dashboard */
+.health-section-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin:24px 2px 12px}
+.health-section-heading h2{font:600 17px 'Space Grotesk',sans-serif;letter-spacing:-.25px;margin:0;color:var(--ink)}
+.health-section-heading p{margin:0;color:var(--muted);font-size:11px;line-height:1.5}
+.scheduler-grid{grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:0}
+.scheduler-job{height:100%;min-width:0}
+.scheduler-job-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.scheduler-job-grid>div{min-width:0;padding:11px;background:#f8fafb;border:1px solid #edf1f4;border-radius:7px}
+.scheduler-job-grid small{display:block;color:#8794a5;font-size:9px;letter-spacing:.55px;margin-bottom:7px}
+.scheduler-job-grid strong{display:block;color:#344256;font-size:11px;line-height:1.5;font-weight:600;overflow-wrap:anywhere}
+.health-error-text{margin:12px 0 0;padding:9px 11px;border-radius:7px;background:#fff4f2;color:#a64b42;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+@media(max-width:900px){.scheduler-grid{grid-template-columns:1fr}}
+@media(max-width:700px){.health-section-heading{align-items:flex-start;flex-direction:column;gap:5px}.scheduler-job-grid{grid-template-columns:1fr}.scheduler-job-grid>div{display:flex;justify-content:space-between;align-items:center;gap:12px}.scheduler-job-grid small{margin:0}.scheduler-job-grid strong{text-align:right}}
