@@ -168,9 +168,10 @@ async function showTenant(id,attribution="current",days=90,startDate=null,endDat
   state.tenantCapacityScale=state.tenantCapacityScale||"zero";
   const d=await api("/api/analytics/tenants/"+id+"?"+trendQuery(days,startDate,endDate,"attribution="+encodeURIComponent(attribution)));clearCharts();
   const current=attribution==="current";
-  const subtitle=current
+  const subtitle=(current
     ?"Historical bucket usage attributed using current tenant ownership."
-    :"Historical usage attributed to this tenant at snapshot time.";
+    :"Historical usage attributed to this tenant at snapshot time.")+
+    ' <span class="ownership-mode-badge '+(current?'current':'historical')+'">'+(current?'CURRENT OWNERSHIP VIEW':'HISTORICAL OWNERSHIP VIEW')+'</span>';
   const actions=`<div class="heading-actions"><button class="subtle-button" data-tenant-mode="current" data-tenant-id="${id}" ${current?'disabled':''}>Current ownership</button><button class="subtle-button" data-tenant-mode="historical" data-tenant-id="${id}" ${!current?'disabled':''}>Historical ownership</button><button class="subtle-button" data-view="tenants">← All tenants</button></div>`;
   const hasHistoricalSnapshots=Array.isArray(d.series)&&d.series.length>0;
   const noHistoricalAttribution=!current&&!hasHistoricalSnapshots;
