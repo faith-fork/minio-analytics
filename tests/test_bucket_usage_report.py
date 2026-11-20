@@ -80,6 +80,7 @@ def test_bucket_usage_report_uses_latest_snapshot_date_per_cluster(
     assert by_name["bucket-one"]["bucket_snapshot_date"] == "2026-01-02"
     assert by_name["bucket-two"]["used_bytes"] is None
     assert by_name["bucket-two"]["status"] == "No snapshot"
+    assert data["data_as_of"] == "2026-01-02T00:00:00Z"
 
 
 def test_bucket_usage_report_excludes_inactive_buckets(
