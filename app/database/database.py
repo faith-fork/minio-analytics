@@ -36,7 +36,8 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
     CREATE TABLE IF NOT EXISTS node_health_metrics(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT NULL REFERENCES node_health_runs(run_id) ON DELETE CASCADE,cluster_id TEXT NOT NULL REFERENCES clusters(id),node_name TEXT NOT NULL,node_exporter_instance TEXT,minio_instance TEXT,node_exporter_up REAL,minio_scrape_up REAL,cpu_utilization_pct REAL,memory_total_bytes REAL,memory_available_bytes REAL,memory_used_bytes REAL,load1 REAL,drives_online INTEGER,drives_offline INTEGER,UNIQUE(run_id,node_name));
     CREATE TABLE IF NOT EXISTS drive_health_metrics(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT NULL REFERENCES node_health_runs(run_id) ON DELETE CASCADE,cluster_id TEXT NOT NULL REFERENCES clusters(id),node_name TEXT NOT NULL,server TEXT NOT NULL,drive_path TEXT NOT NULL,mountpoint TEXT,total_bytes REAL,used_bytes REAL,free_bytes REAL,availability_errors REAL,io_errors REAL,timeout_errors REAL,filesystem_total_bytes REAL,filesystem_available_bytes REAL,filesystem_free_bytes REAL,filesystem_readonly REAL,filesystem_used_bytes REAL,filesystem_used_pct REAL,UNIQUE(run_id,server,drive_path));
     """)
-    for k,v in (("node_interval_hours","4"),("daily_collection_time","00:15")):
+    for k,v in (("node_interval_hours","4"),("daily_collection_time","00:15"),
+                ("capacity_dp","1.33"),("capacity_rf","0.85"),("capacity_eff","0.99")):
         c.execute("INSERT OR IGNORE INTO app_settings(setting_key,setting_value) VALUES(?,?)",(k,v))
     c.executescript("""
     CREATE TABLE IF NOT EXISTS prometheus_connections (
@@ -66,6 +67,7 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
         ON cluster_prometheus_bindings(connection_id);
     """)
     c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (7)")
+    c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (8)")
 def initialize_database() -> None:
     c=get_connection()
     try:

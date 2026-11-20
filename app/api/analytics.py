@@ -6,10 +6,11 @@ from zoneinfo import ZoneInfo
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_admin
 from app.database.database import transaction
-from app.services.capacity_report import get_consolidated_capacity_report
+from app.services.capacity_report import get_consolidated_capacity_report, get_capacity_factors
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -136,6 +137,41 @@ def overview(_: dict = Depends(get_current_user)) -> dict:
 def consolidated_capacity_report(_: dict = Depends(get_current_user)) -> dict:
     """Return consolidated fleet capacity and a per-cluster breakdown."""
     return get_consolidated_capacity_report()
+
+
+
+class CapacityFactorsUpdate(BaseModel):
+    dp: float = Field(gt=0, le=100)
+    rf: float = Field(gt=0, le=100)
+    eff: float = Field(gt=0, le=1)
+
+
+@router.get("/capacity-factors")
+def capacity_factors(_: dict = Depends(get_current_user)) -> dict:
+    return {"factors": get_capacity_factors()}
+
+
+@router.put("/capacity-factors")
+def update_capacity_factors(payload: CapacityFactorsUpdate, actor: dict = Depends(require_admin)) -> dict:
+    updates = {"capacity_dp": str(payload.dp), "capacity_rf": str(payload.rf), "capacity_eff": str(payload.eff)}
+    with transaction() as connection:
+        for key, value in updates.items():
+            current = connection.execute("SELECT setting_value FROM app_settings WHERE setting_key = ?", (key,)).fetchone()
+            old_value = current["setting_value"] if current else None
+            if old_value == value:
+                continue
+            connection.execute(
+                """INSERT INTO app_settings (setting_key, setting_value, updated_at, updated_by)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value,
+                     updated_at=excluded.updated_at, updated_by=excluded.updated_by""",
+                (key, value, datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), actor["username"]),
+            )
+            connection.execute(
+                "INSERT INTO settings_audit(setting_key, old_value, new_value, changed_by) VALUES (?, ?, ?, ?)",
+                (key, old_value, value, actor["username"]),
+            )
+    return {"updated": True, "factors": get_capacity_factors()}
 
 
 @router.get("/clusters")

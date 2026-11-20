@@ -145,3 +145,10 @@
 
 .report-factor-meta{color:var(--muted);font-size:10px;font-weight:600;white-space:nowrap;letter-spacing:.1px}
 @media(max-width:900px){.page-heading{align-items:flex-start}.heading-actions{flex-wrap:wrap;justify-content:flex-end}.report-factor-meta{white-space:normal;text-align:right}}
+
+.capacity-factor-controls{display:flex;align-items:end;gap:12px;flex-wrap:wrap;background:#fff;border:1px solid var(--line);border-radius:9px;padding:13px 16px;margin:0 0 16px;box-shadow:var(--shadow)}
+.capacity-factor-controls strong{font-size:11px;color:#526176;margin-right:4px;align-self:center}
+.capacity-factor-controls label{display:grid;gap:5px;font-size:10px;font-weight:700;color:#748196}
+.capacity-factor-controls input{width:92px;height:34px;border:1px solid #dfe5ed;border-radius:6px;padding:0 8px;color:var(--ink);background:#fff}
+.capacity-factor-controls input:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px #13a58b18}
+.capacity-factor-controls button{margin:0;height:34px}
