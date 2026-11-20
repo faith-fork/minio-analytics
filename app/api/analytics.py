@@ -209,6 +209,10 @@ def cluster_analytics(
             """
             SELECT snapshot_date,
                    COUNT(*) AS bucket_metric_rows,
+                   (SELECT COUNT(*) FROM buckets
+                    WHERE cluster_id = ? AND is_active = 1) AS active_bucket_count,
+                   SUM(CASE WHEN quota_bytes IS NOT NULL THEN 1 ELSE 0 END)
+                       AS quota_bucket_count,
                    CASE
                        WHEN COUNT(*) = (SELECT COUNT(*) FROM buckets
                                         WHERE cluster_id = ? AND is_active = 1)
@@ -227,7 +231,7 @@ def cluster_analytics(
             WHERE cluster_id = ? AND snapshot_date BETWEEN ? AND ?
             GROUP BY snapshot_date
             """,
-            (cluster_id, cluster_id, cluster_id, start, end),
+            (cluster_id, cluster_id, cluster_id, cluster_id, start, end),
         ).fetchall()
         bucket_by_date = {row["snapshot_date"]: dict(row) for row in bucket_rows}
         rows = [
