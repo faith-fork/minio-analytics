@@ -10,6 +10,7 @@ from app.config.loader import ClusterConfig, LocationConfig
 
 RAW_EFF_FACTOR = 0.993
 LOOKBACK_DAYS = 30
+DAYS_TO_FULL_MIN_SAMPLES = 14
 CLUSTER_LABEL = "cluster"
 
 
@@ -87,10 +88,18 @@ def collect_cluster_snapshot(
             f"{RAW_EFF_FACTOR} - max(minio_cluster_capacity_raw_free_bytes{selector})"
             f")[{LOOKBACK_DAYS}d:1d]) * 86400"
         ),
+        # A forecast is meaningful only when the 30-day window contains
+        # enough daily observations and free capacity is genuinely declining.
+        # Missing/insufficient history or a flat/increasing free-capacity trend
+        # returns an empty vector, which is stored as unavailable (not zero).
         "days_to_full": (
-            f"(max(minio_cluster_capacity_raw_free_bytes{selector}) / "
-            f"-deriv(max(minio_cluster_capacity_raw_free_bytes{selector})"
-            f"[{LOOKBACK_DAYS}d:1d])) / 86400"
+            f"((max(minio_cluster_capacity_raw_free_bytes{selector}) / "
+            f"-deriv((max(minio_cluster_capacity_raw_free_bytes{selector}))"
+            f"[{LOOKBACK_DAYS}d:1d])) / 86400) "
+            f"and (count_over_time((max(minio_cluster_capacity_raw_free_bytes{selector}))"
+            f"[{LOOKBACK_DAYS}d:1d]) >= {DAYS_TO_FULL_MIN_SAMPLES}) "
+            f"and (deriv((max(minio_cluster_capacity_raw_free_bytes{selector}))"
+            f"[{LOOKBACK_DAYS}d:1d]) < 0)"
         ),
     }
 
