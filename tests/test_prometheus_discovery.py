@@ -138,6 +138,10 @@ def test_discovery_endpoint_requires_admin_and_is_read_only(client, admin_client
         "hostname": "prometheus.internal"
     }).status_code == 403
 
+    relogin = admin_client.post("/api/auth/login", json={
+        "username": "admin-test", "password": "Admin-Test-Password-123!"
+    })
+    assert relogin.status_code == 200
     before = admin_client.get("/api/analytics/clusters").json()
     response = admin_client.post("/api/clusters/discover", json={
         "protocol": "http",
