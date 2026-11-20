@@ -447,6 +447,18 @@ document.addEventListener("click",async e=>{
     renderHealth().catch(err=>toast(err.message,true));
     return;
   }
+  if(action==="apply-health-trends"){
+    const start=$("#health-trend-start")?.value||"",end=$("#health-trend-end")?.value||"";
+    if(start&&end&&start>end){toast("Trend start date must be on or before end date.",true);return;}
+    state.healthTrendFilters={clusterId:$("#health-trend-cluster")?.value||"",startDate:start,endDate:end};
+    renderHealth().catch(err=>toast(err.message,true));
+    return;
+  }
+  if(action==="reset-health-trends"){
+    state.healthTrendFilters={clusterId:$("#health-trend-cluster")?.value||"",startDate:"",endDate:""};
+    renderHealth().catch(err=>toast(err.message,true));
+    return;
+  }
   if(action==="apply-health-filters"){
     const start=$("#health-start-date")?.value||"",end=$("#health-end-date")?.value||"";
     if(start&&end&&start>end){toast("From date must be on or before To date.",true);return;}
