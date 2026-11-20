@@ -23,7 +23,19 @@ function reportTabs(active){const tabs=[["capacity-report","Consolidated Provisi
 function metric(label,value,foot,icon="◈",good=false){return `<div class="metric-card"><div class="metric-top"><span>${label}</span><span class="metric-icon">${icon}</span></div><div class="metric-value">${value}</div><div class="metric-foot ${good?"good":""}">${foot}</div></div>`;}
 function pill(status){const cls=status==="success"||status===true?"":status==="partial"?"warn":status==="failed"||status===false?"bad":"neutral";const label=status===true?"Available":status===false?"Unavailable":String(status??"Unknown");return `<span class="status-pill ${cls}"><i></i>${esc(label)}</span>`;}
 function panel(title,subtitle,body,tag=""){const chartId=body.match(/<canvas id="([^"]+)"/)?.[1];return `<section class="panel ${chartId?"chart-panel":""}"><div class="panel-header"><div><h3>${title}</h3><p>${subtitle||""}</p></div><div class="panel-header-actions">${tag?`<span class="panel-tag">${tag}</span>`:""}${chartId?`<button type="button" class="chart-expand-button" data-expand-chart="${chartId}" aria-label="Expand ${esc(title)} chart" title="Expand chart">⛶</button>`:""}</div></div>${body}</section>`;}
-function table(title,subtitle,headers,rows,empty="No records found."){return `<section class="table-panel"><div class="table-heading"><div><h3>${title}</h3><p>${subtitle||""}</p></div></div><div class="table-scroll"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.length?rows.join(""):`<tr><td colspan="${headers.length}" class="empty-state">${empty}</td></tr>`}</tbody></table></div></section>`;}
+function table(title,subtitle,headers,rows,empty="No records found."){return `<section class="table-panel"><div class="table-heading"><div><h3>${title}</h3><p>${subtitle||""}</p></div><button type="button" class="subtle-button table-export-button" data-export-table>↓ Export CSV</button></div><div class="table-scroll"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.length?rows.join(""):`<tr><td colspan="${headers.length}" class="empty-state">${empty}</td></tr>`}</tbody></table></div></section>`;}
+function exportTableCsv(button){
+  const panel=button.closest(".table-panel"),tableEl=panel?.querySelector("table");
+  if(!tableEl)return;
+  const csvCell=value=>'"'+String(value??"").replace(/"/g,'""')+'"';
+  const rows=[...tableEl.querySelectorAll("tr")].filter(row=>!row.querySelector(".empty-state")).map(row=>[...row.querySelectorAll("th,td")].map(cell=>cell.innerText.replace(/\\s+/g," ").trim()));
+  if(!rows.length){toast("There is no table data to export.",true);return;}
+  const csv="\\uFEFF"+rows.map(row=>row.map(csvCell).join(",")).join("\\r\\n");
+  const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"}),url=URL.createObjectURL(blob),link=document.createElement("a");
+  const title=panel.querySelector(".table-heading h3")?.textContent||"minio-report";
+  const filename=title.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"minio-report";
+  link.href=url;link.download=filename+"-"+new Date().toISOString().slice(0,10)+".csv";document.body.append(link);link.click();link.remove();URL.revokeObjectURL(url);
+}
 function chart(id,labels,sets,type="line",yMin=null,ySuffix=""){if(!window.Chart)return;const canvas=$("#"+id);if(!canvas)return;const instance=new Chart(canvas,{type,data:{labels,datasets:sets.map(s=>({label:s.label,data:s.data,borderColor:s.color,backgroundColor:s.color+"18",borderWidth:2,borderDash:s.dash?[7,5]:[],pointRadius:labels.length>45?1.5:3,pointHoverRadius:5,tension:.25,fill:false}))},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{position:"bottom",labels:{usePointStyle:true,boxWidth:7,font:{size:10}}},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+": "+(ctx.parsed.y==null?"—":new Intl.NumberFormat("en-IN",{maximumFractionDigits:3}).format(ctx.parsed.y)+ySuffix)}}},scales:{x:{grid:{display:false},ticks:{autoSkip:true,maxTicksLimit:11,maxRotation:45,minRotation:0,font:{size:9},color:"#94a0af"}},y:{...(yMin===null?{}:{min:yMin}),grid:{color:"#edf1f5"},ticks:{font:{size:9},color:"#94a0af",callback:value=>new Intl.NumberFormat("en-IN",{maximumFractionDigits:3}).format(value)+ySuffix}}}}});state.charts.push(instance);}
 function clearCharts(){state.charts.forEach(c=>c.destroy());state.charts=[];}
 function openExpandedChart(chartId,button){
@@ -519,6 +531,7 @@ function bulkAssignBucketsModal(){
 }
 
 document.addEventListener("click",async e=>{
+  const exportButton=e.target.closest("[data-export-table]");if(exportButton){exportTableCsv(exportButton);return;}
   const expand=e.target.closest("[data-expand-chart]");if(expand){openExpandedChart(expand.dataset.expandChart,expand);return;}
   if(e.target.closest(".chart-expand-close")){closeExpandedChart();return;}
   const histogramMode=e.target.closest("[data-histogram-mode]");
