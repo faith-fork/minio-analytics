@@ -644,14 +644,25 @@ def collection_health(
     limit: int = Query(default=20, ge=1, le=200),
     _: dict = Depends(get_current_user),
 ) -> dict:
-    """Return collection status counts and the most recent collection runs."""
+    """Return scheduler cadence, collector history and latest infrastructure health."""
+    now = datetime.now(timezone.utc)
+    now_text = now.isoformat(timespec="seconds").replace("+00:00", "Z")
+
     with transaction() as connection:
+        settings = {
+            row["setting_key"]: row["setting_value"]
+            for row in connection.execute(
+                "SELECT setting_key, setting_value FROM app_settings"
+            ).fetchall()
+        }
+        scheduler_rows = connection.execute(
+            "SELECT job_key, last_started_at, last_completed_at, last_status, last_error "
+            "FROM scheduler_state"
+        ).fetchall()
+        scheduler_state = {row["job_key"]: _dict(row) for row in scheduler_rows}
+
         counts = connection.execute(
-            """
-            SELECT status, COUNT(*) AS count
-            FROM collection_runs
-            GROUP BY status
-            """
+            "SELECT status, COUNT(*) AS count FROM collection_runs GROUP BY status"
         ).fetchall()
         rows = connection.execute(
             """
@@ -668,6 +679,93 @@ def collection_health(
             (limit,),
         ).fetchall()
 
+        cluster_rows = connection.execute(
+            """
+            SELECT c.id AS cluster_id, c.name AS cluster_name,
+                   l.id AS location_id, l.name AS location_name, c.enabled
+            FROM clusters c
+            JOIN locations l ON l.id = c.location_id
+            ORDER BY l.name, c.name
+            """
+        ).fetchall()
+        latest_daily_rows = connection.execute(
+            """
+            WITH ranked AS (
+                SELECT r.*,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY r.cluster_id
+                           ORDER BY r.started_at DESC, r.id DESC
+                       ) AS rn
+                FROM collection_runs r
+            )
+            SELECT r.*, l.name AS location_name, c.name AS cluster_name
+            FROM ranked r
+            LEFT JOIN locations l ON l.id = r.location_id
+            LEFT JOIN clusters c ON c.id = r.cluster_id
+            WHERE r.rn = 1
+            """
+        ).fetchall()
+        latest_node_rows = connection.execute(
+            """
+            WITH ranked AS (
+                SELECT h.*,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY h.cluster_id
+                           ORDER BY h.snapshot_ts DESC, h.id DESC
+                       ) AS rn
+                FROM node_health_runs h
+            )
+            SELECT h.*, c.name AS cluster_name, l.name AS location_name
+            FROM ranked h
+            JOIN clusters c ON c.id = h.cluster_id
+            JOIN locations l ON l.id = c.location_id
+            WHERE h.rn = 1
+            """
+        ).fetchall()
+
+        node_health = []
+        for run in latest_node_rows:
+            nodes = connection.execute(
+                """
+                SELECT COUNT(*) AS node_count,
+                       SUM(CASE WHEN node_exporter_up = 1 THEN 1 ELSE 0 END) AS node_exporter_up,
+                       SUM(CASE WHEN minio_scrape_up = 1 THEN 1 ELSE 0 END) AS minio_scrape_up,
+                       SUM(CASE WHEN node_exporter_up = 0 THEN 1 ELSE 0 END) AS node_exporter_down,
+                       SUM(CASE WHEN minio_scrape_up = 0 THEN 1 ELSE 0 END) AS minio_scrape_down
+                FROM node_health_metrics WHERE run_id = ?
+                """,
+                (run["run_id"],),
+            ).fetchone()
+            drives = connection.execute(
+                """
+                SELECT COUNT(*) AS drive_count,
+                       SUM(CASE WHEN availability_errors > 0 THEN 1 ELSE 0 END) AS availability_error_drives,
+                       SUM(CASE WHEN io_errors > 0 THEN 1 ELSE 0 END) AS io_error_drives,
+                       SUM(CASE WHEN timeout_errors > 0 THEN 1 ELSE 0 END) AS timeout_error_drives,
+                       SUM(CASE WHEN filesystem_readonly = 1 THEN 1 ELSE 0 END) AS readonly_filesystems
+                FROM drive_health_metrics WHERE run_id = ?
+                """,
+                (run["run_id"],),
+            ).fetchone()
+            try:
+                family_errors = json.loads(run["family_errors_json"] or "{}")
+            except (TypeError, json.JSONDecodeError):
+                family_errors = {"_parse_error": "Unable to parse family error details"}
+            node_health.append({
+                "cluster_id": run["cluster_id"],
+                "cluster_name": run["cluster_name"],
+                "location_name": run["location_name"],
+                "run_id": run["run_id"],
+                "snapshot_ts": run["snapshot_ts"],
+                "collected_at": run["collected_at"],
+                "family_errors": family_errors,
+                "counts": {
+                    **_dict(nodes),
+                    **_dict(drives),
+                },
+                "status": "partial" if family_errors else "success",
+            })
+
     items = []
     for row in rows:
         item = _dict(row)
@@ -678,8 +776,70 @@ def collection_health(
             item.pop("details_json", None)
         items.append(item)
 
+    interval_hours = int(settings.get("node_interval_hours", "4"))
+    daily_time = settings.get("daily_collection_time", "00:15")
+    node_state = scheduler_state.get("node_health", {})
+    daily_state = scheduler_state.get("daily_collection", {})
+
+    def _parse_utc(value: str | None):
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return None
+
+    node_completed = _parse_utc(node_state.get("last_completed_at"))
+    next_node = (node_completed or now) + timedelta(hours=interval_hours)
+
+    hh, mm = (int(part) for part in daily_time.split(":"))
+    local_now = now.astimezone(ZoneInfo("Asia/Kolkata"))
+    scheduled_today = datetime.combine(
+        local_now.date(), datetime.min.time().replace(hour=hh, minute=mm),
+        tzinfo=ZoneInfo("Asia/Kolkata"),
+    )
+    daily_completed = _parse_utc(daily_state.get("last_completed_at"))
+    if daily_completed and daily_completed.astimezone(ZoneInfo("Asia/Kolkata")).date() >= local_now.date():
+        next_daily = scheduled_today + timedelta(days=1)
+    elif local_now <= scheduled_today:
+        next_daily = scheduled_today
+    else:
+        next_daily = local_now
+
     return {
+        "generated_at": now_text,
+        "schedule": {
+            "timezone": "Asia/Kolkata",
+            "node_interval_hours": interval_hours,
+            "daily_collection_time": daily_time,
+            "scheduler_tick_seconds": 60,
+            "jobs": {
+                "node_health": {
+                    **node_state,
+                    "next_expected_at": next_node.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+                },
+                "daily_collection": {
+                    **daily_state,
+                    "next_expected_at": next_daily.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+                },
+            },
+        },
         "status_counts": {row["status"]: row["count"] for row in counts},
+        "cluster_daily_status": [
+            {
+                "cluster_id": cluster["cluster_id"],
+                "cluster_name": cluster["cluster_name"],
+                "location_id": cluster["location_id"],
+                "location_name": cluster["location_name"],
+                "enabled": bool(cluster["enabled"]),
+                "latest_run": next(
+                    (_dict(run) for run in latest_daily_rows if run["cluster_id"] == cluster["cluster_id"]),
+                    None,
+                ),
+            }
+            for cluster in cluster_rows
+        ],
+        "node_health": node_health,
         "recent_runs": items,
         "count": len(items),
     }
