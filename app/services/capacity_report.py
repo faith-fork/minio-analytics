@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from app.database.database import transaction
 
+DATA_PROTECTION_FACTOR = 1.33
+RISK_FACTOR = 0.85
+# Planning allowance: reserve 1% of RAW capacity for filesystem overhead.
+EFFECTIVE_FACTOR = 0.99
+INSTALLED_CAPACITY_FACTOR = EFFECTIVE_FACTOR * (RISK_FACTOR / DATA_PROTECTION_FACTOR)
+
 
 def get_consolidated_capacity_report() -> dict:
     """Return latest per-cluster capacity with strict metric coverage.
@@ -74,9 +80,10 @@ def get_consolidated_capacity_report() -> dict:
             SELECT ac.cluster_id, ac.cluster_name,
                    ac.location_id, ac.location_name,
                    cm.snapshot_date AS cluster_snapshot_date,
+                   cm.snapshot_ts AS cluster_snapshot_ts,
                    cm.metrics_available AS cluster_metrics_available,
                    CASE WHEN cm.metrics_available = 1
-                        THEN cm.raw_total_bytes ELSE NULL END AS installed_capacity_bytes,
+                        THEN cm.raw_total_bytes * ? ELSE NULL END AS installed_capacity_bytes,
                    CASE WHEN cm.metrics_available = 1
                         THEN cm.usable_total_bytes ELSE NULL END AS cap_capacity_bytes,
                    CASE WHEN cm.metrics_available = 1
@@ -104,7 +111,8 @@ def get_consolidated_capacity_report() -> dict:
             LEFT JOIN latest_bucket_dates d ON d.cluster_id = ac.cluster_id
             LEFT JOIN bucket_coverage bc ON bc.cluster_id = ac.cluster_id
             ORDER BY ac.location_name, ac.cluster_name
-            """
+            """,
+            (INSTALLED_CAPACITY_FACTOR,),
         ).fetchall()
 
     items = [dict(row) for row in rows]
@@ -123,6 +131,8 @@ def get_consolidated_capacity_report() -> dict:
             else None
         )
     usage_values = [item["usage_pct"] for item in items if item["usage_pct"] is not None]
+    snapshot_timestamps = [item["cluster_snapshot_ts"] for item in items]
+    data_as_of = min(snapshot_timestamps) if snapshot_timestamps and all(snapshot_timestamps) else None
     avg_used_pct = sum(usage_values) / len(usage_values) if usage_values else None
     metric_fields = (
         "installed_capacity_bytes",
@@ -146,6 +156,7 @@ def get_consolidated_capacity_report() -> dict:
         "generated_from": "sqlite",
         "cluster_count": cluster_count,
         "avg_used_pct": avg_used_pct,
+        "data_as_of": data_as_of,
         "totals_bytes": totals,
         "items": items,
     }
