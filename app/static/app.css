@@ -142,8 +142,3 @@
 .report-footnotes p{margin:0;color:#8794a5}
 @media(max-width:1250px){.capacity-report-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:900px){.capacity-report-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.report-footnotes ul{grid-template-columns:1fr}}
-
-/* Usage percentage thresholds in the consolidated report. */
-.capacity-usage-green{background:var(--teal-soft);color:#148c77}
-.capacity-usage-amber{background:#fff4e5;color:#b7791f}
-.capacity-usage-red{background:#fff0f0;color:#bd4d4d}
