@@ -236,6 +236,8 @@ def cluster_analytics(
         bucket_by_date = {row["snapshot_date"]: dict(row) for row in bucket_rows}
         rows = [
             {**dict(row),
+             "active_bucket_count": bucket_by_date.get(row["snapshot_date"], {}).get("active_bucket_count"),
+             "quota_bucket_count": bucket_by_date.get(row["snapshot_date"], {}).get("quota_bucket_count"),
              "bucket_quota_bytes": bucket_by_date.get(row["snapshot_date"], {}).get("bucket_quota_bytes"),
              "bucket_object_count": bucket_by_date.get(row["snapshot_date"], {}).get("bucket_object_count")}
             for row in rows
