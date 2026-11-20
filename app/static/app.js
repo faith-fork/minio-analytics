@@ -151,6 +151,9 @@ async function showCluster(id,days=90,startDate=null,endDate=null){
   const topologyBody='<div class="cluster-action-card"><div class="cluster-action-icon">⌁</div><div><strong>Infrastructure topology</strong><p>Inspect node resources, individual drives, storage pools and erasure-set quorum.</p></div><button class="primary-small" data-action="open-cluster-topology">View cluster health →</button></div>';
   $("#content").innerHTML=pageHead(esc(d.cluster.name),"Cluster · "+esc(d.cluster.location_name)+" · "+esc(id),'<button class="subtle-button" data-view="clusters">← All clusters</button>')+
     `<div class="detail-grid"><div class="detail-card"><small>RAW CAPACITY</small><strong>${bytes(x.raw_total_bytes)}</strong></div><div class="detail-card"><small>RAW FREE</small><strong>${bytes(x.raw_free_bytes)}</strong></div><div class="detail-card"><small>PROJECTED DAYS TO FULL</small><strong>${x.days_to_full==null||x.days_to_full<=0?"N/A":fmt(x.days_to_full,0)+" days"}</strong></div></div>`+
+    section("Infrastructure status","See cluster availability first, then drill into nodes, drives, pools and erasure sets.",'<div class="panel-grid cluster-health-grid">'+
+      panel("Cluster health","Latest infrastructure snapshot",healthBody,"LATEST SNAPSHOT")+
+      '<section class="panel cluster-action-panel">'+topologyBody+'</section></div>')+
     section("Capacity & forecast","Understand raw capacity, bucket quota, growth velocity and projected exhaustion.",rangeControl(days,"cluster",id)+'<div class="panel-grid cluster-chart-grid">'+
       panel("Capacity trend","Daily raw used, free and total capacity",'<div class="chart-wrap"><canvas id="cluster-chart"></canvas></div>',days+" DAYS")+
       panel("Bucket quota trend","Sum of bucket quotas across active buckets",quotaPanelBody(series))+
@@ -159,9 +162,6 @@ async function showCluster(id,days=90,startDate=null,endDate=null){
     section("Object & bucket analytics","Track object growth and understand the distribution of object sizes.",'<div class="panel-grid cluster-chart-grid">'+
       panel("Object trend","Total objects across active buckets when metrics are complete",'<div class="chart-wrap"><canvas id="cluster-object-chart"></canvas></div>')+
       objectSizeHistogram(hist,"Cluster object size distribution")+'</div>')+
-    section("Infrastructure health","Current cluster availability and a route into detailed infrastructure telemetry.",'<div class="panel-grid cluster-health-grid">'+
-      panel("Cluster health","Latest node availability",healthBody,"LATEST SNAPSHOT")+
-      '<section class="panel cluster-action-panel">'+topologyBody+'</section></div>')+
     '<div class="snapshot-link-panel"><div><strong>Daily snapshots</strong><p>Browse the complete daily history and collection status for this cluster.</p></div><button class="primary-small" data-action="open-cluster-snapshots">View daily snapshots →</button></div>';
   const trendLabels=series.map(r=>dateLabel(r.snapshot_date));
   chart("cluster-chart",trendLabels,[{label:"Used TiB",data:series.map(r=>r.raw_total_bytes==null||r.raw_free_bytes==null?null:(r.raw_total_bytes-r.raw_free_bytes)/1024**4),color:"#13a58b"},{label:"Free TiB",data:series.map(r=>r.raw_free_bytes==null?null:r.raw_free_bytes/1024**4),color:"#4779d8"},{label:"Total TiB",data:series.map(r=>r.raw_total_bytes==null?null:r.raw_total_bytes/1024**4),color:"#d9922e",dash:true}],"line",null," TiB");
