@@ -13,6 +13,7 @@ class ClusterConfig:
     id: str
     name: str
     prometheus_label_value: str
+    identity_label_name: str = "cluster"
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,7 @@ class LocationConfig:
     name: str
     prometheus_url: str
     clusters: tuple[ClusterConfig, ...]
+    verify_tls: bool = True
 
 
 def _required_string(data: dict, key: str, context: str) -> str:

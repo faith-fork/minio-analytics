@@ -5,7 +5,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 from app.collectors.node_health import collect_node_health
 from app.collectors.orchestrator import collect_all
-from app.config.loader import load_locations
+from app.database.prometheus_config import load_database_locations
 from app.database.database import initialize_database,transaction
 
 IST=ZoneInfo("Asia/Kolkata")
@@ -69,7 +69,7 @@ def main():
         hh,mm=values.get("daily_collection_time","00:15").split(":")
         daily_time=time(int(hh),int(mm))
         now=datetime.now(timezone.utc)
-        locations=load_locations()
+        locations=load_database_locations()
         if _due_node(now,interval):
             _run("node_health",lambda:collect_node_health(locations,now),now)
         if _due_daily(now,daily_time):
