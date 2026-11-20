@@ -11,6 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.auth import router as auth_router
+from app.api.clusters import router as cluster_router
 from app.api.analytics import router as analytics_router
 from app.api.tenants import router as tenant_router
 from app.api.master_admin import router as master_admin_router
@@ -54,6 +55,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(cluster_router)
 app.include_router(tenant_router)
 app.include_router(analytics_router)
 app.include_router(master_admin_router)
