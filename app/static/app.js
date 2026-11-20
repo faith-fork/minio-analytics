@@ -444,6 +444,20 @@ document.addEventListener("click",async e=>{
     renderHealth().catch(err=>toast(err.message,true));
     return;
   }
+  if(action==="apply-infra-trends"){
+    const start=$("#infra-trend-start")?.value||"",end=$("#infra-trend-end")?.value||"";
+    if(start&&end&&start>end){toast("Trend start date must be on or before end date.",true);return;}
+    state.topologyTrendFilters=state.topologyTrendFilters||{};
+    state.topologyTrendFilters[state.topologyClusterId]={startDate:start,endDate:end};
+    showClusterTopology(state.topologyClusterId,state.topologySection).catch(err=>toast(err.message,true));
+    return;
+  }
+  if(action==="reset-infra-trends"){
+    state.topologyTrendFilters=state.topologyTrendFilters||{};
+    state.topologyTrendFilters[state.topologyClusterId]={startDate:"",endDate:""};
+    showClusterTopology(state.topologyClusterId,state.topologySection).catch(err=>toast(err.message,true));
+    return;
+  }
   if(action==="apply-health-filters"){
     const start=$("#health-start-date")?.value||"",end=$("#health-end-date")?.value||"";
     if(start&&end&&start>end){toast("From date must be on or before To date.",true);return;}
