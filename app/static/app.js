@@ -402,6 +402,24 @@ document.addEventListener("click",async e=>{
   if(action==="back-to-cluster-overview"){showCluster(state.snapshotClusterId,state.snapshotRange.days,state.snapshotRange.startDate,state.snapshotRange.endDate).catch(err=>toast(err.message,true));return;}
   if(action==="open-cluster-snapshots"){showClusterSnapshots(state.snapshotClusterId,state.snapshotRange.days,state.snapshotRange.startDate,state.snapshotRange.endDate).catch(err=>toast(err.message,true));return;}
   if(action==="back-to-cluster"){showCluster(state.snapshotClusterId,state.snapshotRange.days,state.snapshotRange.startDate,state.snapshotRange.endDate).catch(err=>toast(err.message,true));return;}
+  const healthPage=e.target.closest("[data-health-page]");
+  if(healthPage){
+    state.healthFilters.page=Number(healthPage.dataset.healthPage)||1;
+    renderHealth().catch(err=>toast(err.message,true));
+    return;
+  }
+  if(action==="apply-health-filters"){
+    const start=$("#health-start-date")?.value||"",end=$("#health-end-date")?.value||"";
+    if(start&&end&&start>end){toast("From date must be on or before To date.",true);return;}
+    state.healthFilters={...state.healthFilters,startDate:start,endDate:end,status:$("#health-status")?.value||"",pageSize:Number($("#health-page-size")?.value||20),page:1};
+    renderHealth().catch(err=>toast(err.message,true));
+    return;
+  }
+  if(action==="reset-health-filters"){
+    state.healthFilters={startDate:"",endDate:"",status:"",page:1,pageSize:20};
+    renderHealth().catch(err=>toast(err.message,true));
+    return;
+  }
   if(action==="refresh"){render().catch(err=>toast(err.message,true));}
   if(action==="apply-trend-dates"){
     const el=e.target.closest("[data-action='apply-trend-dates']");
