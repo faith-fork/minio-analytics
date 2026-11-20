@@ -1,6 +1,6 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
-const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null} };
+const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null} };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
 const bytes = n => n == null ? "—" : (n/1024**4).toFixed(2)+" TiB";
 const pct = (used,total) => used == null || !total ? null : Math.max(0,Math.min(100,used/total*100));
@@ -102,7 +102,10 @@ async function renderOverview(){
 }
 
 async function renderCapacityReport(){
-  const d=await api("/api/analytics/capacity-report"),t=d.totals_bytes||{},f=d.capacity_factors||{dp:1.33,rf:0.85,eff:0.99};
+  const [d,columnPreferences]=await Promise.all([api("/api/analytics/capacity-report"),api("/api/analytics/report-column-preferences")]);
+  state.reportColumns=columnPreferences.columns||{used_usable:true,used_bkt:true};
+  const showUsedUsable=state.reportColumns.used_usable,showUsedBkt=state.reportColumns.used_bkt;
+  const t=d.totals_bytes||{},f=d.capacity_factors||{dp:1.33,rf:0.85,eff:0.99};
   const cards=[
     metric("INSTALLED CAPACITY",bytes(t.installed_capacity_bytes),"RAW total capacity","▤"),
     metric("PROVISIONED",bytes(t.provisioned_bytes),"Sum of active bucket quotas","◫"),
@@ -117,8 +120,10 @@ async function renderCapacityReport(){
     const clusterDate=x.cluster_snapshot_date?dateLabel(x.cluster_snapshot_date):"No cluster snapshot";
     return '<tr><td><span class="cell-strong">'+esc(x.cluster_name)+'</span><br><span class="cell-muted">'+esc(x.location_name)+'</span></td>'+
       '<td>'+bytes(x.installed_capacity_bytes)+'</td><td>'+bytes(x.cap_capacity_bytes)+'</td>'+
-      '<td>'+bytes(x.provisioned_bytes)+'</td><td>'+bytes(x.used_cap_bytes)+'</td>'+
-      '<td>'+bytes(x.used_bucket_bytes)+'</td><td>'+bytes(x.free_capacity_bytes)+'</td>'+
+      '<td>'+bytes(x.provisioned_bytes)+'</td>'+
+      (showUsedUsable?'<td>'+bytes(x.used_cap_bytes)+'</td>':'')+
+      (showUsedBkt?'<td>'+bytes(x.used_bucket_bytes)+'</td>':'')+
+      '<td>'+bytes(x.free_capacity_bytes)+'</td>'+
       '<td>'+(x.usage_pct==null?"—":'<span class="status-pill '+(x.usage_pct>=80?"bad":x.usage_pct>=70?"warn":"")+'">'+fmt(x.usage_pct,1)+"%"+'</span>')+'</td>'+
       '<td>'+(x.provisioned_pct==null?"—":fmt(x.provisioned_pct,1)+"%")+'</td>'+
       '<td><span class="cell-muted">Cluster: '+esc(clusterDate)+'</span><br><span class="cell-muted">Buckets: '+esc(bucketDates)+'</span></td>'+
@@ -139,10 +144,12 @@ async function renderCapacityReport(){
   const reportFactors='<span class="report-factor-meta" title="Data Protection · Risk Factor · Effective">DP = '+fmt(f.dp,3)+'&nbsp;&nbsp; RF = '+fmt(f.rf,3)+'&nbsp;&nbsp; Eff = '+fmt(f.eff,3)+'</span>';
   const factorControls=state.user?.role==="admin"?'<form id="capacity-factors-form" class="capacity-factor-controls"><strong>Capacity planning factors</strong><label>DP<input name="dp" type="number" min="0.01" max="100" step="0.01" value="'+esc(f.dp)+'" required></label><label>RF<input name="rf" type="number" min="0.01" max="100" step="0.01" value="'+esc(f.rf)+'" required></label><label>Eff<input name="eff" type="number" min="0.001" max="1" step="0.001" value="'+esc(f.eff)+'" required></label><button class="primary-small" type="submit">Save & recalculate</button></form>':'';
 
+  const columnControls='<div class="report-column-toolbar"><details class="report-column-menu"><summary>Columns <span>▾</span></summary><div class="report-column-options"><label><input type="checkbox" data-report-column="used_usable" '+(showUsedUsable?"checked":"")+'><span>USED USABLE</span></label><label><input type="checkbox" data-report-column="used_bkt" '+(showUsedBkt?"checked":"")+'><span>USED BKT</span></label></div></details></div>';
+  const headers=["CLUSTER / LOCATION","INSTALLED","USABLE","PROVISIONED",...(showUsedUsable?["USED USABLE"]:[]),...(showUsedBkt?["USED BKT"]:[]),"USABLE FREE","USAGE %","PROV %","SNAPSHOT DATES","BUCKET COVERAGE"];
   $("#content").innerHTML=pageHead("Consolidated Provisioned Report","Fleet-wide installed, usable and provisioned capacity from the latest stored SQLite snapshots. Data as of "+esc(dataAsOf)+" IST. Generated on "+esc(generatedAt)+" IST.",reportFactors+'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
     factorControls+
-    '<div class="metric-grid capacity-report-grid">'+cards+'</div>'+
-    table("Capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · latest available cluster and bucket snapshots",["CLUSTER / LOCATION","INSTALLED","USABLE","PROVISIONED","USED USABLE","USED BKT","USABLE FREE","USAGE %","PROV %","SNAPSHOT DATES","BUCKET COVERAGE"],rows,"No enabled clusters are registered.")+
+    '<div class="metric-grid capacity-report-grid">'+cards+'</div>'+columnControls+
+    table("Capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · latest available cluster and bucket snapshots",headers,rows,"No enabled clusters are registered.")+
     formulas;
 }
 async function renderClusters(){
@@ -564,7 +571,26 @@ $("#content").addEventListener("submit",async e=>{
     toast("Capacity factors saved; report recalculated.");await renderCapacityReport();
   }catch(err){toast(err.message,true);if(button){button.disabled=false;button.textContent="Save & recalculate";}}
 });
-$("#content").addEventListener("change",e=>{
+$("#content").addEventListener("change",async e=>{
+  if(e.target.matches("[data-report-column]")){
+    const checkbox=e.target,key=checkbox.dataset.reportColumn;
+    const previous=!checkbox.checked;
+    checkbox.disabled=true;
+    state.reportColumns[key]=checkbox.checked;
+    try{
+      await api("/api/analytics/report-column-preferences",{method:"PUT",body:JSON.stringify({
+        used_usable:state.reportColumns.used_usable,
+        used_bkt:state.reportColumns.used_bkt
+      })});
+      toast("Report columns updated.");
+      await renderCapacityReport();
+    }catch(err){
+      state.reportColumns[key]=previous;
+      toast(err.message,true);
+      await renderCapacityReport();
+    }
+    return;
+  }
   if(e.target.id==="trend-range" && e.target.value!=="custom"){const el=e.target,days=Number(el.value),kind=el.dataset.trendKind,id=el.dataset.trendId,mode=el.dataset.trendAttribution||"current";const run=kind==="cluster"||kind==="cluster-snapshots"?(kind==="cluster-snapshots"?showClusterSnapshots(id,days):showCluster(id,days)):kind==="tenant"||kind==="tenant-snapshots"?(kind==="tenant-snapshots"?showTenantSnapshots(Number(id),mode,days):showTenant(Number(id),mode,days)):kind==="bucket-snapshots"?showBucketSnapshots(Number(id),days):showBucket(Number(id),days);run.catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-user-role]")){
     const id=Number(e.target.dataset.userRole),role=e.target.value;
