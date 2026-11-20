@@ -36,6 +36,7 @@ def sample(labels, value=1.0):
     [
         ("http", "prometheus.internal", 9090, "http://prometheus.internal:9090"),
         ("https", "10.0.0.5", 9443, "https://10.0.0.5:9443"),
+        ("https", "2001:db8::10", 9443, "https://[2001:db8::10]:9443"),
     ],
 )
 def test_build_prometheus_url(protocol, hostname, port, expected):
@@ -78,6 +79,25 @@ def test_discovery_prefers_cluster_label_and_returns_multiple_clusters():
     assert [item["label_value"] for item in result["clusters"]] == ["Site1", "Site2"]
     assert all(item["label_name"] == "cluster" for item in result["clusters"])
     assert fake.closed is False
+
+
+
+def test_discovery_prefers_cluster_label_when_other_identity_labels_exist():
+    from app.collectors.prometheus_discovery import IDENTIFICATION_METRICS
+
+    fake = FakePrometheus({
+        IDENTIFICATION_METRICS[0]: [
+            sample({"cluster": "Site1", "site": "Chennai", "environment": "LAB"}),
+        ],
+        IDENTIFICATION_METRICS[1]: [
+            sample({"cluster": "Site1", "site": "Chennai", "environment": "LAB"}),
+        ],
+    })
+    result = discover_minio_clusters("http://prometheus:9090", client=fake)
+
+    assert result["identity_labels"] == ["cluster"]
+    assert result["cluster_count"] == 1
+    assert result["clusters"][0]["label_value"] == "Site1"
 
 
 def test_discovery_uses_known_alternative_identity_labels():
