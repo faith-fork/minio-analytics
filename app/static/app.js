@@ -1,6 +1,6 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
-const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], health:null, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null} };
+const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null} };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
 const bytes = n => n == null ? "—" : (n/1024**4).toFixed(2)+" TiB";
 const pct = (used,total) => used == null || !total ? null : Math.max(0,Math.min(100,used/total*100));
@@ -303,16 +303,20 @@ async function showBucketSnapshots(id,days=90,startDate=null,endDate=null){
     table("Daily snapshots",rows.length+" snapshot(s)",["DATE","TENANT AT SNAPSHOT","USED","QUOTA","OBJECTS","VERSIONS","DELETE MARKERS","STATUS"],rows,"No bucket snapshots are available for this date range.");
 }
 async function renderHealth(){
-  state.health=await api("/api/analytics/collection-health?limit=50");
+  const f=state.healthFilters;
+  const params=new URLSearchParams({page:String(f.page),page_size:String(f.pageSize)});
+  if(f.startDate)params.set("start_date",f.startDate);
+  if(f.endDate)params.set("end_date",f.endDate);
+  if(f.status)params.set("status",f.status);
+  state.health=await api("/api/analytics/collection-health?"+params.toString());
   const h=state.health,s=h.schedule||{},jobs=s.jobs||{};
   const node=jobs.node_health||{},daily=jobs.daily_collection||{};
-  const counts=h.status_counts||{};
+  const counts=h.status_counts||{},pg=h.pagination||{};
   const jobCard=(title,job,nextLabel,subtitle)=>`<section class="panel scheduler-job"><div class="panel-header"><div><h3>${title}</h3><p>${subtitle}</p></div>${pill(job.last_status||"Not run")}</div><div class="scheduler-job-grid"><div><small>LAST STARTED</small><strong>${timestampLabel(job.last_started_at)}</strong></div><div><small>LAST COMPLETED</small><strong>${timestampLabel(job.last_completed_at)}</strong></div><div><small>${nextLabel}</small><strong>${timestampLabel(job.next_expected_at)}</strong></div></div>${job.last_error?`<p class="health-error-text">${esc(job.last_error)}</p>`:""}</section>`;
   const dailyRows=(h.cluster_daily_status||[]).map(c=>{
     const r=c.latest_run;
     let details={};try{details=typeof r?.details_json==="string"?JSON.parse(r.details_json):(r?.details||{});}catch{}
-    const errors=details.errors||[];
-    const topologyErrors=details.topology_errors||{};
+    const errors=details.errors||[],topologyErrors=details.topology_errors||{};
     const errorSummary=[...errors,...Object.entries(topologyErrors).map(([k,v])=>k+": "+v)].join("; ");
     return `<tr><td><span class="cell-strong">${esc(c.cluster_name)}</span><br><span class="cell-muted">${esc(c.location_name)}</span></td><td>${r?pill(r.status):pill("Not run")}</td><td>${r?timestampLabel(r.started_at):"—"}</td><td>${r?timestampLabel(r.finished_at):"—"}</td><td>${r?fmt(r.attempt,0):"—"}</td><td>${r?fmt(r.metrics_collected,0):"—"}</td><td>${esc(errorSummary||r?.error_text||"—")}</td></tr>`;
   });
@@ -323,16 +327,23 @@ async function renderHealth(){
     const errorText=Object.entries(errors).map(([k,v])=>k+": "+v).join("; ");
     return `<tr><td><span class="cell-strong">${esc(n.cluster_name)}</span><br><span class="cell-muted">${esc(n.location_name)}</span></td><td>${timestampLabel(n.snapshot_ts)}</td><td>${pill(status)}</td><td>${fmt(c.node_exporter_up,0)} / ${fmt(c.node_count,0)}</td><td>${fmt(c.minio_scrape_up,0)} / ${fmt(c.node_count,0)}</td><td>${fmt(c.drive_count,0)}</td><td>${fmt(c.availability_error_drives,0)} / ${fmt(c.io_error_drives,0)} / ${fmt(c.timeout_error_drives,0)}</td><td>${esc(errorText||"—")}</td></tr>`;
   });
-  const runRows=(h.recent_runs||[]).map(r=>`<tr><td>${timestampLabel(r.started_at)}</td><td>${esc(r.location_name||"—")}</td><td>${esc(r.cluster_name||"—")}</td><td>${dateLabel(r.snapshot_date)}</td><td>${pill(r.status)}</td><td>${r.attempt}</td><td>${r.metrics_collected}</td><td>${esc(r.error_text||"—")}</td></tr>`);
+  const runRows=(h.recent_runs||[]).map(r=>{
+    const detail=r.details||{},detailErrors=detail.errors||[],topologyErrors=detail.topology_errors||{};
+    const hasIssue=r.status==="failed"||r.status==="partial";
+    const issueParts=[r.error_text,...detailErrors,...Object.entries(topologyErrors).map(([k,v])=>k+": "+v)].filter(Boolean);
+    const issueMarkup=hasIssue?(issueParts.length?`<details class="health-error-details"><summary>View details (${issueParts.length})</summary><ul>${issueParts.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></details>`:"<span class=\"cell-muted\">No error details recorded</span>"):"—";
+    return `<tr><td>${timestampLabel(r.started_at)}</td><td>${esc(r.location_name||"—")}</td><td>${esc(r.cluster_name||"—")}</td><td>${dateLabel(r.snapshot_date)}</td><td>${pill(r.status)}</td><td>${r.attempt}</td><td>${r.metrics_collected}</td><td>${issueMarkup}</td></tr>`;
+  });
+  const filterMarkup=`<section class="table-panel health-history-panel"><div class="table-heading"><div><h3>Recent daily executions</h3><p>${fmt(pg.total_items||0,0)} matching cluster-level runs · Filter by snapshot date and status</p></div></div><div class="health-history-filters"><label>FROM DATE<input id="health-start-date" type="date" value="${esc(f.startDate)}"></label><label>TO DATE<input id="health-end-date" type="date" value="${esc(f.endDate)}"></label><label>STATUS<select id="health-status"><option value="">All statuses</option><option value="success" ${f.status==="success"?"selected":""}>Success</option><option value="partial" ${f.status==="partial"?"selected":""}>Partial</option><option value="failed" ${f.status==="failed"?"selected":""}>Failed</option></select></label><label>ROWS PER PAGE<select id="health-page-size"><option value="10" ${f.pageSize===10?"selected":""}>10</option><option value="20" ${f.pageSize===20?"selected":""}>20</option><option value="50" ${f.pageSize===50?"selected":""}>50</option><option value="100" ${f.pageSize===100?"selected":""}>100</option></select></label><div class="health-filter-actions"><button class="primary-small" data-action="apply-health-filters">Apply filters</button><button class="subtle-button" data-action="reset-health-filters">Reset</button></div></div><div class="table-scroll"><table><thead><tr>${["STARTED AT","LOCATION","CLUSTER","SNAPSHOT DATE","STATUS","ATTEMPT","METRICS","ERROR DETAILS"].map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody>${runRows.length?runRows.join(""):`<tr><td colspan="8" class="empty-state">No collection runs match these filters.</td></tr>`}</tbody></table></div><div class="health-pagination"><span>Page ${pg.page||1} of ${pg.total_pages||1} · Showing ${runRows.length} of ${fmt(pg.total_items||0,0)}</span><div><button class="subtle-button" data-health-page="${Math.max(1,(pg.page||1)-1)}" ${!pg.has_previous?"disabled":""}>← Previous</button><button class="subtle-button" data-health-page="${(pg.page||1)+1}" ${!pg.has_next?"disabled":""}>Next →</button></div></div></section>`;
   $("#content").innerHTML=pageHead("Collection health","Scheduler cadence, collection freshness and infrastructure telemetry status.",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
-    `<div class="metric-grid">${metric("SUCCESSFUL DAILY RUNS",fmt(counts.success||0,0),"Persisted successful cluster runs","✓",true)}${metric("PARTIAL RUNS",fmt(counts.partial||0,0),"One or more metric families unavailable","◒")}${metric("FAILED RUNS",fmt(counts.failed||0,0),"Collector runs that failed","!")}${metric("RECENT EXECUTIONS",fmt(h.count||0,0),"Latest ${h.count||0} daily run records","◷")}</div>`+
+    `<div class="metric-grid">${metric("SUCCESSFUL DAILY RUNS",fmt(counts.success||0,0),"Persisted successful cluster runs","✓",true)}${metric("PARTIAL RUNS",fmt(counts.partial||0,0),"One or more metric families unavailable","◒")}${metric("FAILED RUNS",fmt(counts.failed||0,0),"Collector runs that failed","!")}${metric("RECENT EXECUTIONS",fmt(pg.total_items||0,0),"Matching runs in current filter","◷")}</div>`+
     '<div class="health-section-heading"><h2>Scheduler</h2><p>Settings are read from SQLite. The scheduler checks for due work every minute.</p></div>'+
-    `<div class="panel-grid scheduler-grid">${jobCard("Node & drive health",node, "NEXT EXPECTED RUN", "Every "+fmt(s.node_interval_hours,0)+" hours · node exporter, MinIO scrape and drive telemetry")}${jobCard("Daily capacity & bucket collection",daily,"NEXT EXPECTED RUN","Daily at "+esc(s.daily_collection_time||"—")+" "+esc(s.timezone||"IST")+" · cluster, bucket and pool snapshots")}</div>`+
+    `<div class="panel-grid scheduler-grid">${jobCard("Node & drive health",node,"NEXT EXPECTED RUN","Every "+fmt(s.node_interval_hours,0)+" hours · node exporter, MinIO scrape and drive telemetry")}${jobCard("Daily capacity & bucket collection",daily,"NEXT EXPECTED RUN","Daily at "+esc(s.daily_collection_time||"—")+" "+esc(s.timezone||"IST")+" · cluster, bucket and pool snapshots")}</div>`+
     '<div class="health-section-heading"><h2>Daily collection by cluster</h2><p>Latest persisted daily collector result for each configured cluster.</p></div>'+
     table("Cluster collection status",(h.cluster_daily_status||[]).length+" cluster(s)",["CLUSTER / LOCATION","STATUS","STARTED","FINISHED","ATTEMPT","METRICS","ERRORS / DETAILS"],dailyRows,"No daily collection runs recorded.")+
     '<div class="health-section-heading"><h2>Node & drive telemetry</h2><p>Latest high-frequency sample per cluster. Drive error columns show affected drive counts: availability / I/O / timeout.</p></div>'+
     table("Infrastructure telemetry","Latest node-health snapshots",["CLUSTER / LOCATION","SNAPSHOT","STATUS","NODE EXPORTER UP","MINIO SCRAPE UP","DRIVES","AVAIL / I/O / TIMEOUT","FAMILY ERRORS"],nodeRows,"No node-health samples recorded.")+
-    table("Recent daily executions","Latest 50 cluster-level collector records",["STARTED AT","LOCATION","CLUSTER","SNAPSHOT DATE","STATUS","ATTEMPT","METRICS","ERROR"],runRows,"No collection runs are available.");
+    filterMarkup;
 }
 
 function openModal(title,description,fields,onSubmit){
