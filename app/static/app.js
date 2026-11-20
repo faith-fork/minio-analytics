@@ -119,7 +119,7 @@ async function renderCapacityReport(){
       '<td>'+bytes(x.installed_capacity_bytes)+'</td><td>'+bytes(x.cap_capacity_bytes)+'</td>'+
       '<td>'+bytes(x.provisioned_bytes)+'</td><td>'+bytes(x.used_cap_bytes)+'</td>'+
       '<td>'+bytes(x.used_bucket_bytes)+'</td><td>'+bytes(x.free_capacity_bytes)+'</td>'+
-      '<td>'+(x.usage_pct==null?"—":fmt(x.usage_pct,1)+"%")+'</td>'+
+      '<td>'+(x.usage_pct==null?"—":'<span class="status-pill '+(x.usage_pct>=80?"bad":x.usage_pct>=70?"warn":"")+'">'+fmt(x.usage_pct,1)+"%"+'</span>')+'</td>'+
       '<td>'+(x.provisioned_pct==null?"—":fmt(x.provisioned_pct,1)+"%")+'</td>'+
       '<td><span class="cell-muted">Cluster: '+esc(clusterDate)+'</span><br><span class="cell-muted">Buckets: '+esc(bucketDates)+'</span></td>'+
       '<td>'+esc(coverage)+'</td></tr>';
@@ -133,11 +133,11 @@ async function renderCapacityReport(){
     '<li>Usable Free = usable free bytes from the latest cluster snapshot.</li>'+
     '<li>Usage % = Used Usable ÷ Installed Capacity × 100. Prov % = Provisioned ÷ Installed Capacity × 100.</li>'+
     '<li>Avg Used % = arithmetic average of the available per-cluster Usage % values; unavailable values are excluded.</li>'+
-    '</ul><p>All capacity values are displayed in TiB. N/A (—) indicates a missing snapshot or incomplete metric coverage; it is never treated as zero. Cluster capacity uses the latest cluster snapshot, while bucket totals use the latest bucket snapshot for that cluster.</p></div>';
+    '</ul><p>Usage % colour: green below 70%; amber from 70% to below 80%; red at 80% and above.</p><p>All capacity values are displayed in TiB. N/A (—) indicates a missing snapshot or incomplete metric coverage; it is never treated as zero. Cluster capacity uses the latest cluster snapshot, while bucket totals use the latest bucket snapshot for that cluster.</p></div>';
   $("#content").innerHTML=pageHead("Consolidated Provisioned Report","Fleet-wide installed, usable and provisioned capacity from the latest stored SQLite snapshots.",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
     '<div class="metric-grid capacity-report-grid">'+cards+'</div>'+
-    formulas+
-    table("Capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · latest available cluster and bucket snapshots",["CLUSTER / LOCATION","INSTALLED","USABLE","PROVISIONED","USED USABLE","USED BKT","USABLE FREE","USAGE %","PROV %","SNAPSHOT DATES","BUCKET COVERAGE"],rows,"No enabled clusters are registered.");
+    table("Capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · latest available cluster and bucket snapshots",["CLUSTER / LOCATION","INSTALLED","USABLE","PROVISIONED","USED USABLE","USED BKT","USABLE FREE","USAGE %","PROV %","SNAPSHOT DATES","BUCKET COVERAGE"],rows,"No enabled clusters are registered.")+
+    formulas;
 }
 async function renderClusters(){
   state.clusters=(await api("/api/analytics/clusters")).items;
