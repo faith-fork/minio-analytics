@@ -885,6 +885,121 @@ def collection_health(
     }
 
 
+@router.get("/collection-health/trends")
+def collection_health_trends(
+    cluster_id: str | None = Query(default=None),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    _: dict = Depends(get_current_user),
+) -> dict:
+    """Return historical node and drive telemetry from persisted four-hour samples."""
+    today_ist = datetime.now(ZoneInfo("Asia/Kolkata")).date()
+    end = end_date or today_ist
+    start = start_date or (end - timedelta(days=29))
+    if start > end:
+        raise HTTPException(status_code=422, detail="start_date must be on or before end_date")
+    ist = ZoneInfo("Asia/Kolkata")
+    start_utc = datetime.combine(start, datetime.min.time(), tzinfo=ist).astimezone(timezone.utc)
+    end_utc = datetime.combine(end + timedelta(days=1), datetime.min.time(), tzinfo=ist).astimezone(timezone.utc)
+    start_text = start_utc.isoformat(timespec="seconds").replace("+00:00", "Z")
+    end_text = end_utc.isoformat(timespec="seconds").replace("+00:00", "Z")
+
+    with transaction() as connection:
+        clusters = connection.execute(
+            """SELECT c.id AS cluster_id,c.name AS cluster_name,l.name AS location_name
+               FROM clusters c JOIN locations l ON l.id=c.location_id
+               WHERE c.enabled=1 ORDER BY l.name,c.name"""
+        ).fetchall()
+        if cluster_id and not any(row["cluster_id"] == cluster_id for row in clusters):
+            raise HTTPException(status_code=404, detail="Cluster not found or disabled")
+        sql = """
+            SELECT r.run_id,r.cluster_id,c.name AS cluster_name,l.name AS location_name,
+                   r.snapshot_ts,r.collected_at,r.node_count AS recorded_node_count,
+                   r.drive_count AS recorded_drive_count,r.family_errors_json,
+                   n.node_count,n.node_exporter_up,n.minio_scrape_up,
+                   n.avg_cpu_pct,n.memory_total_bytes,n.memory_used_bytes,
+                   n.drives_online,n.drives_offline,
+                   d.drive_count AS measured_drive_count,d.availability_error_drives,
+                   d.io_error_drives,d.timeout_error_drives,d.availability_errors,
+                   d.io_errors,d.timeout_errors,d.filesystem_used_bytes,
+                   d.filesystem_total_bytes,d.filesystem_used_pct,
+                   d.readonly_filesystems
+            FROM node_health_runs r
+            JOIN clusters c ON c.id=r.cluster_id
+            JOIN locations l ON l.id=c.location_id
+            LEFT JOIN (
+                SELECT run_id,COUNT(*) AS node_count,
+                       SUM(CASE WHEN node_exporter_up=1 THEN 1 ELSE 0 END) AS node_exporter_up,
+                       SUM(CASE WHEN minio_scrape_up=1 THEN 1 ELSE 0 END) AS minio_scrape_up,
+                       AVG(cpu_utilization_pct) AS avg_cpu_pct,
+                       SUM(memory_total_bytes) AS memory_total_bytes,
+                       SUM(memory_used_bytes) AS memory_used_bytes,
+                       SUM(drives_online) AS drives_online,
+                       SUM(drives_offline) AS drives_offline
+                FROM node_health_metrics GROUP BY run_id
+            ) n ON n.run_id=r.run_id
+            LEFT JOIN (
+                SELECT run_id,COUNT(*) AS drive_count,
+                       SUM(CASE WHEN availability_errors>0 THEN 1 ELSE 0 END) AS availability_error_drives,
+                       SUM(CASE WHEN io_errors>0 THEN 1 ELSE 0 END) AS io_error_drives,
+                       SUM(CASE WHEN timeout_errors>0 THEN 1 ELSE 0 END) AS timeout_error_drives,
+                       SUM(availability_errors) AS availability_errors,
+                       SUM(io_errors) AS io_errors,
+                       SUM(timeout_errors) AS timeout_errors,
+                       SUM(filesystem_used_bytes) AS filesystem_used_bytes,
+                       SUM(filesystem_total_bytes) AS filesystem_total_bytes,
+                       AVG(filesystem_used_pct) AS filesystem_used_pct,
+                       SUM(CASE WHEN filesystem_readonly=1 THEN 1 ELSE 0 END) AS readonly_filesystems
+                FROM drive_health_metrics GROUP BY run_id
+            ) d ON d.run_id=r.run_id
+            WHERE r.snapshot_ts>=? AND r.snapshot_ts<?
+        """
+        params: list[object] = [start_text, end_text]
+        if cluster_id:
+            sql += " AND r.cluster_id=?"
+            params.append(cluster_id)
+        sql += " ORDER BY r.snapshot_ts,r.cluster_id"
+        rows = connection.execute(sql, params).fetchall()
+
+    samples = []
+    for row in rows:
+        item = _dict(row)
+        try:
+            family_errors = json.loads(item.pop("family_errors_json") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            family_errors = {"_parse_error": "Unable to parse family error details"}
+        node_count = item.get("node_count") or 0
+        item["node_exporter_availability_pct"] = (
+            item["node_exporter_up"] / node_count * 100
+            if node_count and item.get("node_exporter_up") is not None else None
+        )
+        item["minio_scrape_availability_pct"] = (
+            item["minio_scrape_up"] / node_count * 100
+            if node_count and item.get("minio_scrape_up") is not None else None
+        )
+        memory_total = item.get("memory_total_bytes")
+        item["memory_used_pct"] = (
+            item["memory_used_bytes"] / memory_total * 100
+            if memory_total and item.get("memory_used_bytes") is not None else None
+        )
+        fs_total = item.get("filesystem_total_bytes")
+        item["filesystem_weighted_used_pct"] = (
+            item["filesystem_used_bytes"] / fs_total * 100
+            if fs_total and item.get("filesystem_used_bytes") is not None else None
+        )
+        item["family_errors"] = family_errors
+        samples.append(item)
+
+    return {
+        "cluster_id": cluster_id,
+        "start_date": start.isoformat(),
+        "end_date": end.isoformat(),
+        "clusters": [_dict(row) for row in clusters],
+        "samples": samples,
+        "sample_count": len(samples),
+    }
+
+
 @router.get("/clusters/{cluster_id}/topology")
 def cluster_topology(cluster_id: str, _: dict = Depends(get_current_user)) -> dict:
     """Return latest high-frequency node/drive health and daily pool topology."""
