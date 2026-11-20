@@ -30,8 +30,14 @@ function histogramRangeLabel(value){
 function objectSizeHistogram(data,title){
   if(!data||data.status==="unavailable"||!data.distribution?.length)
     return panel(title,"Object-size distribution from the latest stored snapshot",'<div class="empty-state"><strong>Object-size distribution unavailable</strong><p>The MinIO size-distribution metric is missing for this snapshot.</p></div>');
-  const note=data.status==="partial"?'<div class="chart-note"><strong>Partial histogram:</strong> '+data.buckets_available+' of '+data.buckets_expected+' buckets reported a distribution. Totals and percentages are withheld to avoid under-reporting.</div>':"";
-  return panel(title,"Latest snapshot · "+dateLabel(data.snapshot_date)+" · Object count by object-size range",'<div class="chart-wrap histogram-chart-wrap"><canvas id="object-size-histogram"></canvas></div><div class="histogram-summary"><strong>'+(data.total_objects==null?"—":fmt(data.total_objects,0))+'</strong><span>objects represented in histogram</span><span>'+data.buckets_available+'/'+data.buckets_expected+' buckets with distribution data</span></div>'+note);
+  const partial=data.status==="partial";
+  const note=partial?'<div class="chart-note"><strong>Partial histogram:</strong> '+data.buckets_available+' of '+data.buckets_expected+' buckets reported a distribution. Totals and percentages are withheld to avoid under-reporting.</div>':"";
+  const rows=data.distribution;
+  const tableRows=rows.map(x=>'<tr><td>'+esc(histogramRangeLabel(x.range))+'</td><td class="histogram-number">'+fmt(x.object_count,0)+'</td><td class="histogram-number">'+(x.percentage==null?'—':fmt(x.percentage,2)+'%')+'</td></tr>').join("");
+  const controls='<div class="histogram-toolbar"><span>Display</span><div class="tenant-chart-controls"><button type="button" class="active" data-histogram-mode="graph" aria-pressed="true">Graph</button><button type="button" data-histogram-mode="table" aria-pressed="false">Table</button></div></div>';
+  const graph='<div class="histogram-view" data-histogram-view="graph"><div class="chart-wrap histogram-chart-wrap"><canvas id="object-size-histogram"></canvas></div></div>';
+  const tabular='<div class="histogram-view hidden" data-histogram-view="table"><div class="table-scroll"><table class="histogram-table"><thead><tr><th>OBJECT SIZE RANGE</th><th class="histogram-number">OBJECT COUNT</th><th class="histogram-number">PERCENTAGE</th></tr></thead><tbody>'+tableRows+'</tbody></table></div></div>';
+  return panel(title,"Latest snapshot · "+dateLabel(data.snapshot_date)+" · Object count by object-size range",controls+graph+tabular+'<div class="histogram-summary"><strong>'+(data.total_objects==null?"—":fmt(data.total_objects,0))+'</strong><span>objects represented in histogram</span><span>'+data.buckets_available+'/'+data.buckets_expected+' buckets with distribution data</span></div>'+note);
 }
 function drawObjectSizeHistogram(data){
   if(!data||!["available","partial"].includes(data.status)||!data.distribution?.length)return;
@@ -282,6 +288,16 @@ function bulkAssignBucketsModal(){
 }
 
 document.addEventListener("click",async e=>{
+  const histogramMode=e.target.closest("[data-histogram-mode]");
+  if(histogramMode){
+    const panelEl=histogramMode.closest(".panel");
+    if(!panelEl)return;
+    const mode=histogramMode.dataset.histogramMode;
+    panelEl.querySelectorAll("[data-histogram-mode]").forEach(button=>{const active=button.dataset.histogramMode===mode;button.classList.toggle("active",active);button.setAttribute("aria-pressed",String(active));});
+    panelEl.querySelectorAll("[data-histogram-view]").forEach(view=>view.classList.toggle("hidden",view.dataset.histogramView!==mode));
+    if(mode==="graph"){const instance=state.charts.find(item=>item.canvas?.id==="object-size-histogram");if(instance)instance.resize();}
+    return;
+  }
   const view=e.target.closest("[data-view]");if(view){e.preventDefault();setView(view.dataset.view);return;}
   const cluster=e.target.closest("[data-cluster]");if(cluster){try{await showCluster(cluster.dataset.cluster);}catch(err){toast(err.message,true);}return;}
   const tenant=e.target.closest("[data-tenant]");if(tenant){try{await showTenant(tenant.dataset.tenant);}catch(err){toast(err.message,true);}return;}
