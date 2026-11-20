@@ -107,7 +107,7 @@ async function renderCapacityReport(){
     metric("INSTALLED CAPACITY",bytes(t.installed_capacity_bytes),"RAW total capacity","▤"),
     metric("USABLE CAPACITY",bytes(t.cap_capacity_bytes),"Usable total capacity","▦"),
     metric("PROVISIONED",bytes(t.provisioned_bytes),"Sum of active bucket quotas","◫"),
-    metric("USED CAP",bytes(t.used_cap_bytes),"Usable total minus usable free","◒"),
+    metric("USED USABLE",bytes(t.used_cap_bytes),"Usable total minus usable free","◒"),
     metric("USED BKT",bytes(t.used_bucket_bytes),"Sum of active bucket usage","▤"),
     metric("FREE CAPACITY",bytes(t.free_capacity_bytes),"Usable free capacity","◇")
   ].join("");
@@ -125,7 +125,7 @@ async function renderCapacityReport(){
   $("#content").innerHTML=pageHead("Consolidated Capacity Report","Fleet-wide capacity and bucket allocation from the latest stored SQLite snapshots.",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
     '<div class="metric-grid">'+cards+'</div>'+
     '<div class="chart-note"><strong>How to read this report:</strong> All values are displayed in TiB. N/A (—) means the required snapshot or complete metric coverage is unavailable; it is not treated as zero. Bucket totals require quota/usage metrics for every active bucket in the latest bucket snapshot for that cluster.</div>'+
-    table("Capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · each row shows its latest available cluster and bucket snapshot",["CLUSTER / LOCATION","INSTALLED","CAP","PROVISIONED","USED CAP","USED BKT","FREE","SNAPSHOT DATES","BUCKET COVERAGE"],rows,"No enabled clusters are registered.");
+    table("Capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · each row shows its latest available cluster and bucket snapshot",["CLUSTER / LOCATION","INSTALLED","USABLE","PROVISIONED","USED USABLE","USED BKT","USABLE FREE","SNAPSHOT DATES","BUCKET COVERAGE"],rows,"No enabled clusters are registered.");
 }
 
 async function renderClusters(){
