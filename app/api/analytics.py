@@ -804,7 +804,7 @@ def collection_health(
     elif local_now <= scheduled_today:
         next_daily = scheduled_today
     else:
-        next_daily = local_now
+        next_daily = local_now + timedelta(seconds=60)
 
     return {
         "generated_at": now_text,
