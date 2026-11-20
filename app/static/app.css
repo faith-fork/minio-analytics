@@ -114,3 +114,13 @@
 .health-error-details li+li{margin-top:4px}
 .health-pagination button:disabled{opacity:.4;cursor:not-allowed}
 @media(max-width:700px){.health-history-filters{align-items:stretch}.health-history-filters label,.health-history-filters input,.health-history-filters select{width:100%;min-width:0}.health-filter-actions{margin-left:0}.health-pagination{align-items:flex-start;flex-direction:column}.health-pagination>div{width:100%;justify-content:space-between}}
+
+
+/* Historical infrastructure health trends */
+.health-trends-panel{margin-bottom:14px}
+.health-trend-filters{display:flex;align-items:flex-end;gap:11px;flex-wrap:wrap;padding:13px 17px;border-top:1px solid var(--line);background:#fbfcfd}
+.health-trend-filters label{display:flex;flex-direction:column;gap:6px;min-width:160px;color:var(--muted);font-size:9px;font-weight:700;letter-spacing:.55px}
+.health-trend-filters input,.health-trend-filters select{height:35px;min-width:160px;padding:0 9px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);font-family:inherit;font-size:11px;font-weight:500;letter-spacing:0}
+.health-trend-filters button{height:35px}
+.health-trend-chart{height:245px;padding:12px 14px 8px}
+@media(max-width:700px){.health-trend-filters{align-items:stretch}.health-trend-filters label,.health-trend-filters input,.health-trend-filters select{width:100%;min-width:0}.health-trend-filters button{width:100%}.health-trend-chart{height:220px;padding:8px}}
