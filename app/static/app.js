@@ -377,8 +377,7 @@ async function renderHealth(){
     table("Cluster collection status",(h.cluster_daily_status||[]).length+" cluster(s)",["CLUSTER / LOCATION","STATUS","STARTED","FINISHED","ATTEMPT","METRICS","ERRORS / DETAILS"],dailyRows,"No daily collection runs recorded.")+
     '<div class="health-section-heading"><h2>Node & drive telemetry</h2><p>Latest high-frequency sample per cluster. Drive error columns show affected drive counts: availability / I/O / timeout.</p></div>'+
     table("Infrastructure telemetry","Latest node-health snapshots",["CLUSTER / LOCATION","SNAPSHOT","STATUS","NODE EXPORTER UP","MINIO SCRAPE UP","DRIVES","AVAIL / I/O / TIMEOUT","FAMILY ERRORS"],nodeRows,"No node-health samples recorded.")+
-    '<div class="health-section-heading"><h2>Historical infrastructure trends</h2><p>Explore the four-hour telemetry history for a selected cluster.</p></div>'+
-    trendControls+trendPanels+filterMarkup;
+    filterMarkup;
 
 }
 
