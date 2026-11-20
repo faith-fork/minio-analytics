@@ -54,3 +54,29 @@
 .cluster-action-card .primary-small{margin-left:auto}
 @media(max-width:900px){.cluster-chart-grid,.cluster-health-grid{grid-template-columns:1fr}}
 @media(max-width:700px){.analytics-section{margin:18px 0 22px}.analytics-section-heading{align-items:flex-start;flex-direction:column;gap:6px}.cluster-action-card .primary-small{margin-left:0}}
+
+/* Chart panel actions and Grafana-style expanded chart view */
+.panel-header-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.chart-expand-button{width:29px;height:29px;display:grid;place-items:center;border:1px solid var(--line);border-radius:7px;background:#fff;color:#718096;font-size:18px;line-height:1}
+.chart-expand-button:hover{border-color:var(--teal);color:var(--teal);background:#f3fbf9}
+.chart-expand-backdrop{position:fixed;inset:0;z-index:40;background:rgba(9,18,30,.78);display:grid;place-items:center;padding:clamp(12px,3vw,42px)}
+.chart-expand-dialog{width:min(1500px,100%);height:min(900px,94vh);background:#fff;border-radius:13px;box-shadow:0 28px 90px rgba(0,0,0,.35);display:flex;flex-direction:column;overflow:hidden}
+.chart-expand-dialog>header{height:64px;flex:0 0 64px;padding:0 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:16px}
+.chart-expand-dialog>header strong{display:block;font:600 16px 'Space Grotesk';color:var(--ink)}
+.chart-expand-dialog>header span{display:block;margin-top:3px;color:var(--muted);font-size:10px}
+.chart-expand-close{width:34px;height:34px;border:1px solid var(--line);border-radius:8px;background:#fff;color:#53647a;font-size:24px;line-height:1}
+.chart-expand-close:hover{border-color:var(--teal);color:var(--teal)}
+.chart-expand-content{position:relative;flex:1;min-height:0;padding:24px 26px 30px}
+.chart-expand-content canvas{width:100%!important;height:100%!important}
+.chart-panel .chart-wrap{height:215px}
+.cluster-chart-grid .chart-wrap{height:205px}
+.cluster-chart-grid .histogram-chart-wrap{height:250px}
+.trend-controls{justify-content:flex-start;align-items:center;gap:9px;margin:8px 0 14px;flex-wrap:nowrap}
+.trend-controls .form-control{height:36px;min-width:0;width:155px;font-size:11px}
+.trend-controls select.form-control{width:170px}
+.trend-date-label{font-size:10px;color:var(--muted);white-space:nowrap}
+.chart-empty-state{min-height:210px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:20px;color:var(--muted)}
+.chart-empty-state strong{font-size:13px;color:var(--ink);margin-bottom:7px}
+.chart-empty-state p{max-width:420px;font-size:11px;line-height:1.6;margin:0}
+@media(max-width:1050px){.trend-controls{flex-wrap:wrap}.trend-controls .form-control{width:145px}}
+@media(max-width:700px){.chart-expand-backdrop{padding:8px}.chart-expand-dialog{height:96vh;border-radius:9px}.chart-expand-dialog>header{height:56px;flex-basis:56px;padding:0 14px}.chart-expand-content{padding:14px}.chart-panel .chart-wrap,.cluster-chart-grid .chart-wrap{height:220px}.trend-controls{gap:7px}.trend-controls .form-control{flex:1 1 125px;width:auto}.trend-controls select.form-control{flex:1 1 160px;width:auto}}
