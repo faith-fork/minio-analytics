@@ -83,6 +83,7 @@ async function render(){
   clearCharts();$("#content").innerHTML='<div class="loading-state">Loading dashboard data…</div>';
   if(state.view==="overview") await renderOverview();
   else if(state.view==="clusters") await renderClusters();
+  else if(state.view==="capacity-report") await renderCapacityReport();
   else if(state.view==="tenants") await renderTenants();
   else if(state.view==="buckets") await renderBuckets();
   else if(state.view==="health") await renderHealth();
