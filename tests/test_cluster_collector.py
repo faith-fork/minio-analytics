@@ -63,6 +63,7 @@ def test_days_to_full_requires_minimum_daily_observations():
     assert ">= 14" in forecast_query
     assert "deriv(" in forecast_query
     assert "< 0" in forecast_query
+    assert "<= 1825" in forecast_query
 
 
 def test_days_to_full_is_retained_when_forecast_quality_checks_pass():
