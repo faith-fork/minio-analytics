@@ -12,6 +12,7 @@ from app.auth.dependencies import get_current_user, require_admin
 from app.database.database import transaction
 from app.services.capacity_report import get_consolidated_capacity_report, get_capacity_factors
 from app.services.bucket_usage_report import get_consolidated_bucket_usage_report
+from app.services.raw_capacity_report import get_consolidated_raw_capacity_report
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -138,6 +139,12 @@ def overview(_: dict = Depends(get_current_user)) -> dict:
 def consolidated_capacity_report(_: dict = Depends(get_current_user)) -> dict:
     """Return consolidated fleet capacity and a per-cluster breakdown."""
     return get_consolidated_capacity_report()
+
+
+@router.get("/raw-capacity-report")
+def consolidated_raw_capacity_report(_: dict = Depends(get_current_user)) -> dict:
+    """Return latest raw-capacity snapshots for enabled clusters."""
+    return get_consolidated_raw_capacity_report()
 
 
 @router.get("/bucket-usage-report")
