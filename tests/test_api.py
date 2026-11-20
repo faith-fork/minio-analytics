@@ -472,3 +472,26 @@ def test_object_size_distribution_does_not_report_partial_totals(
     assert response.json()["total_objects"] is None
     assert response.json()["buckets_missing"] == 2
     assert response.json()["distribution"][0]["percentage"] is None
+
+def test_cluster_analytics_reports_quota_metric_coverage(viewer_client: TestClient) -> None:
+    from app.database.database import transaction
+
+    complete = viewer_client.get("/api/analytics/clusters/cluster-1?days=3650")
+    assert complete.status_code == 200
+    row = complete.json()["series"][0]
+    assert row["active_bucket_count"] == 3
+    assert row["quota_bucket_count"] == 3
+    assert row["bucket_quota_bytes"] == 3000
+
+    with transaction() as connection:
+        connection.execute(
+            "UPDATE bucket_daily_metrics SET quota_bytes = NULL WHERE bucket_id = 3"
+        )
+
+    partial = viewer_client.get("/api/analytics/clusters/cluster-1?days=3650")
+    assert partial.status_code == 200
+    row = partial.json()["series"][0]
+    assert row["active_bucket_count"] == 3
+    assert row["quota_bucket_count"] == 2
+    assert row["bucket_quota_bytes"] is None
+
