@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from urllib.parse import urlsplit
 
-from app.config.loader import LocationConfig
+from app.config.loader import ClusterConfig, LocationConfig
 from app.database.database import initialize_database, transaction
 
 
@@ -155,3 +155,78 @@ def list_prometheus_configuration() -> list[dict[str, object]]:
                 }
             )
     return list(result.values())
+
+
+
+def load_database_locations() -> list[LocationConfig]:
+    """Build collector configurations from enabled SQLite connections/bindings.
+
+    One LocationConfig is returned per Prometheus connection. A location may
+    therefore have multiple independent Prometheus endpoints, each serving its
+    own bound cluster subset.
+    """
+    initialize_database()
+    with transaction() as connection:
+        rows = connection.execute(
+            """
+            SELECT pc.connection_id, pc.location_id, l.name AS location_name,
+                   pc.protocol, pc.hostname, pc.port, pc.verify_tls,
+                   cpb.cluster_id, cpb.identity_label_name,
+                   cpb.identity_label_value, c.name AS cluster_name
+            FROM prometheus_connections pc
+            JOIN locations l ON l.id = pc.location_id
+            JOIN cluster_prometheus_bindings cpb
+                ON cpb.connection_id = pc.connection_id
+            JOIN clusters c ON c.id = cpb.cluster_id
+            WHERE pc.enabled = 1 AND l.enabled = 1 AND c.enabled = 1
+            ORDER BY pc.location_id, pc.connection_id, cpb.cluster_id
+            """
+        ).fetchall()
+
+    if not rows:
+        raise ValueError(
+            "No enabled Prometheus connections with enabled cluster bindings "
+            "were found in SQLite. Import or enable a Prometheus connection "
+            "and at least one cluster binding before collection."
+        )
+
+    grouped: dict[str, dict[str, object]] = {}
+    for row in rows:
+        connection_id = row["connection_id"]
+        item = grouped.setdefault(
+            connection_id,
+            {
+                "location_id": row["location_id"],
+                "location_name": row["location_name"],
+                "protocol": row["protocol"],
+                "hostname": row["hostname"],
+                "port": row["port"],
+                "verify_tls": bool(row["verify_tls"]),
+                "clusters": [],
+            },
+        )
+        item["clusters"].append(
+            ClusterConfig(
+                id=row["cluster_id"],
+                name=row["cluster_name"],
+                prometheus_label_value=row["identity_label_value"],
+                identity_label_name=row["identity_label_name"],
+            )
+        )
+
+    locations: list[LocationConfig] = []
+    for item in grouped.values():
+        hostname = str(item["hostname"])
+        if ":" in hostname and not hostname.startswith("["):
+            hostname = f"[{hostname}]"
+        endpoint = f'{item["protocol"]}://{hostname}:{item["port"]}'
+        locations.append(
+            LocationConfig(
+                id=str(item["location_id"]),
+                name=str(item["location_name"]),
+                prometheus_url=endpoint,
+                clusters=tuple(item["clusters"]),
+                verify_tls=bool(item["verify_tls"]),
+            )
+        )
+    return locations

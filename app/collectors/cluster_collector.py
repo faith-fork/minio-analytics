@@ -12,7 +12,6 @@ RAW_EFF_FACTOR = 0.993
 LOOKBACK_DAYS = 30
 DAYS_TO_FULL_MIN_SAMPLES = 14
 MAX_DAYS_TO_FULL = 1825
-CLUSTER_LABEL = "cluster"
 
 
 @dataclass(frozen=True)
@@ -69,11 +68,13 @@ def collect_cluster_snapshot(
     summing them would multiply capacity and node counts.
     """
     own_client = client is None
-    prom = client or PrometheusClient(location.prometheus_url)
+    prom = client or PrometheusClient(
+        location.prometheus_url, verify_tls=location.verify_tls
+    )
     collected_at = datetime.now(timezone.utc)
     timestamp = int(snapshot_ts.timestamp())
     label_value = _promql_string(cluster.prometheus_label_value)
-    selector = f'{{{CLUSTER_LABEL}="{label_value}"}}'
+    selector = f'{{{cluster.identity_label_name}="{label_value}"}}'
 
     queries = {
         "raw_total_bytes": (

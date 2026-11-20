@@ -1,10 +1,12 @@
 from __future__ import annotations
+import os
 import fcntl,json,logging
 from datetime import datetime,time,timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from app.collectors.node_health import collect_node_health
 from app.collectors.orchestrator import collect_all
+from app.database.prometheus_config import load_database_locations
 from app.config.loader import load_locations
 from app.database.database import initialize_database,transaction
 
@@ -54,6 +56,17 @@ def _run(key,fn,now):
         _record_finish(key,datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00","Z"),"failed",str(exc))
         LOG.exception("%s failed",key)
 
+def _load_locations():
+    source = os.getenv("MINIO_ANALYTICS_CONFIG_SOURCE", "database").strip().lower()
+    if source == "database":
+        return load_database_locations()
+    if source == "yaml":
+        return load_locations()
+    raise ValueError(
+        "MINIO_ANALYTICS_CONFIG_SOURCE must be 'database' or 'yaml'"
+    )
+
+
 def main():
     logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     initialize_database()
@@ -69,7 +82,7 @@ def main():
         hh,mm=values.get("daily_collection_time","00:15").split(":")
         daily_time=time(int(hh),int(mm))
         now=datetime.now(timezone.utc)
-        locations=load_locations()
+        locations=_load_locations()
         if _due_node(now,interval):
             _run("node_health",lambda:collect_node_health(locations,now),now)
         if _due_daily(now,daily_time):

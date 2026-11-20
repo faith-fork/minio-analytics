@@ -82,11 +82,14 @@ def collect_topology_snapshot(
     if snapshot_ts.tzinfo is None or snapshot_ts.utcoffset() is None:
         raise ValueError("snapshot_ts must be timezone-aware")
     own_client = client is None
-    prom = client or PrometheusClient(location.prometheus_url)
+    prom = client or PrometheusClient(
+        location.prometheus_url, verify_tls=location.verify_tls
+    )
     at = int(snapshot_ts.timestamp())
-    selector = f'{{cluster="{_q(cluster.prometheus_label_value)}"}}'
-    node_selector = f'{{cluster="{_q(cluster.prometheus_label_value)}",job="node_exporter"}}'
-    minio_node_selector = f'{{cluster="{_q(cluster.prometheus_label_value)}",job="minio-metrics-node"}}'
+    label_matcher = f'{cluster.identity_label_name}="{_q(cluster.prometheus_label_value)}"'
+    selector = f'{{{label_matcher}}}'
+    node_selector = f'{{{label_matcher},job="node_exporter"}}'
+    minio_node_selector = f'{{{label_matcher},job="minio-metrics-node"}}'
     collected_at = datetime.now(timezone.utc)
     errors: dict[str, str] = {}
 
@@ -110,7 +113,7 @@ def collect_topology_snapshot(
         minio_up = unique("up", minio_node_selector, ("instance",), "nodes")
         cpu = unique(
             '100 * (1 - avg by (instance) (rate(node_cpu_seconds_total'
-            + f'{{cluster="{_q(cluster.prometheus_label_value)}",job="node_exporter",mode="idle"}}'
+            + f'{{{label_matcher},job="node_exporter",mode="idle"}}'
             + '[5m])))',
             "", ("instance",), "nodes"
         )

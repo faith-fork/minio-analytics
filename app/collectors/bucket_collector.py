@@ -8,8 +8,6 @@ from typing import Optional
 from app.collectors.prometheus import PrometheusClient, PrometheusError
 from app.config.loader import ClusterConfig, LocationConfig
 
-CLUSTER_LABEL = "cluster"
-
 BUCKET_USAGE_METRIC = "minio_cluster_usage_buckets_total_bytes"
 BUCKET_QUOTA_METRIC = "minio_cluster_usage_buckets_quota_total_bytes"
 BUCKET_OBJECTS_METRIC = "minio_cluster_usage_buckets_objects_count"
@@ -101,11 +99,13 @@ def collect_bucket_snapshots(
     collection rather than choosing an arbitrary value.
     """
     own_client = client is None
-    prom = client or PrometheusClient(location.prometheus_url)
+    prom = client or PrometheusClient(
+        location.prometheus_url, verify_tls=location.verify_tls
+    )
     collected_at = datetime.now(timezone.utc)
     timestamp = int(snapshot_ts.timestamp())
     label_value = _promql_string(cluster.prometheus_label_value)
-    selector = f'{{{CLUSTER_LABEL}="{label_value}"}}'
+    selector = f'{{{cluster.identity_label_name}="{label_value}"}}'
 
     try:
         usage = _deduplicate(
