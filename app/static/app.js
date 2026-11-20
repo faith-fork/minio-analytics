@@ -138,7 +138,7 @@ function trendQuery(days,startDate,endDate,extra="") {
 }
 function quotaPanelBody(series){
   const withMetrics=series.filter(r=>(r.quota_bucket_count||0)>0);
-  if(!withMetrics.length)return '<div class="chart-empty-state"><strong>No bucket quota metrics reported</strong><p>No quota values were returned for the selected snapshots. This usually means quotas are not configured; verify the MinIO quota metric before drawing a trend.</p></div>';
+  if(!withMetrics.length)return '<div class="chart-empty-state"><strong>No bucket quota metrics reported</strong><p>No quota values were reported for the selected snapshots. This may mean no bucket quotas are configured, or that Prometheus is not exposing the quota metric. Verify the MinIO quota metric before concluding.</p></div>';
   const incomplete=series.some(r=>r.bucket_quota_bytes==null);
   return (incomplete?'<div class="chart-note"><strong>Incomplete quota coverage:</strong> Some snapshots do not have quota metrics for every active bucket. Gaps are left blank rather than treating missing values as zero.</div>':"")+'<div class="chart-wrap"><canvas id="cluster-quota-chart"></canvas></div>';
 }
