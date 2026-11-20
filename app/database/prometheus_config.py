@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from urllib.parse import urlsplit
 
-from app.config.loader import LocationConfig
+from app.config.loader import ClusterConfig, LocationConfig
 from app.database.database import initialize_database, transaction
 
 
