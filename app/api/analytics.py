@@ -885,9 +885,8 @@ def collection_health(
     }
 
 
-@router.get("/collection-health/trends")
+@router.get("/clusters/{cluster_id}/topology/trends")
 def collection_health_trends(
-    cluster_id: str | None = Query(default=None),
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),
     _: dict = Depends(get_current_user),
@@ -905,12 +904,13 @@ def collection_health_trends(
     end_text = end_utc.isoformat(timespec="seconds").replace("+00:00", "Z")
 
     with transaction() as connection:
-        clusters = connection.execute(
+        cluster = connection.execute(
             """SELECT c.id AS cluster_id,c.name AS cluster_name,l.name AS location_name
                FROM clusters c JOIN locations l ON l.id=c.location_id
-               WHERE c.enabled=1 ORDER BY l.name,c.name"""
-        ).fetchall()
-        if cluster_id and not any(row["cluster_id"] == cluster_id for row in clusters):
+               WHERE c.id=? AND c.enabled=1""",
+            (cluster_id,),
+        ).fetchone()
+        if cluster is None:
             raise HTTPException(status_code=404, detail="Cluster not found or disabled")
         sql = """
             SELECT r.run_id,r.cluster_id,c.name AS cluster_name,l.name AS location_name,
@@ -955,9 +955,8 @@ def collection_health_trends(
             WHERE r.snapshot_ts>=? AND r.snapshot_ts<?
         """
         params: list[object] = [start_text, end_text]
-        if cluster_id:
-            sql += " AND r.cluster_id=?"
-            params.append(cluster_id)
+        sql += " AND r.cluster_id=?"
+        params.append(cluster_id)
         sql += " ORDER BY r.snapshot_ts,r.cluster_id"
         rows = connection.execute(sql, params).fetchall()
 
@@ -994,7 +993,7 @@ def collection_health_trends(
         "cluster_id": cluster_id,
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
-        "clusters": [_dict(row) for row in clusters],
+        "cluster": _dict(cluster),
         "samples": samples,
         "sample_count": len(samples),
     }
