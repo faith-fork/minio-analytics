@@ -1,6 +1,6 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
-const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null} };
+const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, bucketUsageFilters:{cluster:"",location:"",tenant:""}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null} };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
 const bytes = n => n == null ? "—" : (n/1024**4).toFixed(2)+" TiB";
 const pct = (used,total) => used == null || !total ? null : Math.max(0,Math.min(100,used/total*100));
@@ -156,41 +156,19 @@ async function renderCapacityReport(){
     formulas;
 }
 async function renderBucketUsageReport(){
-  const d=await api("/api/analytics/bucket-usage-report");
-  const t=d.totals_bytes||{};
-  const coverage=d.coverage_pct==null?"—":fmt(d.coverage_pct,1)+"%";
-  const cards=[
-    metric("USED STORAGE",bytes(t.used_bytes),"Sum across active buckets","◒"),
-    metric("ALLOCATED QUOTA",bytes(t.quota_bytes),"Sum of active bucket quotas","▤"),
-    metric("OBJECTS",t.object_count==null?"—":fmt(t.object_count,0),"Across active buckets","◫"),
-    metric("VERSIONS",t.version_count==null?"—":fmt(t.version_count,0),"Stored object versions","▦"),
-    metric("DELETE MARKERS",t.delete_marker_count==null?"—":fmt(t.delete_marker_count,0),"Across active buckets","◇"),
-    metric("METRIC COVERAGE",d.active_bucket_count?fmt(d.buckets_with_metrics,0)+" / "+fmt(d.active_bucket_count,0):"0","Active buckets with metrics · "+coverage,"◔")
-  ].join("");
-  const rows=(d.items||[]).map(x=>{
-    const status=x.status==="Available"?'<span class="status-pill">Available</span>':x.status==="Unavailable"?'<span class="status-pill bad">Unavailable</span>':'<span class="status-pill warn">No snapshot</span>';
-    const tenant=x.metric_bucket_id?(x.tenant_name_at_snapshot||"Unassigned"):"—";
-    return '<tr><td><span class="cell-strong">'+esc(x.bucket_name)+'</span></td>'+
-      '<td>'+esc(x.cluster_name)+'</td><td>'+esc(x.location_name)+'</td>'+
-      '<td>'+esc(tenant)+'</td><td>'+bytes(x.used_bytes)+'</td>'+
-      '<td>'+bytes(x.quota_bytes)+'</td>'+
-      '<td>'+(x.usage_pct==null?"—":fmt(x.usage_pct,1)+"%")+'</td>'+
-      '<td>'+(x.object_count==null?"—":fmt(x.object_count,0))+'</td>'+
-      '<td>'+(x.version_count==null?"—":fmt(x.version_count,0))+'</td>'+
-      '<td>'+(x.delete_marker_count==null?"—":fmt(x.delete_marker_count,0))+'</td>'+
-      '<td>'+dateLabel(x.bucket_snapshot_date)+'</td><td>'+status+'</td></tr>';
-  });
-  const asOf=d.data_as_of?timestampLabel(d.data_as_of):"Unavailable — one or more active clusters have no bucket snapshot";
-  $("#content").innerHTML=pageHead("Consolidated Bucket Usage Report","Latest stored bucket usage for active buckets across enabled clusters. Data as of "+esc(asOf)+".",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
-    reportTabs("bucket-usage-report")+
-    '<div class="metric-grid bucket-usage-grid">'+cards+'</div>'+
-    table("Bucket usage by tenant and cluster",fmt(d.active_bucket_count,0)+" active bucket(s) · "+fmt(d.active_cluster_count,0)+" cluster(s) · latest bucket snapshot per cluster",["BUCKET","CLUSTER","LOCATION","TENANT AT SNAPSHOT","USED","QUOTA","USAGE %","OBJECTS","VERSIONS","DELETE MARKERS","SNAPSHOT DATE","STATUS"],rows,"No active buckets are registered.")+
-    '<div class="report-footnotes"><strong>Calculation and coverage notes</strong><ul>'+
-    '<li>Each cluster uses its latest stored bucket snapshot date; all active buckets in that cluster are represented.</li>'+
-    '<li>Totals are shown only when every active bucket has an available, non-null value for that metric. Missing values are never treated as zero.</li>'+
-    '<li>Tenant attribution is taken from the bucket snapshot, not the current bucket assignment.</li>'+
-    '<li>Usage % = Used bytes ÷ Quota bytes × 100; it is unavailable when quota is zero or missing.</li>'+
-    '</ul><p>All storage values are displayed in TiB. A dash indicates missing snapshot data or incomplete metric coverage.</p></div>';
+  const d=await api("/api/analytics/bucket-usage-report"),allItems=d.items||[],filters=state.bucketUsageFilters;
+  const options=(key,label,selected)=>'<option value="">All</option>'+[...new Map(allItems.map(x=>[String(x[key]??"unassigned"),{value:String(x[key]??"unassigned"),label:x[label]||"Unassigned"}])).values()].sort((a,b)=>a.label.localeCompare(b.label)).map(x=>'<option value="'+esc(x.value)+'"'+(selected===x.value?' selected':'')+'>'+esc(x.label)+'</option>').join("");
+  const filterPanel='<section class="panel bucket-usage-filters"><div class="bucket-usage-filter-field"><label for="bucket-filter-cluster">Cluster</label><select class="form-control" id="bucket-filter-cluster" data-bucket-usage-filter="cluster">'+options("cluster_id","cluster_name",filters.cluster)+'</select></div><div class="bucket-usage-filter-field"><label for="bucket-filter-location">Location</label><select class="form-control" id="bucket-filter-location" data-bucket-usage-filter="location">'+options("location_id","location_name",filters.location)+'</select></div><div class="bucket-usage-filter-field"><label for="bucket-filter-tenant">Tenant</label><select class="form-control" id="bucket-filter-tenant" data-bucket-usage-filter="tenant">'+options("tenant_id_at_snapshot","tenant_name_at_snapshot",filters.tenant)+'</select></div><button type="button" class="subtle-button" data-action="reset-bucket-usage-filters">Clear filters</button></section>';
+  const items=allItems.filter(x=>(!filters.cluster||String(x.cluster_id)===filters.cluster)&&(!filters.location||String(x.location_id)===filters.location)&&(!filters.tenant||String(x.tenant_id_at_snapshot??"unassigned")===filters.tenant));
+  const fields=["used_bytes","quota_bytes","object_count","version_count","delete_marker_count"],totals={};
+  for(const field of fields)totals[field]=!items.length?0:items.every(x=>x.metrics_available===1&&x[field]!=null)?items.reduce((sum,x)=>sum+x[field],0):null;
+  const clusterIds=[...new Set(items.map(x=>x.cluster_id))],withMetrics=items.filter(x=>x.metrics_available===1).length,coverage=items.length?withMetrics/items.length*100:null;
+  const snapshotMap=new Map();items.forEach(x=>snapshotMap.set(x.cluster_id,{date:x.bucket_snapshot_date,ts:x.cluster_bucket_snapshot_ts}));
+  const dataAsOf=snapshotMap.size&&[...snapshotMap.values()].every(x=>x.date&&x.ts)?[...snapshotMap.values()].map(x=>x.ts).sort()[0]:null;
+  const cards=[metric("USED STORAGE",bytes(totals.used_bytes),"Sum across filtered buckets","◒"),metric("ALLOCATED QUOTA",bytes(totals.quota_bytes),"Sum of filtered bucket quotas","▤"),metric("OBJECTS",totals.object_count==null?"—":fmt(totals.object_count,0),"Across filtered buckets","◫"),metric("VERSIONS",totals.version_count==null?"—":fmt(totals.version_count,0),"Stored object versions","▦"),metric("DELETE MARKERS",totals.delete_marker_count==null?"—":fmt(totals.delete_marker_count,0),"Across filtered buckets","◇"),metric("METRIC COVERAGE",items.length?fmt(withMetrics,0)+" / "+fmt(items.length,0):"0","Filtered buckets with metrics · "+(coverage==null?"—":fmt(coverage,1)+"%"),"◔")].join("");
+  const rows=items.map(x=>{const status=x.status==="Available"?'<span class="status-pill">Available</span>':x.status==="Unavailable"?'<span class="status-pill bad">Unavailable</span>':'<span class="status-pill warn">No snapshot</span>';const tenant=x.metric_bucket_id?(x.tenant_name_at_snapshot||"Unassigned"):"—";return '<tr><td><span class="cell-strong">'+esc(x.bucket_name)+'</span></td><td>'+esc(x.cluster_name)+'</td><td>'+esc(x.location_name)+'</td><td>'+esc(tenant)+'</td><td>'+bytes(x.used_bytes)+'</td><td>'+bytes(x.quota_bytes)+'</td><td>'+(x.usage_pct==null?"—":fmt(x.usage_pct,1)+"%")+'</td><td>'+(x.object_count==null?"—":fmt(x.object_count,0))+'</td><td>'+(x.version_count==null?"—":fmt(x.version_count,0))+'</td><td>'+(x.delete_marker_count==null?"—":fmt(x.delete_marker_count,0))+'</td><td>'+dateLabel(x.bucket_snapshot_date)+'</td><td>'+status+'</td></tr>';});
+  const asOf=dataAsOf?timestampLabel(dataAsOf):"Unavailable — one or more filtered clusters have no bucket snapshot",summary=filters.cluster||filters.location||filters.tenant?"Filtered view · ":"";
+  $("#content").innerHTML=pageHead("Consolidated Bucket Usage Report","Latest stored bucket usage for active buckets across enabled clusters. Data as of "+esc(asOf)+".",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+reportTabs("bucket-usage-report")+filterPanel+'<div class="metric-grid bucket-usage-grid">'+cards+'</div>'+table("Bucket usage by tenant and cluster",summary+fmt(items.length,0)+" of "+fmt(allItems.length,0)+" active bucket(s) · "+fmt(clusterIds.length,0)+" cluster(s) · latest bucket snapshot per cluster",["BUCKET","CLUSTER","LOCATION","TENANT AT SNAPSHOT","USED","QUOTA","USAGE %","OBJECTS","VERSIONS","DELETE MARKERS","SNAPSHOT DATE","STATUS"],rows,"No buckets match the selected filters.")+'<div class="report-footnotes"><strong>Calculation and coverage notes</strong><ul><li>Each cluster uses its latest stored bucket snapshot date; all active buckets in that cluster are represented.</li><li>Totals are shown only when every filtered bucket has an available, non-null value for that metric. Missing values are never treated as zero.</li><li>Tenant attribution is taken from the bucket snapshot, not the current bucket assignment.</li><li>Usage % = Used bytes ÷ Quota bytes × 100; it is unavailable when quota is zero or missing.</li></ul><p>All capacity values are displayed in TiB. A dash indicates missing snapshot data or incomplete metric coverage.</p></div>';
 }
 
 async function renderClusters(){
@@ -564,6 +542,7 @@ document.addEventListener("click",async e=>{
     renderHealth().catch(err=>toast(err.message,true));
     return;
   }
+  if(action==="reset-bucket-usage-filters"){state.bucketUsageFilters={cluster:"",location:"",tenant:""};renderBucketUsageReport().catch(err=>toast(err.message,true));return;}
   if(action==="refresh"){render().catch(err=>toast(err.message,true));}
   if(action==="apply-trend-dates"){
     const el=e.target.closest("[data-action='apply-trend-dates']");
@@ -614,6 +593,7 @@ $("#content").addEventListener("submit",async e=>{
   }catch(err){toast(err.message,true);if(button){button.disabled=false;button.textContent="Save & recalculate";}}
 });
 $("#content").addEventListener("change",async e=>{
+  if(e.target.matches("[data-bucket-usage-filter]")){state.bucketUsageFilters[e.target.dataset.bucketUsageFilter]=e.target.value;renderBucketUsageReport().catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-report-column]")){
     const checkbox=e.target,key=checkbox.dataset.reportColumn;
     const previous=!checkbox.checked;
