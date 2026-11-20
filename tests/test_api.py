@@ -382,3 +382,93 @@ def test_master_admin_can_create_list_and_download_verified_backup(
 
     invalid = admin_client.get("/api/master-admin/backups/..%2Fsecret.db/download")
     assert invalid.status_code in (400, 404)
+
+
+def test_object_size_distribution_aggregates_bucket_tenant_and_cluster(
+    admin_client: TestClient,
+) -> None:
+    import json
+    from app.database.database import transaction
+
+    tenant = admin_client.post("/api/tenants", json={"name": "Histogram Tenant"})
+    assert tenant.status_code == 201
+    tenant_id = tenant.json()["id"]
+
+    with transaction() as connection:
+        connection.execute(
+            "UPDATE buckets SET tenant_id = ? WHERE id IN (1, 2)",
+            (tenant_id,),
+        )
+        connection.execute(
+            """UPDATE bucket_daily_metrics
+               SET tenant_id_at_snapshot = ?,
+                   object_size_distribution_json = ?
+               WHERE bucket_id = 1""",
+            (tenant_id, json.dumps({"LESS_THAN_1KB": 10, "BETWEEN_1KB_AND_64KB": 20})),
+        )
+        connection.execute(
+            """UPDATE bucket_daily_metrics
+               SET tenant_id_at_snapshot = ?,
+                   object_size_distribution_json = ?
+               WHERE bucket_id = 2""",
+            (tenant_id, json.dumps({"LESS_THAN_1KB": 5, "BETWEEN_1KB_AND_64KB": 15})),
+        )
+        connection.execute(
+            """UPDATE bucket_daily_metrics
+               SET object_size_distribution_json = ?
+               WHERE bucket_id = 3""",
+            (json.dumps({"LESS_THAN_1KB": 2, "BETWEEN_1KB_AND_64KB": 8}),),
+        )
+
+    bucket = admin_client.get("/api/analytics/object-size-distribution/bucket/1")
+    assert bucket.status_code == 200
+    assert bucket.json()["total_objects"] == 30
+    assert bucket.json()["status"] == "available"
+
+    current = admin_client.get(
+        f"/api/analytics/object-size-distribution/tenant/{tenant_id}?attribution=current"
+    )
+    assert current.status_code == 200
+    assert current.json()["total_objects"] == 50
+    assert current.json()["buckets_available"] == 2
+
+    historical = admin_client.get(
+        f"/api/analytics/object-size-distribution/tenant/{tenant_id}?attribution=historical"
+    )
+    assert historical.status_code == 200
+    assert historical.json()["total_objects"] == 50
+
+    cluster = admin_client.get(
+        "/api/analytics/object-size-distribution/cluster/cluster-1"
+    )
+    assert cluster.status_code == 200
+    assert cluster.json()["total_objects"] == 60
+
+
+def test_object_size_distribution_does_not_report_partial_totals(
+    admin_client: TestClient,
+) -> None:
+    import json
+    from app.database.database import transaction
+
+    with transaction() as connection:
+        connection.execute(
+            """UPDATE bucket_daily_metrics
+               SET object_size_distribution_json = ?
+               WHERE bucket_id = 1""",
+            (json.dumps({"LESS_THAN_1KB": 10}),),
+        )
+        connection.execute(
+            """UPDATE bucket_daily_metrics
+               SET object_size_distribution_json = '{}'
+               WHERE bucket_id IN (2, 3)"""
+        )
+
+    response = admin_client.get(
+        "/api/analytics/object-size-distribution/cluster/cluster-1"
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "partial"
+    assert response.json()["total_objects"] is None
+    assert response.json()["buckets_missing"] == 2
+    assert response.json()["distribution"][0]["percentage"] is None
