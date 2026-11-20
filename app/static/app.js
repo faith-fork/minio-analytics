@@ -105,7 +105,7 @@ async function renderCapacityReport(){
   const d=await api("/api/analytics/capacity-report"),t=d.totals_bytes||{};
   const cards=[
     metric("INSTALLED CAPACITY",bytes(t.installed_capacity_bytes),"RAW total capacity","▤"),
-    metric("CAP CAPACITY",bytes(t.cap_capacity_bytes),"Usable total capacity","▦"),
+    metric("USABLE CAPACITY",bytes(t.cap_capacity_bytes),"Usable total capacity","▦"),
     metric("PROVISIONED",bytes(t.provisioned_bytes),"Sum of active bucket quotas","◫"),
     metric("USED CAP",bytes(t.used_cap_bytes),"Usable total minus usable free","◒"),
     metric("USED BKT",bytes(t.used_bucket_bytes),"Sum of active bucket usage","▤"),
