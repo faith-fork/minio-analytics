@@ -3,6 +3,15 @@ from app.database.database import transaction
 
 
 def test_capacity_factors_default_and_persisted(admin_client: TestClient) -> None:
+    with transaction() as connection:
+        connection.execute(
+            """INSERT INTO cluster_daily_metrics
+               (snapshot_date, cluster_id, snapshot_ts, collected_at,
+                raw_total_bytes, raw_free_bytes, usable_total_bytes,
+                usable_free_bytes, metrics_available)
+               VALUES ('2026-01-01', 'cluster-1', '2026-01-01T00:00:00Z',
+                       '2026-01-01T00:05:00Z', 10000, 3000, 8000, 2500, 1)"""
+        )
     data = admin_client.get("/api/analytics/capacity-report").json()
     assert data["capacity_factors"] == {"dp": 1.33, "rf": 0.85, "eff": 0.99}
     updated = admin_client.put("/api/analytics/capacity-factors", json={"dp": 1.5, "rf": 0.9, "eff": 0.98})
