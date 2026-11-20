@@ -28,9 +28,9 @@ function exportTableCsv(button){
   const panel=button.closest(".table-panel"),tableEl=panel?.querySelector("table");
   if(!tableEl)return;
   const csvCell=value=>'"'+String(value??"").replace(/"/g,'""')+'"';
-  const rows=[...tableEl.querySelectorAll("tr")].filter(row=>!row.querySelector(".empty-state")).map(row=>[...row.querySelectorAll("th,td")].map(cell=>cell.innerText.replace(/\\s+/g," ").trim()));
+  const rows=[...tableEl.querySelectorAll("tr")].filter(row=>!row.querySelector(".empty-state")).map(row=>[...row.querySelectorAll("th,td")].map(cell=>cell.innerText.replace(/\s+/g," ").trim()));
   if(!rows.length){toast("There is no table data to export.",true);return;}
-  const csv="\\uFEFF"+rows.map(row=>row.map(csvCell).join(",")).join("\\r\\n");
+  const csv="\uFEFF"+rows.map(row=>row.map(csvCell).join(",")).join("\r\n");
   const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"}),url=URL.createObjectURL(blob),link=document.createElement("a");
   const title=panel.querySelector(".table-heading h3")?.textContent||"minio-report";
   const filename=title.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"minio-report";
@@ -70,7 +70,7 @@ function closeExpandedChart(){
 }
 
 function histogramRangeLabel(value){
-  return String(value||"").replace(/_/g," ").replace(/LESS THAN/gi,"< ").replace(/GREATER THAN/gi,"> ").replace(/BETWEEN/gi,"").replace(/AND/gi,"–").replace(/\\s+/g," ").trim();
+  return String(value||"").replace(/_/g," ").replace(/LESS THAN/gi,"< ").replace(/GREATER THAN/gi,"> ").replace(/BETWEEN/gi,"").replace(/AND/gi,"–").replace(/\s+/g," ").trim();
 }
 function objectSizeHistogram(data,title){
   if(!data||data.status==="unavailable"||!data.distribution?.length)
