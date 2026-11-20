@@ -139,6 +139,56 @@ def consolidated_capacity_report(_: dict = Depends(get_current_user)) -> dict:
     return get_consolidated_capacity_report()
 
 
+class ReportColumnPreferencesUpdate(BaseModel):
+    used_usable: bool
+    used_bkt: bool
+
+
+@router.get("/report-column-preferences")
+def get_report_column_preferences(user: dict = Depends(get_current_user)) -> dict:
+    """Return the authenticated user's saved report table column visibility."""
+    defaults = {"used_usable": True, "used_bkt": True}
+    with transaction() as connection:
+        rows = connection.execute(
+            """SELECT preference_key, preference_value
+               FROM user_preferences
+               WHERE user_id = ? AND preference_key IN ('report_used_usable', 'report_used_bkt')""",
+            (user["id"],),
+        ).fetchall()
+    values = {row["preference_key"]: row["preference_value"] for row in rows}
+    return {
+        "columns": {
+            "used_usable": values.get("report_used_usable", "true") == "true",
+            "used_bkt": values.get("report_used_bkt", "true") == "true",
+        }
+    }
+
+
+@router.put("/report-column-preferences")
+def update_report_column_preferences(
+    payload: ReportColumnPreferencesUpdate,
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """Save report table column visibility for the authenticated user only."""
+    updates = {
+        "report_used_usable": str(payload.used_usable).lower(),
+        "report_used_bkt": str(payload.used_bkt).lower(),
+    }
+    with transaction() as connection:
+        for key, value in updates.items():
+            connection.execute(
+                """INSERT INTO user_preferences (user_id, preference_key, preference_value)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(user_id, preference_key) DO UPDATE SET
+                       preference_value = excluded.preference_value,
+                       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')""",
+                (user["id"], key, value),
+            )
+    return {"updated": True, "columns": {
+        "used_usable": payload.used_usable,
+        "used_bkt": payload.used_bkt,
+    }}
+
 
 class CapacityFactorsUpdate(BaseModel):
     dp: float = Field(gt=0, le=100)

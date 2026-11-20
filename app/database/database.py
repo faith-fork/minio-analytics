@@ -68,6 +68,16 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
     """)
     c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (7)")
     c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (8)")
+    c.executescript("""
+    CREATE TABLE IF NOT EXISTS user_preferences (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        preference_key TEXT NOT NULL,
+        preference_value TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        PRIMARY KEY (user_id, preference_key)
+    );
+    """)
+    c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (9)")
 def initialize_database() -> None:
     c=get_connection()
     try:
