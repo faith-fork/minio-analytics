@@ -19,13 +19,6 @@ def get_consolidated_bucket_usage_report() -> dict:
                 JOIN locations l ON l.id = c.location_id
                 WHERE c.enabled = 1 AND l.enabled = 1
             ),
-            active_bucket_counts AS (
-                SELECT b.cluster_id, COUNT(*) AS active_bucket_count
-                FROM buckets b
-                JOIN active_clusters ac ON ac.cluster_id = b.cluster_id
-                WHERE b.is_active = 1
-                GROUP BY b.cluster_id
-            ),
             latest_bucket_dates AS (
                 SELECT m.cluster_id, MAX(m.snapshot_date) AS snapshot_date
                 FROM bucket_daily_metrics m
@@ -74,12 +67,11 @@ def get_consolidated_bucket_usage_report() -> dict:
     for field in metric_fields:
         values = [item[field] for item in items]
         totals[field] = (
-            sum(values)
-            if items and all(
+            0 if not items else
+            sum(values) if all(
                 item["metrics_available"] == 1 and item[field] is not None
                 for item in items
-            )
-            else None
+            ) else None
         )
 
     active_bucket_count = len(items)
