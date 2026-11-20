@@ -134,9 +134,9 @@ async function renderCapacityReport(){
     '<li>Usage % = Used Usable ÷ Installed Capacity × 100. Prov % = Provisioned ÷ Installed Capacity × 100.</li>'+
     '<li>Avg Used % = arithmetic average of the available per-cluster Usage % values; unavailable values are excluded.</li>'+
     '</ul><p>Usage % colour: green below 70%; amber from 70% to below 80%; red at 80% and above.</p><p>All capacity values are displayed in TiB. N/A (—) indicates a missing snapshot or incomplete metric coverage; it is never treated as zero. Cluster capacity uses the latest cluster snapshot, while bucket totals use the latest bucket snapshot for that cluster.</p></div>';
-  const generatedAt=new Date().toLocaleString("sv-SE",{timeZone:"Asia/Kolkata",hour12:false});
-  const reportBanner='<div class="provisioned-report-banner"><div class="provisioned-report-brand"><strong>☁ MinIO Provisioned Report</strong><span>Generated: '+esc(generatedAt)+' IST</span></div><div class="provisioned-report-factors"><span title="Data Protection">DP = 1.33</span><span title="Risk Factor">RF = 0.85</span><span title="Effective">Eff = 0.993</span></div></div>';
-  $("#content").innerHTML=reportBanner+pageHead("Consolidated Provisioned Report","Fleet-wide installed, usable and provisioned capacity from the latest stored SQLite snapshots.",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
+  const generatedAt=new Date().toLocaleString("en-IN",{timeZone:"Asia/Kolkata",day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+  const reportFactors='<span class="report-factor-meta" title="Data Protection · Risk Factor · Effective">DP = 1.33&nbsp;&nbsp; RF = 0.85&nbsp;&nbsp; Eff = 0.993</span>';
+  $("#content").innerHTML=pageHead("Consolidated Provisioned Report","Fleet-wide installed, usable and provisioned capacity from the latest stored SQLite snapshots. Generated on "+esc(generatedAt)+" IST.",reportFactors+'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
     '<div class="metric-grid capacity-report-grid">'+cards+'</div>'+
     table("Capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · latest available cluster and bucket snapshots",["CLUSTER / LOCATION","INSTALLED","USABLE","PROVISIONED","USED USABLE","USED BKT","USABLE FREE","USAGE %","PROV %","SNAPSHOT DATES","BUCKET COVERAGE"],rows,"No enabled clusters are registered.")+
     formulas;
