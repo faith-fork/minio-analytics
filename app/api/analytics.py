@@ -887,6 +887,7 @@ def collection_health(
 
 @router.get("/clusters/{cluster_id}/topology/trends")
 def collection_health_trends(
+    cluster_id: str,
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),
     _: dict = Depends(get_current_user),
