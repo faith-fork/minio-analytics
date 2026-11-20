@@ -163,3 +163,15 @@
 .report-column-options{position:absolute;z-index:20;right:0;top:calc(100% + 5px);min-width:165px;padding:9px 11px;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px #17203318}
 .report-column-options label{display:flex;align-items:center;gap:8px;padding:7px 2px;color:#526176;font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap}
 .report-column-options input{margin:0;accent-color:var(--teal)}
+
+
+/* Consolidated report navigation and bucket usage summary */
+.report-tabs{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 14px;padding:4px;border:1px solid var(--line);border-radius:9px;background:#fff;width:max-content;max-width:100%}
+.report-tabs button{border:0;border-radius:6px;padding:8px 12px;background:transparent;color:#64748b;font-size:10px;font-weight:700;cursor:pointer}
+.report-tabs button.active{background:#e8f7f4;color:#087f70}
+.bucket-usage-grid{grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:16px}
+.bucket-usage-grid .metric-card{min-width:0;padding:14px 13px}
+.bucket-usage-grid .metric-top{font-size:9px;letter-spacing:.2px}
+.bucket-usage-grid .metric-value{font-size:clamp(17px,1.35vw,23px);white-space:nowrap}
+@media(max-width:1250px){.bucket-usage-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:700px){.bucket-usage-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.report-tabs{width:100%}.report-tabs button{flex:1}}

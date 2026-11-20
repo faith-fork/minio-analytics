@@ -18,6 +18,7 @@ function toast(message,error=false){const el=document.createElement("div");el.cl
 function showLogin(){state.user=null;$("#app-shell").classList.add("hidden");$("#login-screen").classList.remove("hidden");}
 function showApp(user){state.user=user;$("#login-screen").classList.add("hidden");$("#app-shell").classList.remove("hidden");$("#user-name").textContent=user.username;$("#user-role").textContent=user.role.toUpperCase();$("#user-avatar").textContent=user.username.slice(0,1).toUpperCase();$$(".admin-only").forEach(el=>el.classList.toggle("hidden",user.role!=="admin"));$$(".master-admin-only").forEach(el=>el.classList.toggle("hidden",!user.is_master_admin));}
 function pageHead(title,subtitle,actions=""){return `<div class="page-heading"><div><h1>${title}</h1><p>${subtitle}</p></div><div class="heading-actions">${actions}</div></div>`;}
+function reportTabs(active){const tabs=[["capacity-report","Consolidated Provisioned"],["bucket-usage-report","Consolidated Bucket Usage"]];return '<div class="report-tabs" role="tablist" aria-label="Consolidated reports">'+tabs.map(([view,label])=>'<button type="button" role="tab" aria-selected="'+(active===view)+'" class="'+(active===view?"active":"")+'" data-report-view="'+view+'">'+label+'</button>').join("")+'</div>';}
 function metric(label,value,foot,icon="◈",good=false){return `<div class="metric-card"><div class="metric-top"><span>${label}</span><span class="metric-icon">${icon}</span></div><div class="metric-value">${value}</div><div class="metric-foot ${good?"good":""}">${foot}</div></div>`;}
 function pill(status){const cls=status==="success"||status===true?"":status==="partial"?"warn":status==="failed"||status===false?"bad":"neutral";const label=status===true?"Available":status===false?"Unavailable":String(status??"Unknown");return `<span class="status-pill ${cls}"><i></i>${esc(label)}</span>`;}
 function panel(title,subtitle,body,tag=""){const chartId=body.match(/<canvas id="([^"]+)"/)?.[1];return `<section class="panel ${chartId?"chart-panel":""}"><div class="panel-header"><div><h3>${title}</h3><p>${subtitle||""}</p></div><div class="panel-header-actions">${tag?`<span class="panel-tag">${tag}</span>`:""}${chartId?`<button type="button" class="chart-expand-button" data-expand-chart="${chartId}" aria-label="Expand ${esc(title)} chart" title="Expand chart">⛶</button>`:""}</div></div>${body}</section>`;}
@@ -77,13 +78,14 @@ function drawObjectSizeHistogram(data){
   const instance=new Chart(canvas,{type:"bar",data:{labels:rows.map(x=>histogramRangeLabel(x.range)),datasets:[{label:"Objects",data:rows.map(x=>x.object_count),backgroundColor:"#13a58b",borderRadius:4,barThickness:"flex",maxBarThickness:24}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{afterLabel:ctx=>{const x=rows[ctx.dataIndex];return x.percentage==null?"":x.percentage.toFixed(2)+"% of objects";}}}},scales:{x:{beginAtZero:true,grid:{color:"#edf1f5"},ticks:{font:{size:10},callback:v=>new Intl.NumberFormat("en-IN",{notation:"compact"}).format(v)}},y:{grid:{display:false},ticks:{font:{size:10},color:"#64748b"}}}}});
   state.charts.push(instance);
 }
-function setView(view){state.view=view;$$(".nav-link").forEach(b=>b.classList.toggle("active",b.dataset.view===view));$("#page-breadcrumb").textContent=view.replace("-"," ").toUpperCase();render().catch(e=>toast(e.message,true));}
+function setView(view){state.view=view;$$(".nav-link").forEach(b=>b.classList.toggle("active",b.dataset.view===(view==="bucket-usage-report"?"capacity-report":view)));$("#page-breadcrumb").textContent=(view==="capacity-report"||view==="bucket-usage-report"?"REPORTS":view.replaceAll("-"," ")).toUpperCase();render().catch(e=>toast(e.message,true));}
 async function loadOverview(){state.overview=await api("/api/analytics/overview");state.clusters=(await api("/api/analytics/clusters")).items;}
 async function render(){
   clearCharts();$("#content").innerHTML='<div class="loading-state">Loading dashboard data…</div>';
   if(state.view==="overview") await renderOverview();
   else if(state.view==="clusters") await renderClusters();
   else if(state.view==="capacity-report") await renderCapacityReport();
+  else if(state.view==="bucket-usage-report") await renderBucketUsageReport();
   else if(state.view==="tenants") await renderTenants();
   else if(state.view==="buckets") await renderBuckets();
   else if(state.view==="health") await renderHealth();
@@ -147,11 +149,50 @@ async function renderCapacityReport(){
   const columnControls='<div class="report-column-toolbar"><details class="report-column-menu"><summary>Columns <span>▾</span></summary><div class="report-column-options"><label><input type="checkbox" data-report-column="used_usable" '+(showUsedUsable?"checked":"")+'><span>USED USABLE</span></label><label><input type="checkbox" data-report-column="used_bkt" '+(showUsedBkt?"checked":"")+'><span>USED BKT</span></label></div></details></div>';
   const headers=["CLUSTER / LOCATION","INSTALLED","USABLE","PROVISIONED",...(showUsedUsable?["USED USABLE"]:[]),...(showUsedBkt?["USED BKT"]:[]),"USABLE FREE","USAGE %","PROV %","SNAPSHOT DATES","BUCKET COVERAGE"];
   $("#content").innerHTML=pageHead("Consolidated Provisioned Report","Fleet-wide installed, usable and provisioned capacity from the latest stored SQLite snapshots. Data as of "+esc(dataAsOf)+" IST. Generated on "+esc(generatedAt)+" IST.",reportFactors+'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
+    reportTabs("capacity-report")+
     factorControls+
     '<div class="metric-grid capacity-report-grid">'+cards+'</div>'+columnControls+
     table("Capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · latest available cluster and bucket snapshots",headers,rows,"No enabled clusters are registered.")+
     formulas;
 }
+async function renderBucketUsageReport(){
+  const d=await api("/api/analytics/bucket-usage-report");
+  const t=d.totals_bytes||{};
+  const coverage=d.coverage_pct==null?"—":fmt(d.coverage_pct,1)+"%";
+  const cards=[
+    metric("USED STORAGE",bytes(t.used_bytes),"Sum across active buckets","◒"),
+    metric("ALLOCATED QUOTA",bytes(t.quota_bytes),"Sum of active bucket quotas","▤"),
+    metric("OBJECTS",t.object_count==null?"—":fmt(t.object_count,0),"Across active buckets","◫"),
+    metric("VERSIONS",t.version_count==null?"—":fmt(t.version_count,0),"Stored object versions","▦"),
+    metric("DELETE MARKERS",t.delete_marker_count==null?"—":fmt(t.delete_marker_count,0),"Across active buckets","◇"),
+    metric("METRIC COVERAGE",d.active_bucket_count?fmt(d.buckets_with_metrics,0)+" / "+fmt(d.active_bucket_count,0):"0","Active buckets with metrics · "+coverage,"◔")
+  ].join("");
+  const rows=(d.items||[]).map(x=>{
+    const status=x.status==="Available"?'<span class="status-pill">Available</span>':x.status==="Unavailable"?'<span class="status-pill bad">Unavailable</span>':'<span class="status-pill warn">No snapshot</span>';
+    const tenant=x.metric_bucket_id?(x.tenant_name_at_snapshot||"Unassigned"):"—";
+    return '<tr><td><span class="cell-strong">'+esc(x.bucket_name)+'</span></td>'+
+      '<td>'+esc(x.cluster_name)+'</td><td>'+esc(x.location_name)+'</td>'+
+      '<td>'+esc(tenant)+'</td><td>'+bytes(x.used_bytes)+'</td>'+
+      '<td>'+bytes(x.quota_bytes)+'</td>'+
+      '<td>'+(x.usage_pct==null?"—":fmt(x.usage_pct,1)+"%")+'</td>'+
+      '<td>'+(x.object_count==null?"—":fmt(x.object_count,0))+'</td>'+
+      '<td>'+(x.version_count==null?"—":fmt(x.version_count,0))+'</td>'+
+      '<td>'+(x.delete_marker_count==null?"—":fmt(x.delete_marker_count,0))+'</td>'+
+      '<td>'+dateLabel(x.bucket_snapshot_date)+'</td><td>'+status+'</td></tr>';
+  });
+  const asOf=d.data_as_of?timestampLabel(d.data_as_of):"Unavailable — one or more active clusters have no bucket snapshot";
+  $("#content").innerHTML=pageHead("Consolidated Bucket Usage Report","Latest stored bucket usage for active buckets across enabled clusters. Data as of "+esc(asOf)+".",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
+    reportTabs("bucket-usage-report")+
+    '<div class="metric-grid bucket-usage-grid">'+cards+'</div>'+
+    table("Bucket usage by tenant and cluster",fmt(d.active_bucket_count,0)+" active bucket(s) · "+fmt(d.active_cluster_count,0)+" cluster(s) · latest bucket snapshot per cluster",["BUCKET","CLUSTER","LOCATION","TENANT AT SNAPSHOT","USED","QUOTA","USAGE %","OBJECTS","VERSIONS","DELETE MARKERS","SNAPSHOT DATE","STATUS"],rows,"No active buckets are registered.")+
+    '<div class="report-footnotes"><strong>Calculation and coverage notes</strong><ul>'+
+    '<li>Each cluster uses its latest stored bucket snapshot date; all active buckets in that cluster are represented.</li>'+
+    '<li>Totals are shown only when every active bucket has an available, non-null value for that metric. Missing values are never treated as zero.</li>'+
+    '<li>Tenant attribution is taken from the bucket snapshot, not the current bucket assignment.</li>'+
+    '<li>Usage % = Used bytes ÷ Quota bytes × 100; it is unavailable when quota is zero or missing.</li>'+
+    '</ul><p>All storage values are displayed in TiB. A dash indicates missing snapshot data or incomplete metric coverage.</p></div>';
+}
+
 async function renderClusters(){
   state.clusters=(await api("/api/analytics/clusters")).items;
   const rows=state.clusters.map(x=>`<tr><td><span class="cell-strong">${esc(x.cluster_name)}</span><br><span class="cell-muted">${esc(x.cluster_id)}</span></td><td>${esc(x.location_name)}</td><td>${pill(!!x.metrics_available)}</td><td>${bytes(x.raw_total_bytes)}</td><td>${bytes(x.raw_total_bytes-x.raw_free_bytes)}</td><td>${x.nodes_online??"—"} / ${x.nodes_offline??"—"}</td><td>${x.growth_bytes_per_day==null?"—":fmt(x.growth_bytes_per_day/1024**3)+" GiB"}</td><td><button class="table-link" data-cluster="${esc(x.cluster_id)}">View details →</button></td></tr>`);
@@ -474,6 +515,7 @@ document.addEventListener("click",async e=>{
     if(mode==="graph"){const instance=state.charts.find(item=>item.canvas?.id==="object-size-histogram");if(instance)instance.resize();}
     return;
   }
+  const reportView=e.target.closest("[data-report-view]");if(reportView){setView(reportView.dataset.reportView);return;}
   const view=e.target.closest("[data-view]");if(view){e.preventDefault();setView(view.dataset.view);return;}
   const cluster=e.target.closest("[data-cluster]");if(cluster){try{await showCluster(cluster.dataset.cluster);}catch(err){toast(err.message,true);}return;}
   const tenant=e.target.closest("[data-tenant]");if(tenant){try{await showTenant(tenant.dataset.tenant);}catch(err){toast(err.message,true);}return;}
