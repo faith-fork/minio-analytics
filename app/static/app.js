@@ -155,7 +155,7 @@ async function showCluster(id,days=90,startDate=null,endDate=null){
       panel("Capacity trend","Daily raw used, free and total capacity",'<div class="chart-wrap"><canvas id="cluster-chart"></canvas></div>',days+" DAYS")+
       panel("Bucket quota trend","Sum of bucket quotas across active buckets",quotaPanelBody(series))+
       panel("Growth trend","30-day estimated growth rate · GiB/day",'<div class="chart-wrap"><canvas id="cluster-growth-chart"></canvas></div>')+
-      panel("Days to full trend","Projection from the trailing 30-day capacity trend",'<div class="chart-wrap"><canvas id="cluster-days-full-chart"></canvas></div>')+'</div>')+
+      panel("Days to full trend","Trailing 30-day net consumption · requires ≥14 daily samples and declining free capacity",series.some(r=>r.days_to_full!=null&&r.days_to_full>0)?'<div class="chart-wrap"><canvas id="cluster-days-full-chart"></canvas></div>':'<div class="chart-empty-state"><strong>Projection unavailable</strong><p>At least 14 daily observations and a declining free-capacity trend are required. The estimate will appear when the data is sufficient.</p></div>')+'</div>')+
     section("Object & bucket analytics","Track object growth and understand the distribution of object sizes.",'<div class="panel-grid cluster-chart-grid">'+
       panel("Object trend","Total objects across active buckets when metrics are complete",'<div class="chart-wrap"><canvas id="cluster-object-chart"></canvas></div>')+
       objectSizeHistogram(hist,"Cluster object size distribution")+'</div>')+
@@ -166,7 +166,7 @@ async function showCluster(id,days=90,startDate=null,endDate=null){
   const trendLabels=series.map(r=>dateLabel(r.snapshot_date));
   chart("cluster-chart",trendLabels,[{label:"Used TiB",data:series.map(r=>r.raw_total_bytes==null||r.raw_free_bytes==null?null:(r.raw_total_bytes-r.raw_free_bytes)/1024**4),color:"#13a58b"},{label:"Free TiB",data:series.map(r=>r.raw_free_bytes==null?null:r.raw_free_bytes/1024**4),color:"#4779d8"},{label:"Total TiB",data:series.map(r=>r.raw_total_bytes==null?null:r.raw_total_bytes/1024**4),color:"#d9922e",dash:true}],"line",null," TiB");
   chart("cluster-growth-chart",trendLabels,[{label:"Estimated growth GiB/day",data:series.map(r=>r.growth_bytes_per_day==null?null:r.growth_bytes_per_day/1024**3),color:"#d9922e"}]);
-  chart("cluster-days-full-chart",trendLabels,[{label:"Projected days to full",data:series.map(r=>r.days_to_full==null||r.days_to_full<=0?null:r.days_to_full),color:"#4779d8"}]);
+  if(series.some(r=>r.days_to_full!=null&&r.days_to_full>0))chart("cluster-days-full-chart",trendLabels,[{label:"Projected days to full",data:series.map(r=>r.days_to_full==null||r.days_to_full<=0?null:r.days_to_full),color:"#4779d8"}],"line",0," days");
   chart("cluster-quota-chart",series.map(r=>dateLabel(r.snapshot_date)),[{label:"Bucket quota TiB",data:series.map(r=>r.bucket_quota_bytes==null?null:r.bucket_quota_bytes/1024**4),color:"#d9922e"}]);
   chart("cluster-object-chart",series.map(r=>dateLabel(r.snapshot_date)),[{label:"Objects",data:series.map(r=>r.bucket_object_count),color:"#4779d8"}]);drawObjectSizeHistogram(hist);
 }
