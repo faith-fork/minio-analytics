@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth.dependencies import get_current_user
 from app.database.database import transaction
+from app.services.capacity_report import get_consolidated_capacity_report
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -129,6 +130,12 @@ def overview(_: dict = Depends(get_current_user)) -> dict:
         },
         "cluster_items": [_dict(r) for r in cluster_rows],
     }
+
+
+@router.get("/capacity-report")
+def consolidated_capacity_report(_: dict = Depends(get_current_user)) -> dict:
+    """Return consolidated fleet capacity and a per-cluster breakdown."""
+    return get_consolidated_capacity_report()
 
 
 @router.get("/clusters")

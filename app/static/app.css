@@ -130,3 +130,15 @@
 .health-infra-trend-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:14px 0 20px}
 .health-infra-trend-grid>.panel{min-width:0}
 @media(max-width:900px){.health-infra-trend-grid{grid-template-columns:1fr}}
+
+/* Consolidated provisioned report: keep all six summary metrics on one desktop row. */
+.capacity-report-grid{grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
+.capacity-report-grid .metric-card{min-width:0;padding:14px 13px}
+.capacity-report-grid .metric-top{font-size:9px;letter-spacing:.2px}
+.capacity-report-grid .metric-value{font-size:clamp(17px,1.35vw,23px);white-space:nowrap}
+.report-footnotes{margin:0 0 14px;padding:13px 16px;border:1px solid var(--line);border-radius:9px;background:#fff;color:#64748b;font-size:10px;line-height:1.65}
+.report-footnotes>strong{display:block;color:var(--ink);font-size:11px;margin-bottom:4px}
+.report-footnotes ul{margin:4px 0 7px;padding-left:18px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:24px}
+.report-footnotes p{margin:0;color:#8794a5}
+@media(max-width:1250px){.capacity-report-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:900px){.capacity-report-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.report-footnotes ul{grid-template-columns:1fr}}
