@@ -11,6 +11,7 @@ from app.config.loader import ClusterConfig, LocationConfig
 RAW_EFF_FACTOR = 0.993
 LOOKBACK_DAYS = 30
 DAYS_TO_FULL_MIN_SAMPLES = 14
+MAX_DAYS_TO_FULL = 1825
 CLUSTER_LABEL = "cluster"
 
 
@@ -99,7 +100,10 @@ def collect_cluster_snapshot(
             f"and (count_over_time((max(minio_cluster_capacity_raw_free_bytes{selector}))"
             f"[{LOOKBACK_DAYS}d:1d]) >= {DAYS_TO_FULL_MIN_SAMPLES}) "
             f"and (deriv((max(minio_cluster_capacity_raw_free_bytes{selector}))"
-            f"[{LOOKBACK_DAYS}d:1d]) < 0)"
+            f"[{LOOKBACK_DAYS}d:1d]) < 0) "
+            f"and (((max(minio_cluster_capacity_raw_free_bytes{selector}) / "
+            f"-deriv((max(minio_cluster_capacity_raw_free_bytes{selector}))"
+            f"[{LOOKBACK_DAYS}d:1d])) / 86400) <= {MAX_DAYS_TO_FULL})"
         ),
     }
 
