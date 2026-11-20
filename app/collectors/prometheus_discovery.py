@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
 from urllib.parse import urlsplit
+import ipaddress
 
 from app.collectors.prometheus import PrometheusClient, PrometheusError
 
@@ -12,13 +12,6 @@ IDENTIFICATION_METRICS = (
     "minio_cluster_capacity_raw_total_bytes",
     "minio_cluster_nodes_online_total",
 )
-
-
-@dataclass(frozen=True)
-class DiscoveredCluster:
-    label_name: str
-    label_value: str
-    metric_samples: int
 
 
 def build_prometheus_url(protocol: str, hostname: str, port: int) -> str:
@@ -31,13 +24,23 @@ def build_prometheus_url(protocol: str, hostname: str, port: int) -> str:
         raise ValueError("Enter a hostname or IP address, not a URL")
     if not 1 <= port <= 65535:
         raise ValueError("Port must be between 1 and 65535")
-    # Validate IPv6 literals and reject malformed host/port syntax.
-    parsed = urlsplit(f"{scheme}://{host}")
-    if not parsed.hostname or parsed.path or parsed.query or parsed.fragment:
-        raise ValueError("Invalid Prometheus hostname")
-    if parsed.port is not None:
-        raise ValueError("Do not include a port in the hostname field")
-    return f"{scheme}://{host}:{port}"
+    # Accept IPv4, DNS names and IPv6 literals; the latter need URL brackets.
+    try:
+        address = ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        parsed = urlsplit(f"{scheme}://{host}")
+        try:
+            parsed_port = parsed.port
+        except ValueError as exc:
+            raise ValueError("Invalid Prometheus hostname") from exc
+        if not parsed.hostname or parsed.path or parsed.query or parsed.fragment:
+            raise ValueError("Invalid Prometheus hostname")
+        if parsed_port is not None:
+            raise ValueError("Do not include a port in the hostname field")
+        url_host = host
+    else:
+        url_host = f"[{address}]" if address.version == 6 else str(address)
+    return f"{scheme}://{url_host}:{port}"
 
 
 def discover_minio_clusters(
