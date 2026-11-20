@@ -1,0 +1,14 @@
+[Unit]
+Description=MinIO Analytics SQLite database backup
+RequiresMountsFor=/data
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/minio-analytics
+Environment=PYTHONUNBUFFERED=1
+Environment=MINIO_ANALYTICS_DB=/data/minio-analytics/database/minio_analytics.db
+ExecStart=/opt/minio-analytics/.venv/bin/python -m scripts.backup_database --retention-days 14
+UMask=0077

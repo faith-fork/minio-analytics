@@ -555,25 +555,15 @@ $("#content").addEventListener("submit",async e=>{
     await renderMasterAdmin();
   }catch(err){toast(err.message,true);}
 });
-
 $("#content").addEventListener("submit",async e=>{
   if(e.target.id!=="capacity-factors-form")return;
-  e.preventDefault();
-  const form=new FormData(e.target);
-  const button=e.target.querySelector("button[type=submit]");
+  e.preventDefault();const form=new FormData(e.target),button=e.target.querySelector("button[type=submit]");
   if(button){button.disabled=true;button.textContent="Saving…";}
   try{
-    await api("/api/analytics/capacity-factors",{method:"PUT",body:JSON.stringify({
-      dp:Number(form.get("dp")),rf:Number(form.get("rf")),eff:Number(form.get("eff"))
-    })});
-    toast("Capacity factors saved; report recalculated.");
-    await renderCapacityReport();
-  }catch(err){
-    toast(err.message,true);
-    if(button){button.disabled=false;button.textContent="Save & recalculate";}
-  }
+    await api("/api/analytics/capacity-factors",{method:"PUT",body:JSON.stringify({dp:Number(form.get("dp")),rf:Number(form.get("rf")),eff:Number(form.get("eff"))})});
+    toast("Capacity factors saved; report recalculated.");await renderCapacityReport();
+  }catch(err){toast(err.message,true);if(button){button.disabled=false;button.textContent="Save & recalculate";}}
 });
-
 $("#content").addEventListener("change",e=>{
   if(e.target.id==="trend-range" && e.target.value!=="custom"){const el=e.target,days=Number(el.value),kind=el.dataset.trendKind,id=el.dataset.trendId,mode=el.dataset.trendAttribution||"current";const run=kind==="cluster"||kind==="cluster-snapshots"?(kind==="cluster-snapshots"?showClusterSnapshots(id,days):showCluster(id,days)):kind==="tenant"||kind==="tenant-snapshots"?(kind==="tenant-snapshots"?showTenantSnapshots(Number(id),mode,days):showTenant(Number(id),mode,days)):kind==="bucket-snapshots"?showBucketSnapshots(Number(id),days):showBucket(Number(id),days);run.catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-user-role]")){

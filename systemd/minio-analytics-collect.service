@@ -1,0 +1,16 @@
+[Unit]
+Description=MinIO Analytics daily Prometheus collection
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=/data
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/minio-analytics
+Environment=PYTHONUNBUFFERED=1
+Environment=MINIO_ANALYTICS_CONFIG=/opt/minio-analytics/config/locations.yaml
+Environment=MINIO_ANALYTICS_DB=/data/minio-analytics/database/minio_analytics.db
+ExecStart=/opt/minio-analytics/.venv/bin/python -m scripts.collect_daily --snapshot-midnight-ist
+UMask=0077

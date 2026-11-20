@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Local configuration and secrets
+config/locations.yaml
+config/locations.local.yaml
+*.secret
+*.pem
+*.key
+
+# Runtime data
+data/*
+!data/.gitkeep
+logs/*
+!logs/.gitkeep
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
