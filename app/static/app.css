@@ -142,3 +142,11 @@
 .report-footnotes p{margin:0;color:#8794a5}
 @media(max-width:1250px){.capacity-report-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:900px){.capacity-report-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.report-footnotes ul{grid-template-columns:1fr}}
+
+/* Provisioned report metadata banner */
+.provisioned-report-banner{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:0 0 16px;padding:14px 18px;background:#203f68;color:#fff;border-radius:7px;box-shadow:0 2px 6px rgba(15,35,60,.12)}
+.provisioned-report-brand{display:flex;flex-direction:column;gap:5px;min-width:0}
+.provisioned-report-brand strong{font-size:16px;font-weight:700;letter-spacing:.1px}
+.provisioned-report-brand span{font-size:10px;color:#c5d5e8}
+.provisioned-report-factors{display:flex;align-items:center;gap:12px;white-space:nowrap;color:#c5d5e8;font-size:10px;font-weight:600}
+@media(max-width:650px){.provisioned-report-banner{align-items:flex-start;flex-direction:column;gap:10px}.provisioned-report-factors{gap:9px;flex-wrap:wrap}}
