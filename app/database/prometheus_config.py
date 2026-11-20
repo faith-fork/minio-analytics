@@ -4,7 +4,6 @@ from urllib.parse import urlsplit
 
 from app.config.loader import LocationConfig
 from app.database.database import initialize_database, transaction
-from app.database.persistence import sync_configuration
 
 
 def _endpoint_parts(url: str) -> tuple[str, str, int]:
@@ -29,20 +28,34 @@ def import_location_configuration(
     *,
     verify_tls: bool = True,
 ) -> dict[str, int]:
-    """Idempotently import existing YAML endpoints and cluster bindings into SQLite.
+    """Idempotently import YAML endpoints and cluster bindings into SQLite.
 
-    Existing location/cluster rows are synchronized first so foreign-key identity
-    and historical cluster IDs remain unchanged. YAML remains the collector's
-    source until a later, separately validated runtime cutover.
+    Existing location/cluster rows are only created when absent. Their enabled
+    state, display names, IDs, and historical relationships are not overwritten.
+    YAML remains the collector's source until a later validated runtime cutover.
     """
     initialize_database()
-    synced = sync_configuration(locations)
+    endpoints = {
+        location.id: _endpoint_parts(location.prometheus_url)
+        for location in locations
+    }
     connections = 0
     bindings = 0
+    location_count = 0
+    cluster_count = 0
 
     with transaction() as connection:
         for location in locations:
-            protocol, hostname, port = _endpoint_parts(location.prometheus_url)
+            connection.execute(
+                """
+                INSERT INTO locations (id, name, enabled)
+                VALUES (?, ?, 1)
+                ON CONFLICT(id) DO NOTHING
+                """,
+                (location.id, location.name),
+            )
+            location_count += 1
+            protocol, hostname, port = endpoints[location.id]
             connection_id = f"prometheus:{location.id}"
             connection.execute(
                 """
@@ -66,6 +79,15 @@ def import_location_configuration(
             for cluster in location.clusters:
                 connection.execute(
                     """
+                    INSERT INTO clusters (id, location_id, name, enabled, labels_json)
+                    VALUES (?, ?, ?, 1, '{}')
+                    ON CONFLICT(id) DO NOTHING
+                    """,
+                    (cluster.id, location.id, cluster.name),
+                )
+                cluster_count += 1
+                connection.execute(
+                    """
                     INSERT INTO cluster_prometheus_bindings (
                         cluster_id, connection_id, identity_label_name,
                         identity_label_value
@@ -81,14 +103,15 @@ def import_location_configuration(
                 bindings += 1
 
     return {
-        **synced,
+        "locations_imported": location_count,
+        "clusters_imported": cluster_count,
         "connections_imported": connections,
         "cluster_bindings_imported": bindings,
     }
 
 
 def list_prometheus_configuration() -> list[dict[str, object]]:
-    """Return enabled Prometheus endpoints with their bound MinIO clusters."""
+    """Return stored Prometheus endpoints with their bound MinIO clusters."""
     initialize_database()
     with transaction() as connection:
         rows = connection.execute(
