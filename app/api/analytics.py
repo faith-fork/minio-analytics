@@ -641,7 +641,11 @@ def object_size_distribution(
 
 @router.get("/collection-health")
 def collection_health(
-    limit: int = Query(default=20, ge=1, le=200),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=5, le=100),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    status: str | None = Query(default=None, pattern="^(success|partial|failed)$"),
     _: dict = Depends(get_current_user),
 ) -> dict:
     """Return scheduler cadence, collector history and latest infrastructure health."""
@@ -664,6 +668,28 @@ def collection_health(
         counts = connection.execute(
             "SELECT status, COUNT(*) AS count FROM collection_runs GROUP BY status"
         ).fetchall()
+        if start_date and end_date and start_date > end_date:
+            raise HTTPException(status_code=422, detail="start_date must be on or before end_date")
+        filters = []
+        params: list[object] = []
+        if start_date:
+            filters.append("r.snapshot_date >= ?")
+            params.append(start_date.isoformat())
+        if end_date:
+            filters.append("r.snapshot_date <= ?")
+            params.append(end_date.isoformat())
+        if status:
+            filters.append("r.status = ?")
+            params.append(status)
+        where_sql = " WHERE " + " AND ".join(filters) if filters else ""
+        filtered_count = connection.execute(
+            "SELECT COUNT(*) AS total FROM collection_runs r" + where_sql,
+            params,
+        ).fetchone()["total"]
+        total_pages = max(1, (filtered_count + page_size - 1) // page_size)
+        if page > total_pages and filtered_count:
+            page = total_pages
+        offset = (page - 1) * page_size
         rows = connection.execute(
             """
             SELECT r.id, r.run_id, r.snapshot_date, r.location_id,
@@ -673,10 +699,11 @@ def collection_health(
             FROM collection_runs r
             LEFT JOIN locations l ON l.id = r.location_id
             LEFT JOIN clusters c ON c.id = r.cluster_id
+            """ + where_sql + """
             ORDER BY r.started_at DESC, r.id DESC
-            LIMIT ?
+            LIMIT ? OFFSET ?
             """,
-            (limit,),
+            [*params, page_size, offset],
         ).fetchall()
 
         cluster_rows = connection.execute(
@@ -841,6 +868,19 @@ def collection_health(
         ],
         "node_health": node_health,
         "recent_runs": items,
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total_items": filtered_count,
+            "total_pages": total_pages,
+            "has_previous": page > 1,
+            "has_next": page < total_pages,
+        },
+        "filters": {
+            "start_date": start_date.isoformat() if start_date else None,
+            "end_date": end_date.isoformat() if end_date else None,
+            "status": status,
+        },
         "count": len(items),
     }
 
