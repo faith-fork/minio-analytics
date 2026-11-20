@@ -102,7 +102,7 @@ async function renderOverview(){
 }
 
 async function renderCapacityReport(){
-  const d=await api("/api/analytics/capacity-report"),t=d.totals_bytes||{};
+  const d=await api("/api/analytics/capacity-report"),t=d.totals_bytes||{},f=d.capacity_factors||{dp:1.33,rf:0.85,eff:0.99};
   const cards=[
     metric("INSTALLED CAPACITY",bytes(t.installed_capacity_bytes),"RAW total capacity","▤"),
     metric("PROVISIONED",bytes(t.provisioned_bytes),"Sum of active bucket quotas","◫"),
@@ -125,7 +125,7 @@ async function renderCapacityReport(){
       '<td>'+esc(coverage)+'</td></tr>';
   });
   const formulas='<div class="report-footnotes"><strong>Calculation formulas</strong><ul>'+
-    '<li>Installed Capacity = RAW total capacity from the latest cluster snapshot × 0.99 × (RF 0.85 ÷ DP 1.33).</li>'+
+    '<li>Installed Capacity = RAW total capacity from the latest cluster snapshot × Eff × (RF ÷ DP). Current factors: Eff ${fmt(f.eff,3)}, RF ${fmt(f.rf,3)}, DP ${fmt(f.dp,3)}.</li>'+
     '<li>Usable Capacity = usable total capacity after erasure-coding / storage protection.</li>'+
     '<li>Provisioned = sum of quota bytes across all active buckets; shown only when every active bucket has quota data.</li>'+
     '<li>Used Usable = Usable Capacity − Usable Free.</li>'+
@@ -136,8 +136,11 @@ async function renderCapacityReport(){
     '</ul><p>Usage % colour: green below 70%; amber from 70% to below 80%; red at 80% and above.</p><p>All capacity values are displayed in TiB. N/A (—) indicates a missing snapshot or incomplete metric coverage; it is never treated as zero. Cluster capacity uses the latest cluster snapshot, while bucket totals use the latest bucket snapshot for that cluster.</p></div>';
   const generatedAt=new Date().toLocaleString("en-IN",{timeZone:"Asia/Kolkata",day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
   const dataAsOf=d.data_as_of?new Date(d.data_as_of).toLocaleString("en-IN",{timeZone:"Asia/Kolkata",day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}):"Unavailable — snapshot missing for one or more clusters";
-  const reportFactors='<span class="report-factor-meta" title="Data Protection · Risk Factor · Effective">DP = 1.33&nbsp;&nbsp; RF = 0.85&nbsp;&nbsp; Eff = 0.99</span>';
+  const reportFactors='<span class="report-factor-meta" title="Data Protection · Risk Factor · Effective">DP = '+fmt(f.dp,3)+'&nbsp;&nbsp; RF = '+fmt(f.rf,3)+'&nbsp;&nbsp; Eff = '+fmt(f.eff,3)+'</span>';
+  const factorControls=state.user?.role==="admin"?'<form id="capacity-factors-form" class="capacity-factor-controls"><strong>Capacity planning factors</strong><label>DP<input name="dp" type="number" min="0.0001" max="100" step="0.01" value="'+esc(f.dp)+'" required></label><label>RF<input name="rf" type="number" min="0.0001" max="100" step="0.01" value="'+esc(f.rf)+'" required></label><label>Eff<input name="eff" type="number" min="0.0001" max="1" step="0.001" value="'+esc(f.eff)+'" required></label><button class="primary-small" type="submit">Save & recalculate</button></form>':'';
+
   $("#content").innerHTML=pageHead("Consolidated Provisioned Report","Fleet-wide installed, usable and provisioned capacity from the latest stored SQLite snapshots. Data as of "+esc(dataAsOf)+" IST. Generated on "+esc(generatedAt)+" IST.",reportFactors+'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
+    factorControls+
     '<div class="metric-grid capacity-report-grid">'+cards+'</div>'+
     table("Capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · latest available cluster and bucket snapshots",["CLUSTER / LOCATION","INSTALLED","USABLE","PROVISIONED","USED USABLE","USED BKT","USABLE FREE","USAGE %","PROV %","SNAPSHOT DATES","BUCKET COVERAGE"],rows,"No enabled clusters are registered.")+
     formulas;
@@ -552,6 +555,25 @@ $("#content").addEventListener("submit",async e=>{
     await renderMasterAdmin();
   }catch(err){toast(err.message,true);}
 });
+
+$("#content").addEventListener("submit",async e=>{
+  if(e.target.id!=="capacity-factors-form")return;
+  e.preventDefault();
+  const form=new FormData(e.target);
+  const button=e.target.querySelector("button[type=submit]");
+  if(button){button.disabled=true;button.textContent="Saving…";}
+  try{
+    await api("/api/analytics/capacity-factors",{method:"PUT",body:JSON.stringify({
+      dp:Number(form.get("dp")),rf:Number(form.get("rf")),eff:Number(form.get("eff"))
+    })});
+    toast("Capacity factors saved; report recalculated.");
+    await renderCapacityReport();
+  }catch(err){
+    toast(err.message,true);
+    if(button){button.disabled=false;button.textContent="Save & recalculate";}
+  }
+});
+
 $("#content").addEventListener("change",e=>{
   if(e.target.id==="trend-range" && e.target.value!=="custom"){const el=e.target,days=Number(el.value),kind=el.dataset.trendKind,id=el.dataset.trendId,mode=el.dataset.trendAttribution||"current";const run=kind==="cluster"||kind==="cluster-snapshots"?(kind==="cluster-snapshots"?showClusterSnapshots(id,days):showCluster(id,days)):kind==="tenant"||kind==="tenant-snapshots"?(kind==="tenant-snapshots"?showTenantSnapshots(Number(id),mode,days):showTenant(Number(id),mode,days)):kind==="bucket-snapshots"?showBucketSnapshots(Number(id),days):showBucket(Number(id),days);run.catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-user-role]")){

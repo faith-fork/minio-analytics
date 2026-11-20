@@ -2,11 +2,28 @@ from __future__ import annotations
 
 from app.database.database import transaction
 
-DATA_PROTECTION_FACTOR = 1.33
-RISK_FACTOR = 0.85
-# Planning allowance: reserve 1% of RAW capacity for filesystem overhead.
-EFFECTIVE_FACTOR = 0.99
-INSTALLED_CAPACITY_FACTOR = EFFECTIVE_FACTOR * (RISK_FACTOR / DATA_PROTECTION_FACTOR)
+DEFAULT_CAPACITY_FACTORS = {"dp": 1.33, "rf": 0.85, "eff": 0.99}
+CAPACITY_FACTOR_KEYS = {
+    "dp": "capacity_dp",
+    "rf": "capacity_rf",
+    "eff": "capacity_eff",
+}
+
+
+def get_capacity_factors(connection=None) -> dict:
+    """Return persisted fleet-wide capacity factors, falling back to defaults."""
+    if connection is None:
+        with transaction() as db:
+            return get_capacity_factors(db)
+    rows = connection.execute(
+        "SELECT setting_key, setting_value FROM app_settings "
+        "WHERE setting_key IN ('capacity_dp', 'capacity_rf', 'capacity_eff')"
+    ).fetchall()
+    values = {row["setting_key"]: float(row["setting_value"]) for row in rows}
+    return {
+        key: values.get(setting_key, DEFAULT_CAPACITY_FACTORS[key])
+        for key, setting_key in CAPACITY_FACTOR_KEYS.items()
+    }
 
 
 def get_consolidated_capacity_report() -> dict:
@@ -18,6 +35,8 @@ def get_consolidated_capacity_report() -> dict:
     Missing or partial measurements are returned as None, never as zero.
     """
     with transaction() as connection:
+        factors = get_capacity_factors(connection)
+        installed_capacity_factor = factors["eff"] * (factors["rf"] / factors["dp"])
         rows = connection.execute(
             """
             WITH active_clusters AS (
@@ -112,7 +131,7 @@ def get_consolidated_capacity_report() -> dict:
             LEFT JOIN bucket_coverage bc ON bc.cluster_id = ac.cluster_id
             ORDER BY ac.location_name, ac.cluster_name
             """,
-            (INSTALLED_CAPACITY_FACTOR,),
+            (installed_capacity_factor,),
         ).fetchall()
 
     items = [dict(row) for row in rows]
@@ -154,6 +173,7 @@ def get_consolidated_capacity_report() -> dict:
 
     return {
         "generated_from": "sqlite",
+        "capacity_factors": factors,
         "cluster_count": cluster_count,
         "avg_used_pct": avg_used_pct,
         "data_as_of": data_as_of,
