@@ -25,12 +25,21 @@ def get_consolidated_bucket_usage_report() -> dict:
                 JOIN buckets b ON b.id = m.bucket_id AND b.is_active = 1
                 JOIN active_clusters ac ON ac.cluster_id = b.cluster_id
                 GROUP BY m.cluster_id
+            ),
+            latest_bucket_snapshots AS (
+                SELECT d.cluster_id, d.snapshot_date, MAX(m.snapshot_ts) AS snapshot_ts
+                FROM latest_bucket_dates d
+                JOIN bucket_daily_metrics m
+                  ON m.cluster_id = d.cluster_id
+                 AND m.snapshot_date = d.snapshot_date
+                GROUP BY d.cluster_id, d.snapshot_date
             )
             SELECT ac.location_id, ac.location_name,
                    ac.cluster_id, ac.cluster_name,
                    b.id AS bucket_id, b.bucket_name,
                    b.tenant_id AS current_tenant_id,
                    d.snapshot_date AS bucket_snapshot_date,
+                   d.snapshot_ts AS cluster_bucket_snapshot_ts,
                    m.bucket_id AS metric_bucket_id,
                    m.snapshot_ts, m.collected_at,
                    m.tenant_id_at_snapshot,
@@ -40,7 +49,7 @@ def get_consolidated_bucket_usage_report() -> dict:
                    m.metrics_available, m.error_text
             FROM active_clusters ac
             JOIN buckets b ON b.cluster_id = ac.cluster_id AND b.is_active = 1
-            LEFT JOIN latest_bucket_dates d ON d.cluster_id = ac.cluster_id
+            LEFT JOIN latest_bucket_snapshots d ON d.cluster_id = ac.cluster_id
             LEFT JOIN bucket_daily_metrics m
                 ON m.bucket_id = b.id
                AND m.cluster_id = b.cluster_id
@@ -83,7 +92,7 @@ def get_consolidated_bucket_usage_report() -> dict:
     latest_cluster_dates = {}
     for item in items:
         latest_cluster_dates[item["cluster_id"]] = (
-            item["bucket_snapshot_date"], item["snapshot_ts"]
+            item["bucket_snapshot_date"], item["cluster_bucket_snapshot_ts"]
         )
     all_cluster_dates_available = (
         len(latest_cluster_dates) == cluster_counts
