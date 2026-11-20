@@ -95,7 +95,7 @@ python -m scripts.collect_daily \
   --snapshot-at 2026-11-19T18:30:00Z
 ```
 
-The default collection source is SQLite: enabled Prometheus connections, locations, clusters, TLS verification settings, and identity-label bindings are read from the database. An explicit `--config` path selects the legacy YAML source for manual rollback/testing. The collector makes at most two attempts per cluster (initial attempt plus one retry). It persists successful metric families even if another family fails, and records each cluster's outcome in `collection_runs` as `success`, `partial`, or `failed`. A non-zero process exit status indicates that at least one cluster did not complete successfully.
+The default collection source is SQLite: enabled Prometheus connections, locations, clusters, TLS verification settings, and identity-label bindings are read from the database. An explicit `--config` path selects the legacy YAML source for manual collection. For scheduler rollback, set `MINIO_ANALYTICS_CONFIG_SOURCE=yaml` in the scheduler service environment; the default is `database`. The collector makes at most two attempts per cluster (initial attempt plus one retry). It persists successful metric families even if another family fails, and records each cluster's outcome in `collection_runs` as `success`, `partial`, or `failed`. A non-zero process exit status indicates that at least one cluster did not complete successfully.
 
 The default timestamp is intended for manual validation. The production systemd timer must explicitly calculate and pass the intended midnight-IST snapshot timestamp; do not use the timer's execution time as the snapshot time.
 

@@ -35,7 +35,7 @@ def main() -> int:
     parser.add_argument(
         "--config",
         default=None,
-        help="Location YAML path (defaults to MINIO_ANALYTICS_CONFIG).",
+        help="Use this legacy YAML file instead of the default SQLite configuration.",
     )
     snapshot_group = parser.add_mutually_exclusive_group()
     snapshot_group.add_argument(

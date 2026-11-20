@@ -4,6 +4,7 @@ import pytest
 
 from app.database.database import initialize_database, transaction
 from app.database.prometheus_config import load_database_locations
+from scripts.scheduler_tick import _load_locations
 
 
 def _seed_config(db_path, monkeypatch):
@@ -114,3 +115,49 @@ def test_load_database_locations_fails_when_no_bindings_exist(tmp_path, monkeypa
 
     with pytest.raises(ValueError, match="No enabled Prometheus connections"):
         load_database_locations()
+
+
+
+def test_scheduler_defaults_to_database_configuration(tmp_path, monkeypatch):
+    _seed_config(tmp_path / "scheduler.db", monkeypatch)
+    monkeypatch.delenv("MINIO_ANALYTICS_CONFIG_SOURCE", raising=False)
+
+    locations = _load_locations()
+
+    assert [cluster.id for location in locations for cluster in location.clusters] == [
+        "cluster-a"
+    ]
+
+
+def test_scheduler_can_explicitly_fall_back_to_yaml(tmp_path, monkeypatch):
+    _seed_config(tmp_path / "scheduler-yaml.db", monkeypatch)
+    config_path = tmp_path / "locations.yaml"
+    config_path.write_text(
+        """
+locations:
+  - id: yaml-lab
+    name: YAML Lab
+    prometheus:
+      host: prometheus-yaml.example.net
+      scheme: https
+      port: 9443
+    clusters:
+      - id: yaml-cluster
+        name: YAML Cluster
+        prometheus_label_value: yaml-cluster
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MINIO_ANALYTICS_CONFIG_SOURCE", "yaml")
+    monkeypatch.setenv("MINIO_ANALYTICS_CONFIG", str(config_path))
+
+    locations = _load_locations()
+
+    assert [location.id for location in locations] == ["yaml-lab"]
+
+
+def test_scheduler_rejects_unknown_configuration_source(monkeypatch):
+    monkeypatch.setenv("MINIO_ANALYTICS_CONFIG_SOURCE", "remote")
+
+    with pytest.raises(ValueError, match="must be 'database' or 'yaml'"):
+        _load_locations()
