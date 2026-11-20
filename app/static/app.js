@@ -18,7 +18,7 @@ function toast(message,error=false){const el=document.createElement("div");el.cl
 function showLogin(){state.user=null;$("#app-shell").classList.add("hidden");$("#login-screen").classList.remove("hidden");}
 function showApp(user){state.user=user;$("#login-screen").classList.add("hidden");$("#app-shell").classList.remove("hidden");$("#user-name").textContent=user.username;$("#user-role").textContent=user.role.toUpperCase();$("#user-avatar").textContent=user.username.slice(0,1).toUpperCase();$$(".admin-only").forEach(el=>el.classList.toggle("hidden",user.role!=="admin"));$$(".master-admin-only").forEach(el=>el.classList.toggle("hidden",!user.is_master_admin));}
 function pageHead(title,subtitle,actions=""){return `<div class="page-heading"><div><h1>${title}</h1><p>${subtitle}</p></div><div class="heading-actions">${actions}</div></div>`;}
-function reportTabs(active){const tabs=[["capacity-report","Consolidated Provisioned"],["bucket-usage-report","Consolidated Bucket Usage"]];return '<div class="report-tabs" role="tablist" aria-label="Consolidated reports">'+tabs.map(([view,label])=>'<button type="button" role="tab" aria-selected="'+(active===view)+'" class="'+(active===view?"active":"")+'" data-report-view="'+view+'">'+label+'</button>').join("")+'</div>';}
+function reportTabs(active){const tabs=[["capacity-report","Consolidated Provisioned"],["bucket-usage-report","Consolidated Bucket Usage"],["raw-capacity-report","Consolidated RAW Capacity"]];return '<div class="report-tabs" role="tablist" aria-label="Consolidated reports">'+tabs.map(([view,label])=>'<button type="button" role="tab" aria-selected="'+(active===view)+'" class="'+(active===view?"active":"")+'" data-report-view="'+view+'">'+label+'</button>').join("")+'</div>';}
 function metric(label,value,foot,icon="◈",good=false){return `<div class="metric-card"><div class="metric-top"><span>${label}</span><span class="metric-icon">${icon}</span></div><div class="metric-value">${value}</div><div class="metric-foot ${good?"good":""}">${foot}</div></div>`;}
 function pill(status){const cls=status==="success"||status===true?"":status==="partial"?"warn":status==="failed"||status===false?"bad":"neutral";const label=status===true?"Available":status===false?"Unavailable":String(status??"Unknown");return `<span class="status-pill ${cls}"><i></i>${esc(label)}</span>`;}
 function panel(title,subtitle,body,tag=""){const chartId=body.match(/<canvas id="([^"]+)"/)?.[1];return `<section class="panel ${chartId?"chart-panel":""}"><div class="panel-header"><div><h3>${title}</h3><p>${subtitle||""}</p></div><div class="panel-header-actions">${tag?`<span class="panel-tag">${tag}</span>`:""}${chartId?`<button type="button" class="chart-expand-button" data-expand-chart="${chartId}" aria-label="Expand ${esc(title)} chart" title="Expand chart">⛶</button>`:""}</div></div>${body}</section>`;}
@@ -86,6 +86,7 @@ async function render(){
   else if(state.view==="clusters") await renderClusters();
   else if(state.view==="capacity-report") await renderCapacityReport();
   else if(state.view==="bucket-usage-report") await renderBucketUsageReport();
+  else if(state.view==="raw-capacity-report") await renderRawCapacityReport();
   else if(state.view==="tenants") await renderTenants();
   else if(state.view==="buckets") await renderBuckets();
   else if(state.view==="health") await renderHealth();
@@ -154,6 +155,37 @@ async function renderCapacityReport(){
     '<div class="metric-grid capacity-report-grid">'+cards+'</div>'+columnControls+
     table("Capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · latest available cluster and bucket snapshots",headers,rows,"No enabled clusters are registered.")+
     formulas;
+}
+async function renderRawCapacityReport(){
+  const d=await api("/api/analytics/raw-capacity-report");
+  const t=d.totals_bytes||{};
+  const generatedAt=new Date().toLocaleString("en-IN",{timeZone:"Asia/Kolkata",day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+  const dataAsOf=d.data_as_of?new Date(d.data_as_of).toLocaleString("en-IN",{timeZone:"Asia/Kolkata",day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}):"Unavailable — snapshot missing for one or more clusters";
+  const cards=[
+    metric("RAW CAPACITY",bytes(t.raw_total_bytes),"Sum of latest raw capacity snapshots","▤"),
+    metric("RAW USED",bytes(t.raw_used_bytes),"Raw capacity minus raw free","◒"),
+    metric("RAW FREE",bytes(t.raw_free_bytes),"Sum of latest raw free capacity","◇"),
+    metric("RAW USED %",d.raw_used_pct==null?"—":fmt(d.raw_used_pct,1)+"%","Fleet raw used ÷ raw capacity","◔"),
+    metric("CLUSTER COVERAGE",fmt(d.available_cluster_count,0)+" / "+fmt(d.cluster_count,0),"Clusters with complete raw metrics","◫")
+  ].join("");
+  const rows=(d.items||[]).map(x=>{
+    const usedPct=x.raw_used_pct==null?"—":'<span class="status-pill '+(x.raw_used_pct>=80?"bad":x.raw_used_pct>=70?"warn":"")+'">'+fmt(x.raw_used_pct,1)+"%"+'</span>';
+    const nodes=x.nodes_online==null||x.nodes_offline==null?"—":fmt(x.nodes_online,0)+" online / "+fmt(x.nodes_offline,0)+" offline";
+    const status=x.metrics_available?'<span class="status-pill">Available</span>':'<span class="status-pill bad">Unavailable</span>';
+    return '<tr><td><span class="cell-strong">'+esc(x.cluster_name)+'</span><br><span class="cell-muted">'+esc(x.location_name)+'</span></td>'+
+      '<td>'+bytes(x.raw_total_bytes)+'</td><td>'+bytes(x.raw_used_bytes)+'</td><td>'+bytes(x.raw_free_bytes)+'</td>'+
+      '<td>'+usedPct+'</td><td>'+nodes+'</td><td>'+dateLabel(x.snapshot_date)+'</td><td>'+status+'</td></tr>';
+  });
+  const notes='<div class="report-footnotes"><strong>Calculation and coverage notes</strong><ul>'+
+    '<li>Raw capacity and raw free values are taken from each enabled cluster’s latest stored cluster snapshot.</li>'+
+    '<li>Raw Used = Raw Capacity − Raw Free.</li>'+
+    '<li>Fleet totals and Raw Used % are shown only when every enabled cluster has both raw capacity and raw free metrics. Missing values are never treated as zero.</li>'+
+    '<li>Fleet Raw Used % = total Raw Used ÷ total Raw Capacity × 100; this is a capacity-weighted fleet percentage.</li>'+
+    '<li>Cluster node counts are displayed as reported by the same cluster snapshot and are not used to calculate raw capacity.</li>'+
+    '</ul><p>All capacity values are displayed in TiB. A dash indicates missing snapshot data or incomplete metric coverage. Raw capacity follows the collector’s stored MinIO raw-capacity metric, including its configured collection adjustment.</p></div>';
+  $("#content").innerHTML=pageHead("Consolidated RAW Capacity Report","Fleet-wide raw capacity, used and free storage from the latest stored cluster snapshots. Data as of "+esc(dataAsOf)+" IST. Generated on "+esc(generatedAt)+" IST.",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
+    reportTabs("raw-capacity-report")+'<div class="metric-grid raw-capacity-grid">'+cards+'</div>'+
+    table("Raw capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · "+fmt(d.available_cluster_count,0)+" with complete raw metrics",["CLUSTER / LOCATION","RAW CAPACITY","RAW USED","RAW FREE","RAW USED %","NODES","SNAPSHOT DATE","STATUS"],rows,"No enabled clusters are registered.")+notes;
 }
 async function renderBucketUsageReport(){
   const d=await api("/api/analytics/bucket-usage-report"),allItems=d.items||[],filters=state.bucketUsageFilters;
