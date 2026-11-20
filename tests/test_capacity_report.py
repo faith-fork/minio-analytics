@@ -36,7 +36,7 @@ def test_capacity_report_returns_approved_totals_and_cluster_breakdown(
     assert data["generated_from"] == "sqlite"
     assert data["cluster_count"] == 1
     assert data["totals_bytes"] == {
-        "installed_capacity_bytes": pytest.approx(10000 * 0.993 * (0.85 / 1.33)),
+        "installed_capacity_bytes": pytest.approx(10000 * 0.99 * (0.85 / 1.33)),
         "cap_capacity_bytes": 8000,
         "used_cap_bytes": 5500,
         "provisioned_bytes": 3000,
@@ -52,9 +52,9 @@ def test_capacity_report_returns_approved_totals_and_cluster_breakdown(
     assert item["buckets_with_metrics"] == 3
     assert item["buckets_with_quota"] == 3
     assert item["buckets_with_usage"] == 3
-    assert item["usage_pct"] == pytest.approx(5500 / (10000 * 0.993 * (0.85 / 1.33)) * 100)
-    assert item["provisioned_pct"] == pytest.approx(3000 / (10000 * 0.993 * (0.85 / 1.33)) * 100)
-    assert data["avg_used_pct"] == pytest.approx(5500 / (10000 * 0.993 * (0.85 / 1.33)) * 100)
+    assert item["usage_pct"] == pytest.approx(5500 / (10000 * 0.99 * (0.85 / 1.33)) * 100)
+    assert item["provisioned_pct"] == pytest.approx(3000 / (10000 * 0.99 * (0.85 / 1.33)) * 100)
+    assert data["avg_used_pct"] == pytest.approx(5500 / (10000 * 0.99 * (0.85 / 1.33)) * 100)
     assert data["data_as_of"] == "2026-01-01T00:00:00Z"
 
 
