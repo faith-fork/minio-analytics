@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from fastapi.testclient import TestClient
 
 import pytest
@@ -26,8 +28,8 @@ def _insert_raw_snapshot(
             """,
             (
                 snapshot_date, cluster_id,
-                f"{snapshot_date}T00:00:00Z",
-                f"{snapshot_date}T00:05:00Z",
+                (date.fromisoformat(snapshot_date) - timedelta(days=1)).isoformat() + "T18:30:00Z",
+                (date.fromisoformat(snapshot_date) - timedelta(days=1)).isoformat() + "T18:35:00Z",
                 raw_total, raw_free, metrics_available,
             ),
         )
@@ -59,7 +61,7 @@ def test_raw_capacity_report_returns_latest_snapshot_and_fleet_totals(
     assert item["raw_used_pct"] == pytest.approx(70.0)
     assert item["nodes_online"] == 4
     assert item["status"] == "Available"
-    assert data["data_as_of"] == "2026-01-01T00:00:00Z"
+    assert data["data_as_of"] == "2025-12-31T18:30:00Z"
 
 
 def test_raw_capacity_report_uses_latest_snapshot_per_cluster(
@@ -140,3 +142,31 @@ def test_raw_capacity_report_excludes_disabled_clusters(
 
 def test_raw_capacity_report_requires_authentication(client: TestClient) -> None:
     assert client.get("/api/analytics/raw-capacity-report").status_code == 401
+
+
+def test_raw_capacity_report_calculates_day_over_day_change_and_30_day_trend(viewer_client: TestClient) -> None:
+    for offset in range(5):
+        day = date(2026, 1, 1) + timedelta(days=offset)
+        _insert_raw_snapshot(snapshot_date=day.isoformat(), raw_total=10000, raw_free=9000 - offset * 10)
+    item = viewer_client.get('/api/analytics/raw-capacity-report').json()['items'][0]
+    assert item['change_vs_yesterday_bytes'] == pytest.approx(10)
+    assert item['trend_growth_bytes_per_day'] == pytest.approx(10)
+    assert item['projected_days_to_full'] == 896
+    assert item['trend_sample_count'] == 5
+
+
+def test_raw_capacity_report_change_is_unavailable_when_yesterdays_snapshot_is_missing(viewer_client: TestClient) -> None:
+    _insert_raw_snapshot(snapshot_date='2026-01-01', raw_total=10000, raw_free=9000)
+    _insert_raw_snapshot(snapshot_date='2026-01-03', raw_total=10000, raw_free=8980)
+    item = viewer_client.get('/api/analytics/raw-capacity-report').json()['items'][0]
+    assert item['change_vs_yesterday_bytes'] is None
+    assert item['trend_sample_count'] == 2
+
+
+def test_raw_capacity_report_does_not_project_when_used_is_declining(viewer_client: TestClient) -> None:
+    for offset in range(4):
+        day = date(2026, 1, 1) + timedelta(days=offset)
+        _insert_raw_snapshot(snapshot_date=day.isoformat(), raw_total=10000, raw_free=9000 + offset * 10)
+    item = viewer_client.get('/api/analytics/raw-capacity-report').json()['items'][0]
+    assert item['trend_growth_bytes_per_day'] == pytest.approx(-10)
+    assert item['projected_days_to_full'] is None
