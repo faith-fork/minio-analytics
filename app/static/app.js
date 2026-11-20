@@ -20,10 +20,41 @@ function showApp(user){state.user=user;$("#login-screen").classList.add("hidden"
 function pageHead(title,subtitle,actions=""){return `<div class="page-heading"><div><h1>${title}</h1><p>${subtitle}</p></div><div class="heading-actions">${actions}</div></div>`;}
 function metric(label,value,foot,icon="◈",good=false){return `<div class="metric-card"><div class="metric-top"><span>${label}</span><span class="metric-icon">${icon}</span></div><div class="metric-value">${value}</div><div class="metric-foot ${good?"good":""}">${foot}</div></div>`;}
 function pill(status){const cls=status==="success"||status===true?"":status==="partial"?"warn":status==="failed"||status===false?"bad":"neutral";const label=status===true?"Available":status===false?"Unavailable":String(status??"Unknown");return `<span class="status-pill ${cls}"><i></i>${esc(label)}</span>`;}
-function panel(title,subtitle,body,tag=""){return `<section class="panel"><div class="panel-header"><div><h3>${title}</h3><p>${subtitle||""}</p></div>${tag?`<span class="panel-tag">${tag}</span>`:""}</div>${body}</section>`;}
+function panel(title,subtitle,body,tag=""){const chartId=body.match(/<canvas id="([^"]+)"/)?.[1];return `<section class="panel ${chartId?"chart-panel":""}"><div class="panel-header"><div><h3>${title}</h3><p>${subtitle||""}</p></div><div class="panel-header-actions">${tag?`<span class="panel-tag">${tag}</span>`:""}${chartId?`<button type="button" class="chart-expand-button" data-expand-chart="${chartId}" aria-label="Expand ${esc(title)} chart" title="Expand chart">⛶</button>`:""}</div></div>${body}</section>`;}
 function table(title,subtitle,headers,rows,empty="No records found."){return `<section class="table-panel"><div class="table-heading"><div><h3>${title}</h3><p>${subtitle||""}</p></div></div><div class="table-scroll"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.length?rows.join(""):`<tr><td colspan="${headers.length}" class="empty-state">${empty}</td></tr>`}</tbody></table></div></section>`;}
 function chart(id,labels,sets,type="line",yMin=null){if(!window.Chart)return;const canvas=$("#"+id);if(!canvas)return;const instance=new Chart(canvas,{type,data:{labels,datasets:sets.map(s=>({label:s.label,data:s.data,borderColor:s.color,backgroundColor:s.fill||s.color+"18",borderWidth:2,borderDash:s.dash?[7,5]:[],pointRadius:3,tension:.32,fill:!!s.fill}))},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{position:"bottom",labels:{usePointStyle:true,boxWidth:7,font:{size:10}}}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:"#94a0af"}},y:{...(yMin===null?{}:{min:yMin}),grid:{color:"#edf1f5"},ticks:{font:{size:9},color:"#94a0af"}}}}});state.charts.push(instance);}
 function clearCharts(){state.charts.forEach(c=>c.destroy());state.charts=[];}
+function openExpandedChart(chartId,button){
+  const instance=state.charts.find(item=>item.canvas?.id===chartId);
+  const canvas=$("#"+CSS.escape(chartId));
+  if(!instance||!canvas)return;
+  closeExpandedChart();
+  const placeholder=document.createComment("chart-placeholder");
+  const originalParent=canvas.parentNode;
+  const originalNext=canvas.nextSibling;
+  originalParent.replaceChild(placeholder,canvas);
+  const overlay=document.createElement("div");
+  overlay.className="chart-expand-backdrop";
+  overlay.innerHTML='<section class="chart-expand-dialog" role="dialog" aria-modal="true" aria-label="Expanded chart"><header><div><strong></strong><span>Expanded interactive chart</span></div><button type="button" class="chart-expand-close" aria-label="Close expanded chart" title="Close">×</button></header><div class="chart-expand-content"></div></section>';
+  const panelEl=button.closest(".panel");
+  overlay.querySelector("header strong").textContent=panelEl?.querySelector(".panel-header h3")?.textContent||"Chart";
+  overlay.querySelector(".chart-expand-content").append(canvas);
+  document.body.append(overlay);
+  state.expandedChart={overlay,canvas,placeholder,originalParent,originalNext,instance};
+  requestAnimationFrame(()=>instance.resize());
+  overlay.querySelector(".chart-expand-close").focus();
+  overlay.addEventListener("click",event=>{if(event.target===overlay)closeExpandedChart();});
+}
+function closeExpandedChart(){
+  const current=state.expandedChart;
+  if(!current)return;
+  if(current.placeholder.parentNode)current.placeholder.parentNode.replaceChild(current.canvas,current.placeholder);
+  else current.originalParent.insertBefore(current.canvas,current.originalNext?.parentNode===current.originalParent?current.originalNext:null);
+  current.overlay.remove();
+  state.expandedChart=null;
+  requestAnimationFrame(()=>current.instance.resize());
+}
+
 function histogramRangeLabel(value){
   return String(value||"").replace(/_/g," ").replace(/LESS THAN/gi,"< ").replace(/GREATER THAN/gi,"> ").replace(/BETWEEN/gi,"").replace(/AND/gi,"–").replace(/\\s+/g," ").trim();
 }
@@ -96,7 +127,7 @@ async function renderMasterAdmin(){
 
 function rangeControl(days,kind,id,attribution="current") {
   const options=[[7,"Last 7 days"],[30,"Last 30 days"],[60,"Last 60 days"],[90,"Last 90 days"],[180,"Last 6 months"],[365,"Last 12 months"]];
-  return '<div class="toolbar trend-controls" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin:10px 0;flex-wrap:wrap"><label for="trend-range" class="cell-muted">Trend period</label><select id="trend-range" class="form-control" style="max-width:190px" data-trend-kind="'+kind+'" data-trend-id="'+esc(id)+'" data-trend-attribution="'+attribution+'">'+options.map(([value,label])=>'<option value="'+value+'" '+(Number(days)===value?'selected':'')+'>'+label+'</option>').join('')+'<option value="custom">Custom range</option></select><input type="date" id="trend-start" class="form-control" aria-label="Start date"><span class="cell-muted">to</span><input type="date" id="trend-end" class="form-control" aria-label="End date"><button class="secondary-button" data-action="apply-trend-dates" data-trend-kind="'+kind+'" data-trend-id="'+esc(id)+'" data-trend-attribution="'+attribution+'">Apply</button></div>';
+  return '<div class="toolbar trend-controls"><label for="trend-range" class="cell-muted">Trend period</label><select id="trend-range" class="form-control" data-trend-kind="'+kind+'" data-trend-id="'+esc(id)+'" data-trend-attribution="'+attribution+'">'+options.map(([value,label])=>'<option value="'+value+'" '+(Number(days)===value?'selected':'')+'>'+label+'</option>').join('')+'<option value="custom">Custom range</option></select><label class="trend-date-label" for="trend-start">From</label><input type="date" id="trend-start" class="form-control" aria-label="Start date"><label class="trend-date-label" for="trend-end">To</label><input type="date" id="trend-end" class="form-control" aria-label="End date"><button class="secondary-button" data-action="apply-trend-dates" data-trend-kind="'+kind+'" data-trend-id="'+esc(id)+'" data-trend-attribution="'+attribution+'">Apply</button></div>';
 }
 function trendQuery(days,startDate,endDate,extra="") {
   const params=new URLSearchParams();
@@ -104,6 +135,12 @@ function trendQuery(days,startDate,endDate,extra="") {
   else params.set("days",String(days));
   if(extra) for(const [k,v] of new URLSearchParams(extra)) params.set(k,v);
   return params.toString();
+}
+function quotaPanelBody(series){
+  const withMetrics=series.filter(r=>(r.quota_bucket_count||0)>0);
+  if(!withMetrics.length)return '<div class="chart-empty-state"><strong>No bucket quota metrics reported</strong><p>No quota values were returned for the selected snapshots. This usually means quotas are not configured; verify the MinIO quota metric before drawing a trend.</p></div>';
+  const incomplete=series.some(r=>r.bucket_quota_bytes==null);
+  return (incomplete?'<div class="chart-note"><strong>Incomplete quota coverage:</strong> Some snapshots do not have quota metrics for every active bucket. Gaps are left blank rather than treating missing values as zero.</div>':"")+'<div class="chart-wrap"><canvas id="cluster-quota-chart"></canvas></div>';
 }
 async function showCluster(id,days=90,startDate=null,endDate=null){
   state.snapshotClusterId=id;state.snapshotRange={days,startDate,endDate};
@@ -114,9 +151,9 @@ async function showCluster(id,days=90,startDate=null,endDate=null){
   const topologyBody='<div class="cluster-action-card"><div class="cluster-action-icon">⌁</div><div><strong>Infrastructure topology</strong><p>Inspect node resources, individual drives, storage pools and erasure-set quorum.</p></div><button class="primary-small" data-action="open-cluster-topology">View cluster health →</button></div>';
   $("#content").innerHTML=pageHead(esc(d.cluster.name),"Cluster · "+esc(d.cluster.location_name)+" · "+esc(id),'<button class="subtle-button" data-view="clusters">← All clusters</button>')+
     `<div class="detail-grid"><div class="detail-card"><small>RAW CAPACITY</small><strong>${bytes(x.raw_total_bytes)}</strong></div><div class="detail-card"><small>RAW FREE</small><strong>${bytes(x.raw_free_bytes)}</strong></div><div class="detail-card"><small>PROJECTED DAYS TO FULL</small><strong>${x.days_to_full==null||x.days_to_full<=0?"N/A":fmt(x.days_to_full,0)+" days"}</strong></div></div>`+
-    section("Capacity & forecast","Understand raw capacity, bucket quota, growth velocity and projected exhaustion.",'<div class="panel-grid cluster-chart-grid">'+
-      panel("Capacity trend","Daily raw used, free and total capacity",rangeControl(days,"cluster",id)+'<div class="chart-wrap"><canvas id="cluster-chart"></canvas></div>',days+" DAYS")+
-      panel("Bucket quota trend","Sum of bucket quotas when all active buckets have metrics",'<div class="chart-wrap"><canvas id="cluster-quota-chart"></canvas></div>')+
+    section("Capacity & forecast","Understand raw capacity, bucket quota, growth velocity and projected exhaustion.",rangeControl(days,"cluster",id)+'<div class="panel-grid cluster-chart-grid">'+
+      panel("Capacity trend","Daily raw used, free and total capacity",'<div class="chart-wrap"><canvas id="cluster-chart"></canvas></div>',days+" DAYS")+
+      panel("Bucket quota trend","Sum of bucket quotas across active buckets",quotaPanelBody(series))+
       panel("Growth trend","30-day estimated growth rate · GiB/day",'<div class="chart-wrap"><canvas id="cluster-growth-chart"></canvas></div>')+
       panel("Days to full trend","Projection from the trailing 30-day capacity trend",'<div class="chart-wrap"><canvas id="cluster-days-full-chart"></canvas></div>')+'</div>')+
     section("Object & bucket analytics","Track object growth and understand the distribution of object sizes.",'<div class="panel-grid cluster-chart-grid">'+
@@ -300,6 +337,8 @@ function bulkAssignBucketsModal(){
 }
 
 document.addEventListener("click",async e=>{
+  const expand=e.target.closest("[data-expand-chart]");if(expand){openExpandedChart(expand.dataset.expandChart,expand);return;}
+  if(e.target.closest(".chart-expand-close")){closeExpandedChart();return;}
   const histogramMode=e.target.closest("[data-histogram-mode]");
   if(histogramMode){
     const panelEl=histogramMode.closest(".panel");
@@ -353,6 +392,7 @@ document.addEventListener("click",async e=>{
   const toggle=e.target.closest("[data-toggle-user]");if(toggle){try{await api("/api/auth/users/"+toggle.dataset.toggleUser+"/active",{method:"POST",body:JSON.stringify({is_active:toggle.dataset.active==="1"})});toast("User status updated");await renderUsers();}catch(err){toast(err.message,true);}return;}
   if(action==="close-modal")$("#modal-root").innerHTML="";
 });
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&state.expandedChart)closeExpandedChart();});
 $("#login-form").addEventListener("submit",async e=>{e.preventDefault();$("#login-error").textContent="";const form=new FormData(e.currentTarget);try{const d=await api("/api/auth/login",{method:"POST",body:JSON.stringify({username:form.get("username"),password:form.get("password")})});showApp(d.user);setView("overview");}catch(err){$("#login-error").textContent=err.message;}});
 $("#logout-button").addEventListener("click",async()=>{try{await api("/api/auth/logout",{method:"POST"});}catch{}showLogin();});
 $("#refresh-button").addEventListener("click",()=>render().catch(e=>toast(e.message,true)));
