@@ -38,7 +38,34 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
     """)
     for k,v in (("node_interval_hours","4"),("daily_collection_time","00:15")):
         c.execute("INSERT OR IGNORE INTO app_settings(setting_key,setting_value) VALUES(?,?)",(k,v))
-    c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (6)")
+    c.executescript("""
+    CREATE TABLE IF NOT EXISTS prometheus_connections (
+        connection_id TEXT PRIMARY KEY,
+        location_id TEXT NOT NULL REFERENCES locations(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+        protocol TEXT NOT NULL CHECK (protocol IN ('http', 'https')),
+        hostname TEXT NOT NULL,
+        port INTEGER NOT NULL CHECK (port BETWEEN 1 AND 65535),
+        verify_tls INTEGER NOT NULL DEFAULT 1 CHECK (verify_tls IN (0, 1)),
+        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        UNIQUE(location_id, protocol, hostname, port)
+    );
+    CREATE INDEX IF NOT EXISTS idx_prometheus_connections_location
+        ON prometheus_connections(location_id, enabled);
+    CREATE TABLE IF NOT EXISTS cluster_prometheus_bindings (
+        cluster_id TEXT PRIMARY KEY REFERENCES clusters(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+        connection_id TEXT NOT NULL REFERENCES prometheus_connections(connection_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+        identity_label_name TEXT NOT NULL DEFAULT 'cluster'
+            CHECK (identity_label_name IN ('cluster', 'site', 'environment')),
+        identity_label_value TEXT NOT NULL CHECK (length(trim(identity_label_value)) > 0),
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_cluster_prometheus_bindings_connection
+        ON cluster_prometheus_bindings(connection_id);
+    """)
+    c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (7)")
 def initialize_database() -> None:
     c=get_connection()
     try:
