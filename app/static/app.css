@@ -35,3 +35,22 @@
 .histogram-table th,.histogram-table td{padding:12px 16px}
 .histogram-table .histogram-number{text-align:right;font-variant-numeric:tabular-nums}
 .histogram-table tbody tr:hover{background:#f7fbfa}
+
+/* Cluster detail page: grouped analytics sections */
+.analytics-section{margin:22px 0 26px}
+.analytics-section-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:0 2px 13px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.analytics-section-heading h2{font:600 17px 'Space Grotesk',sans-serif;letter-spacing:-.25px;margin:0 0 4px;color:var(--ink)}
+.analytics-section-heading p{margin:0;color:var(--muted);font-size:11px;line-height:1.5}
+.analytics-section-heading .panel-tag{flex:0 0 auto}
+.cluster-chart-grid{margin-bottom:0;grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch}
+.cluster-chart-grid>.panel{height:100%}
+.cluster-health-grid{grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);margin-bottom:0;align-items:stretch}
+.cluster-action-panel{display:flex;align-items:center;min-height:190px}
+.cluster-action-card{display:flex;align-items:center;gap:15px;width:100%;flex-wrap:wrap}
+.cluster-action-card>div:nth-child(2){flex:1;min-width:180px}
+.cluster-action-card strong{display:block;font-size:14px;color:var(--ink);margin-bottom:5px}
+.cluster-action-card p{font-size:11px;color:var(--muted);line-height:1.6;margin:0}
+.cluster-action-icon{width:42px;height:42px;display:grid;place-items:center;flex:0 0 42px;border-radius:11px;background:var(--teal-soft);color:var(--teal);font-size:22px}
+.cluster-action-card .primary-small{margin-left:auto}
+@media(max-width:900px){.cluster-chart-grid,.cluster-health-grid{grid-template-columns:1fr}}
+@media(max-width:700px){.analytics-section{margin:18px 0 22px}.analytics-section-heading{align-items:flex-start;flex-direction:column;gap:6px}.cluster-action-card .primary-small{margin-left:0}}
