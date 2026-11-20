@@ -95,3 +95,22 @@
 .health-error-text{margin:12px 0 0;padding:9px 11px;border-radius:7px;background:#fff4f2;color:#a64b42;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
 @media(max-width:900px){.scheduler-grid{grid-template-columns:1fr}}
 @media(max-width:700px){.health-section-heading{align-items:flex-start;flex-direction:column;gap:5px}.scheduler-job-grid{grid-template-columns:1fr}.scheduler-job-grid>div{display:flex;justify-content:space-between;align-items:center;gap:12px}.scheduler-job-grid small{margin:0}.scheduler-job-grid strong{text-align:right}}
+
+
+/* Collection history filters, pagination and expandable error details */
+.health-history-panel{margin-top:20px}
+.health-history-filters{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;padding:15px 17px;border-bottom:1px solid var(--line);background:#fbfcfd}
+.health-history-filters label{display:flex;flex-direction:column;gap:6px;min-width:135px;color:var(--muted);font-size:9px;font-weight:700;letter-spacing:.55px}
+.health-history-filters input,.health-history-filters select{height:35px;min-width:135px;padding:0 9px;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);font:500 11px inherit;letter-spacing:0}
+.health-history-filters label:nth-child(4){min-width:105px}
+.health-history-filters label:nth-child(4) select{min-width:105px}
+.health-filter-actions{display:flex;gap:7px;margin-left:auto}
+.health-filter-actions button,.health-pagination button{height:35px}
+.health-pagination{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 17px;border-top:1px solid var(--line);color:var(--muted);font-size:10px}
+.health-pagination>div{display:flex;gap:7px}
+.health-error-details{min-width:150px;max-width:360px;color:#a64b42;font-size:10px;line-height:1.5}
+.health-error-details summary{cursor:pointer;font-weight:600;white-space:nowrap}
+.health-error-details ul{margin:7px 0 0;padding-left:17px;white-space:normal;overflow-wrap:anywhere}
+.health-error-details li+li{margin-top:4px}
+.health-pagination button:disabled{opacity:.4;cursor:not-allowed}
+@media(max-width:700px){.health-history-filters{align-items:stretch}.health-history-filters label,.health-history-filters input,.health-history-filters select{width:100%;min-width:0}.health-filter-actions{margin-left:0}.health-pagination{align-items:flex-start;flex-direction:column}.health-pagination>div{width:100%;justify-content:space-between}}
