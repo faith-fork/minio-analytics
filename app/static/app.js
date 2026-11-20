@@ -169,7 +169,7 @@ async function renderBucketUsageReport(){
   ].join("");
   const rows=(d.items||[]).map(x=>{
     const status=x.status==="Available"?'<span class="status-pill">Available</span>':x.status==="Unavailable"?'<span class="status-pill bad">Unavailable</span>':'<span class="status-pill warn">No snapshot</span>';
-    const tenant=x.bucket_snapshot_date?(x.tenant_name_at_snapshot||"Unassigned"):"—";
+    const tenant=x.metric_bucket_id?(x.tenant_name_at_snapshot||"Unassigned"):"—";
     return '<tr><td><span class="cell-strong">'+esc(x.bucket_name)+'</span></td>'+
       '<td>'+esc(x.cluster_name)+'</td><td>'+esc(x.location_name)+'</td>'+
       '<td>'+esc(tenant)+'</td><td>'+bytes(x.used_bytes)+'</td>'+
