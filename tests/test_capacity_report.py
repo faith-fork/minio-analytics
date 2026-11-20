@@ -36,7 +36,7 @@ def test_capacity_report_returns_approved_totals_and_cluster_breakdown(
     assert data["generated_from"] == "sqlite"
     assert data["cluster_count"] == 1
     assert data["totals_bytes"] == {
-        "installed_capacity_bytes": 10000,
+        "installed_capacity_bytes": pytest.approx(10000 * 0.993 * (0.85 / 1.33)),
         "cap_capacity_bytes": 8000,
         "used_cap_bytes": 5500,
         "provisioned_bytes": 3000,
@@ -46,6 +46,7 @@ def test_capacity_report_returns_approved_totals_and_cluster_breakdown(
     item = data["items"][0]
     assert item["cluster_id"] == "cluster-1"
     assert item["cluster_snapshot_date"] == "2026-01-01"
+    assert item["cluster_snapshot_ts"] == "2026-01-01T00:00:00Z"
     assert item["bucket_snapshot_date"] == "2026-01-01"
     assert item["active_bucket_count"] == 3
     assert item["buckets_with_metrics"] == 3
@@ -53,7 +54,8 @@ def test_capacity_report_returns_approved_totals_and_cluster_breakdown(
     assert item["buckets_with_usage"] == 3
     assert item["usage_pct"] == pytest.approx(55.0)
     assert item["provisioned_pct"] == pytest.approx(30.0)
-    assert data["avg_used_pct"] == pytest.approx(55.0)
+    assert data["avg_used_pct"] == pytest.approx(5500 / (10000 * 0.993 * (0.85 / 1.33)) * 100)
+    assert data["data_as_of"] == "2026-01-01T00:00:00Z"
 
 
 def test_capacity_report_withholds_only_incomplete_bucket_metric_totals(
