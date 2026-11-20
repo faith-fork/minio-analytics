@@ -49,6 +49,9 @@ def test_capacity_report_returns_approved_totals_and_cluster_breakdown(
     assert item["buckets_with_metrics"] == 3
     assert item["buckets_with_quota"] == 3
     assert item["buckets_with_usage"] == 3
+    assert item["usage_pct"] == 55.0
+    assert item["provisioned_pct"] == 30.0
+    assert data["avg_used_pct"] == 55.0
 
 
 def test_capacity_report_withholds_only_incomplete_bucket_metric_totals(
