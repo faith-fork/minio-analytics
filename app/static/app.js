@@ -99,6 +99,34 @@ async function renderOverview(){
     table("Cluster status","Latest persisted cluster snapshots",["CLUSTER / LOCATION","STATUS","RAW TOTAL","RAW USED","NODES UP / DOWN","DAYS TO FULL",""],clusterRows);
   const labels=o.cluster_items.map(x=>x.cluster_name);chart("capacity-chart",labels,[{label:"Used TiB",data:o.cluster_items.map(x=>x.raw_total_bytes==null||x.raw_free_bytes==null?null:(x.raw_total_bytes-x.raw_free_bytes)/1024**4),color:"#13a58b"},{label:"Free TiB",data:o.cluster_items.map(x=>x.raw_free_bytes==null?null:x.raw_free_bytes/1024**4),color:"#4779d8"}],"bar");
 }
+
+async function renderCapacityReport(){
+  const d=await api("/api/analytics/capacity-report"),t=d.totals_bytes||{};
+  const cards=[
+    metric("INSTALLED CAPACITY",bytes(t.installed_capacity_bytes),"RAW total capacity","▤"),
+    metric("CAP CAPACITY",bytes(t.cap_capacity_bytes),"Usable total capacity","▦"),
+    metric("PROVISIONED",bytes(t.provisioned_bytes),"Sum of active bucket quotas","◫"),
+    metric("USED CAP",bytes(t.used_cap_bytes),"Usable total minus usable free","◒"),
+    metric("USED BKT",bytes(t.used_bucket_bytes),"Sum of active bucket usage","▤"),
+    metric("FREE CAPACITY",bytes(t.free_capacity_bytes),"Usable free capacity","◇")
+  ].join("");
+  const rows=(d.items||[]).map(x=>{
+    const coverage=x.active_bucket_count===0?"No active buckets":fmt(x.buckets_with_metrics,0)+" / "+fmt(x.active_bucket_count,0)+" buckets";
+    const bucketDates=x.bucket_snapshot_date?dateLabel(x.bucket_snapshot_date):"No bucket snapshot";
+    const clusterDate=x.cluster_snapshot_date?dateLabel(x.cluster_snapshot_date):"No cluster snapshot";
+    return '<tr><td><span class="cell-strong">'+esc(x.cluster_name)+'</span><br><span class="cell-muted">'+esc(x.location_name)+'</span></td>'+
+      '<td>'+bytes(x.installed_capacity_bytes)+'</td><td>'+bytes(x.cap_capacity_bytes)+'</td>'+
+      '<td>'+bytes(x.provisioned_bytes)+'</td><td>'+bytes(x.used_cap_bytes)+'</td>'+
+      '<td>'+bytes(x.used_bucket_bytes)+'</td><td>'+bytes(x.free_capacity_bytes)+'</td>'+
+      '<td><span class="cell-muted">Cluster: '+esc(clusterDate)+'</span><br><span class="cell-muted">Buckets: '+esc(bucketDates)+'</span></td>'+
+      '<td>'+esc(coverage)+'</td></tr>';
+  });
+  $("#content").innerHTML=pageHead("Consolidated Capacity Report","Fleet-wide capacity and bucket allocation from the latest stored SQLite snapshots.",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
+    '<div class="metric-grid">'+cards+'</div>'+
+    '<div class="chart-note"><strong>How to read this report:</strong> All values are displayed in TiB. N/A (—) means the required snapshot or complete metric coverage is unavailable; it is not treated as zero. Bucket totals require quota/usage metrics for every active bucket in the latest bucket snapshot for that cluster.</div>'+
+    table("Capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · each row shows its latest available cluster and bucket snapshot",["CLUSTER / LOCATION","INSTALLED","CAP","PROVISIONED","USED CAP","USED BKT","FREE","SNAPSHOT DATES","BUCKET COVERAGE"],rows,"No enabled clusters are registered.");
+}
+
 async function renderClusters(){
   state.clusters=(await api("/api/analytics/clusters")).items;
   const rows=state.clusters.map(x=>`<tr><td><span class="cell-strong">${esc(x.cluster_name)}</span><br><span class="cell-muted">${esc(x.cluster_id)}</span></td><td>${esc(x.location_name)}</td><td>${pill(!!x.metrics_available)}</td><td>${bytes(x.raw_total_bytes)}</td><td>${bytes(x.raw_total_bytes-x.raw_free_bytes)}</td><td>${x.nodes_online??"—"} / ${x.nodes_offline??"—"}</td><td>${x.growth_bytes_per_day==null?"—":fmt(x.growth_bytes_per_day/1024**3)+" GiB"}</td><td><button class="table-link" data-cluster="${esc(x.cluster_id)}">View details →</button></td></tr>`);
