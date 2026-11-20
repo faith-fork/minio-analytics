@@ -476,6 +476,19 @@ def test_object_size_distribution_does_not_report_partial_totals(
 def test_cluster_analytics_reports_quota_metric_coverage(viewer_client: TestClient) -> None:
     from app.database.database import transaction
 
+    with transaction() as connection:
+        connection.execute(
+            """
+            INSERT INTO cluster_daily_metrics (
+                snapshot_date, cluster_id, snapshot_ts, collected_at,
+                metrics_available
+            ) VALUES (
+                '2026-01-01', 'cluster-1', '2026-01-01T00:00:00Z',
+                '2026-01-01T00:05:00Z', 1
+            )
+            """
+        )
+
     complete = viewer_client.get("/api/analytics/clusters/cluster-1?days=3650")
     assert complete.status_code == 200
     row = complete.json()["series"][0]
