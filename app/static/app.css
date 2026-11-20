@@ -184,3 +184,12 @@
 .bucket-usage-filter-field select{min-width:190px;height:35px}
 .bucket-usage-filters button{height:35px;margin-left:auto}
 @media(max-width:700px){.bucket-usage-filter-field,.bucket-usage-filter-field select{width:100%;min-width:0}.bucket-usage-filters button{margin-left:0;width:100%}}
+
+
+/* Consolidated raw capacity report */
+.raw-capacity-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:0 0 16px}
+.raw-capacity-grid .metric-card{min-width:0;padding:14px 13px}
+.raw-capacity-grid .metric-top{font-size:9px;letter-spacing:.2px}
+.raw-capacity-grid .metric-value{font-size:clamp(17px,1.35vw,23px);white-space:nowrap}
+@media(max-width:1100px){.raw-capacity-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:700px){.raw-capacity-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
