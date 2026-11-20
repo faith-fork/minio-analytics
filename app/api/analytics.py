@@ -204,7 +204,10 @@ def cluster_analytics(
             SELECT snapshot_date, snapshot_ts, metrics_available,
                    raw_total_bytes, raw_free_bytes, usable_total_bytes,
                    usable_free_bytes, nodes_online, nodes_offline,
-                   growth_bytes_per_day, days_to_full, error_text
+                   growth_bytes_per_day,
+                   CASE WHEN days_to_full BETWEEN 0 AND 1825
+                        THEN days_to_full ELSE NULL END AS days_to_full,
+                   error_text
             FROM cluster_daily_metrics
             WHERE cluster_id = ? AND snapshot_date BETWEEN ? AND ?
             ORDER BY snapshot_date
