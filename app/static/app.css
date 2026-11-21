@@ -193,3 +193,16 @@
 .raw-capacity-grid .metric-value{font-size:clamp(17px,1.35vw,23px);white-space:nowrap}
 @media(max-width:1100px){.raw-capacity-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:700px){.raw-capacity-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+/* Capacity planning heading stays left; editable controls form a right-aligned group */
+.capacity-factor-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;background:#fff;border:1px solid var(--line);border-radius:9px;padding:13px 16px;margin:0 0 16px;box-shadow:var(--shadow)}
+.capacity-factor-toolbar>strong{flex:0 0 auto;font-size:11px;color:#526176}
+.capacity-factor-controls{display:flex;align-items:end;justify-content:flex-end;gap:9px;flex-wrap:wrap;background:transparent;border:0;border-radius:0;padding:0;margin:0;box-shadow:none}
+.capacity-factor-controls label{gap:4px}
+.capacity-factor-controls input{width:76px;padding:0 6px}
+@media(max-width:700px){
+  .capacity-factor-toolbar{align-items:flex-start;flex-direction:column;gap:10px}
+  .capacity-factor-controls{justify-content:flex-start;width:100%}
+  .capacity-factor-controls input{width:76px}
+}
