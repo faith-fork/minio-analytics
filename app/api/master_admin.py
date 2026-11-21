@@ -11,7 +11,8 @@ from app.database.database import transaction
 router=APIRouter(prefix="/api/master-admin",tags=["master administration"])
 class SettingsUpdate(BaseModel):
     current_password:str=Field(min_length=1,max_length=1024)
-    node_interval_hours:int=Field(ge=1,le=24)
+    node_interval_minutes:int=Field(ge=1,le=60)
+    telemetry_retention_days:int=Field(ge=1,le=90)
     daily_collection_time:str=Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 @router.get("/settings")
 def get_settings(actor:dict=Depends(require_master_admin)):
@@ -19,14 +20,14 @@ def get_settings(actor:dict=Depends(require_master_admin)):
         rows=c.execute("SELECT setting_key,setting_value,updated_at FROM app_settings").fetchall()
         last=c.execute("SELECT MAX(changed_at) t FROM settings_audit").fetchone()["t"]
     v={r["setting_key"]:r["setting_value"] for r in rows}
-    return {"settings":{"node_interval_hours":int(v.get("node_interval_hours","4")),"daily_collection_time":v.get("daily_collection_time","00:15")},"last_change_at":last,"scheduler_refresh_seconds":60}
+    return {"settings":{"node_interval_minutes":int(v.get("node_interval_minutes","5")),"telemetry_retention_days":int(v.get("telemetry_retention_days","3")),"daily_collection_time":v.get("daily_collection_time","00:15")},"last_change_at":last,"scheduler_refresh_seconds":60}
 @router.put("/settings")
 def update_settings(p:SettingsUpdate,actor:dict=Depends(require_master_admin)):
     with transaction() as c:
         u=c.execute("SELECT password_hash,is_active FROM users WHERE id=?",(actor["id"],)).fetchone()
         if u is None or not u["is_active"] or not verify_password(p.current_password,u["password_hash"]):
             raise HTTPException(status_code=403,detail="Password confirmation failed")
-        updates={"node_interval_hours":str(p.node_interval_hours),"daily_collection_time":p.daily_collection_time}
+        updates={"node_interval_minutes":str(p.node_interval_minutes),"telemetry_retention_days":str(p.telemetry_retention_days),"daily_collection_time":p.daily_collection_time}
         for k,v in updates.items():
             old=c.execute("SELECT setting_value FROM app_settings WHERE setting_key=?",(k,)).fetchone()
             ov=old["setting_value"] if old else None
