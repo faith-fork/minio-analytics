@@ -381,12 +381,12 @@ async function showClusterTopology(id, section="infra-overview"){
   const trendSamples=trendData?.samples||[];
   const trendLabels=trendSamples.map(x=>timestampLabel(x.snapshot_ts));
   const trendPanel=(title,description,canvasId)=>'<section class="panel"><div class="panel-header"><div><h3>'+title+'</h3><p>'+description+'</p></div></div>'+(trendSamples.length?'<div class="chart-wrap health-trend-chart"><canvas id="'+canvasId+'"></canvas></div>':'<div class="chart-empty-state"><strong>No historical samples available</strong><p>No telemetry was stored in the selected date range.</p></div>')+'</section>';
-  const infraOverview='<div class="detail-grid"><div class="detail-card"><small>NODE / DRIVE SNAPSHOT</small><strong>'+timestampLabel(d.node_snapshot_ts)+'</strong><p class="muted">Collected at '+timestampLabel(d.node_collected_at)+'</p></div></div><div class="metric-grid">'+
+  const infraOverview='<div class="metric-grid infra-overview-metric-grid">'+
+    metric("NODE / DRIVE SNAPSHOT",timestampLabel(d.node_snapshot_ts),"Collected at "+timestampLabel(d.node_collected_at),"◷")+
     metric("NODES",nodes.length,nodes.filter(n=>n.node_exporter_up===1).length+" Node Exporter targets reachable","⌁")+
     metric("DRIVES",drives.length,drivesOnline==null?"Online/offline counts unavailable":drivesOnline+" online · "+drivesOffline+" offline","▤")+
     metric("NODE EXPORTER",nodes.filter(n=>n.node_exporter_up===1).length+" / "+nodes.length,"Reachable nodes","◉")+
     metric("MINIO SCRAPES",nodes.filter(n=>n.minio_scrape_up===1).length+" / "+nodes.length,"Reachable MinIO targets","◈")+'</div>'+
-    table("Node availability","Node Exporter and MinIO scrape status are shown independently.",["NODE","NODE EXPORTER","MINIO TARGET","CPU","MEMORY USED","LOAD 1M","DRIVES UP","DRIVES DOWN"],nodeRows);
   const storageOverview='<div class="detail-grid"><div class="detail-card"><small>TOPOLOGY SNAPSHOT</small><strong>'+dateLabel(d.snapshot_date)+'</strong><p class="muted">Collected at '+timestampLabel(d.topology_collected_at)+'</p></div></div><div class="metric-grid">'+
     metric("STORAGE POOLS",pools.length,"Pools discovered","▦")+
     metric("ERASURE SETS",sets.length,"Sets discovered","◫")+
