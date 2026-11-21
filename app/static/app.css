@@ -193,3 +193,15 @@
 .raw-capacity-grid .metric-value{font-size:clamp(17px,1.35vw,23px);white-space:nowrap}
 @media(max-width:1100px){.raw-capacity-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:700px){.raw-capacity-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+/* Compact, right-aligned capacity planning controls */
+.capacity-factor-controls{justify-content:flex-end;gap:9px}
+.capacity-factor-controls strong{margin-right:5px}
+.capacity-factor-controls label{gap:4px}
+.capacity-factor-controls input{width:72px;padding:0 6px}
+@media(max-width:700px){
+  .capacity-factor-controls{justify-content:flex-start;gap:9px}
+  .capacity-factor-controls strong{width:100%;margin:0 0 2px}
+  .capacity-factor-controls input{width:76px}
+}
