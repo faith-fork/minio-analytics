@@ -238,3 +238,15 @@
   .capacity-factor-toolbar .capacity-factor-controls{justify-content:flex-start;width:100%}
   .capacity-factor-toolbar .capacity-factor-controls input{width:76px}
 }
+
+
+/* Consolidated report column chooser sits beside CSV export in the table heading */
+.table-heading-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex:0 0 auto}
+.table-heading-actions .report-column-menu{position:relative}
+.table-heading-actions .report-column-menu summary{min-height:31px}
+.table-heading-actions .report-column-options{right:0;left:auto;max-height:min(65vh,420px);overflow-y:auto;min-width:190px}
+.table-panel [data-report-column-key][hidden]{display:none!important}
+@media(max-width:520px){
+  .table-heading-actions{flex-wrap:wrap;gap:6px}
+  .table-heading-actions .table-export-button{font-size:9px;padding:6px 8px}
+}
