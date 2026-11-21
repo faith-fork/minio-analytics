@@ -225,3 +225,16 @@
 .bucket-usage-filter-option input{width:14px;height:14px;margin:0;accent-color:var(--teal);flex:0 0 auto}
 .bucket-usage-multiselect-actions{display:flex;justify-content:flex-end;gap:6px;padding-top:8px;border-top:1px solid var(--line)}
 .bucket-usage-multiselect-actions button{height:30px;margin:0!important;padding:0 9px;font-size:10px}
+
+
+/* Capacity planning heading stays left; editable controls form a right-aligned group */
+.capacity-factor-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;background:#fff;border:1px solid var(--line);border-radius:9px;padding:13px 16px;margin:0 0 16px;box-shadow:var(--shadow)}
+.capacity-factor-toolbar>strong{flex:0 0 auto;font-size:11px;color:#526176}
+.capacity-factor-toolbar .capacity-factor-controls{display:flex;align-items:end;justify-content:flex-end;gap:9px;flex-wrap:wrap;background:transparent;border:0;border-radius:0;padding:0;margin:0;box-shadow:none}
+.capacity-factor-toolbar .capacity-factor-controls label{gap:4px}
+.capacity-factor-toolbar .capacity-factor-controls input{width:76px;padding:0 6px}
+@media(max-width:700px){
+  .capacity-factor-toolbar{align-items:flex-start;flex-direction:column;gap:10px}
+  .capacity-factor-toolbar .capacity-factor-controls{justify-content:flex-start;width:100%}
+  .capacity-factor-toolbar .capacity-factor-controls input{width:76px}
+}
