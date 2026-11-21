@@ -593,7 +593,7 @@ document.addEventListener("keydown",e=>{
 document.addEventListener("click",e=>{
   if(!(e.target instanceof Element))return;
   const clickedColumnMenu=e.target.closest(".report-column-menu");
-  const openColumnMenus=$(".report-column-menu[open]",$("#content"));
+  const openColumnMenus=$$(".report-column-menu[open]",$("#content"));
   if(!clickedColumnMenu)openColumnMenus.forEach(menu=>menu.removeAttribute("open"));
   else if(e.target.closest(".report-column-menu summary"))openColumnMenus.filter(menu=>menu!==clickedColumnMenu).forEach(menu=>menu.removeAttribute("open"));
 });
