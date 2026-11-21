@@ -152,3 +152,15 @@
 .capacity-factor-controls input{width:92px;height:34px;border:1px solid #dfe5ed;border-radius:6px;padding:0 8px;color:var(--ink);background:#fff}
 .capacity-factor-controls input:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px #13a58b18}
 .capacity-factor-controls button{margin:0;height:34px}
+
+
+/* Compact, right-aligned capacity planning controls */
+.capacity-factor-controls{justify-content:flex-end;gap:9px}
+.capacity-factor-controls strong{margin-right:5px}
+.capacity-factor-controls label{gap:4px}
+.capacity-factor-controls input{width:72px;padding:0 6px}
+@media(max-width:700px){
+  .capacity-factor-controls{justify-content:flex-start;gap:9px}
+  .capacity-factor-controls strong{width:100%;margin:0 0 2px}
+  .capacity-factor-controls input{width:76px}
+}
