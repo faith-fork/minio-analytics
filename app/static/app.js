@@ -46,15 +46,23 @@ function table(title,subtitle,headers,rows,empty="No records found.",reportConfi
   const actions='<div class="table-heading-actions">'+menu+'<button type="button" class="subtle-button table-export-button" data-export-table>↓ Export CSV</button></div>';
   const th=headers.map((header,index)=>'<th'+(columns?' data-report-column-key="'+esc(columns[index].key)+'"'+(visibility[columns[index].key]===false?' hidden':''):"")+'>'+header+'</th>').join("");
   const body=rows.length?rows.map(row=>columns?reportRowCells(row,columns,visibility):row).join(""):'<tr><td colspan="'+headers.length+'" class="empty-state">'+empty+'</td></tr>';
-  return '<section class="table-panel"><div class="table-heading"><div><h3>'+title+'</h3><p>'+(subtitle||"")+'</p></div>'+actions+'</div><div class="table-scroll"><table><thead><tr>'+th+'</tr></thead><tbody>'+body+'</tbody></table></div></section>';
+  return '<section class="table-panel'+(columns?' report-table-panel':'')+'"><div class="table-heading"><div><h3>'+title+'</h3><p>'+(subtitle||"")+'</p></div>'+actions+'</div><div class="table-scroll"><table><thead><tr>'+th+'</tr></thead><tbody>'+body+'</tbody></table></div></section>';
 }
 function exportTableCsv(button){
   const panel=button.closest(".table-panel"),tableEl=panel?.querySelector("table");
   if(!tableEl)return;
   const csvCell=value=>'"'+String(value??"").replace(/"/g,'""')+'"';
-  const rows=[...tableEl.querySelectorAll("tr")].filter(row=>!row.querySelector(".empty-state")).map(row=>[...row.querySelectorAll("th:not([hidden]),td:not([hidden])")].map(cell=>cell.innerText.replace(/\s+/g," ").trim()));
-  if(!rows.length){toast("There is no table data to export.",true);return;}
-  const csv="\uFEFF"+rows.map(row=>row.map(csvCell).join(",")).join("\r\n");
+  const headers=[...tableEl.querySelectorAll("thead tr:first-child th[data-report-column-key]")];
+  const visibleKeys=headers.filter(cell=>!cell.hidden&&getComputedStyle(cell).display!=="none").map(cell=>cell.dataset.reportColumnKey);
+  const rows=[...tableEl.querySelectorAll("tbody tr")].filter(row=>!row.querySelector(".empty-state")).map(row=>{
+    const cells=new Map([...row.querySelectorAll("td[data-report-column-key]")].map(cell=>[cell.dataset.reportColumnKey,cell]));
+    return visibleKeys.map(key=>{
+      const cell=cells.get(key);
+      return cell&&!cell.hidden&&getComputedStyle(cell).display!=="none"?cell.innerText.replace(/\\s+/g," ").trim():"";
+    });
+  });
+  if(!visibleKeys.length||!rows.length){toast("There is no visible table data to export.",true);return;}
+  const csv="\\uFEFF"+[headers.filter(cell=>visibleKeys.includes(cell.dataset.reportColumnKey)).map(cell=>cell.innerText.replace(/\\s+/g," ").trim()),...rows].map(row=>row.map(csvCell).join(",")).join("\\r\\n");
   const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"}),url=URL.createObjectURL(blob),link=document.createElement("a");
   const title=panel.querySelector(".table-heading h3")?.textContent||"minio-report";
   const filename=title.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"minio-report";
