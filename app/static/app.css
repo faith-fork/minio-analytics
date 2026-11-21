@@ -256,3 +256,12 @@
   .table-heading-actions{flex-wrap:wrap;gap:6px}
   .table-heading-actions .table-export-button{font-size:9px;padding:6px 8px}
 }
+
+
+/* Separate node infrastructure from MinIO storage topology experiences */
+.cluster-experience-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;width:100%}
+.cluster-experience-card{display:flex;align-items:flex-start;gap:14px;min-width:0;padding:18px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.cluster-experience-card>div:last-child{min-width:0;flex:1}
+.cluster-experience-card strong{display:block;color:var(--ink);font-size:13px;margin:1px 0 6px}
+.cluster-experience-card p{color:var(--muted);font-size:11px;line-height:1.6;margin:0 0 12px}
+@media(max-width:900px){.cluster-experience-links{grid-template-columns:1fr}}
