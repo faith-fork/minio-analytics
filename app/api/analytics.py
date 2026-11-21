@@ -910,10 +910,12 @@ def collection_health(
             item.pop("details_json", None)
         items.append(item)
 
-    interval_hours = int(settings.get("node_interval_hours", "4"))
+    interval_minutes = int(settings.get("node_interval_minutes", "5"))
+    retention_days = int(settings.get("telemetry_retention_days", "3"))
     daily_time = settings.get("daily_collection_time", "00:15")
     node_state = scheduler_state.get("node_health", {})
     daily_state = scheduler_state.get("daily_collection", {})
+    retention_state = scheduler_state.get("telemetry_retention", {})
 
     def _parse_utc(value: str | None):
         if not value:
@@ -924,7 +926,7 @@ def collection_health(
             return None
 
     node_completed = _parse_utc(node_state.get("last_completed_at"))
-    next_node = (node_completed or now) + timedelta(hours=interval_hours)
+    next_node = (node_completed or now) + timedelta(minutes=interval_minutes)
 
     hh, mm = (int(part) for part in daily_time.split(":"))
     local_now = now.astimezone(ZoneInfo("Asia/Kolkata"))
@@ -944,7 +946,8 @@ def collection_health(
         "generated_at": now_text,
         "schedule": {
             "timezone": "Asia/Kolkata",
-            "node_interval_hours": interval_hours,
+            "node_interval_minutes": interval_minutes,
+            "telemetry_retention_days": retention_days,
             "daily_collection_time": daily_time,
             "scheduler_tick_seconds": 60,
             "jobs": {
@@ -955,6 +958,9 @@ def collection_health(
                 "daily_collection": {
                     **daily_state,
                     "next_expected_at": next_daily.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+                },
+                "telemetry_retention": {
+                    **retention_state,
                 },
             },
         },
@@ -1104,6 +1110,73 @@ def collection_health_trends(
         "cluster": _dict(cluster),
         "samples": samples,
         "sample_count": len(samples),
+    }
+
+
+@router.get("/clusters/{cluster_id}/nodes/performance")
+def node_performance(
+    cluster_id: str,
+    hours: int = Query(default=6, ge=2, le=24),
+    _: dict = Depends(get_current_user),
+) -> dict:
+    """Return per-node averages and timestamped samples for a short monitoring window."""
+    if hours not in (2, 6, 12, 24):
+        raise HTTPException(status_code=422, detail="hours must be one of 2, 6, 12 or 24")
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(hours=hours)
+    start_text = start.isoformat(timespec="seconds").replace("+00:00", "Z")
+    end_text = now.isoformat(timespec="seconds").replace("+00:00", "Z")
+    with transaction() as connection:
+        cluster = connection.execute(
+            "SELECT c.id,c.name,l.name AS location_name FROM clusters c JOIN locations l ON l.id=c.location_id WHERE c.id=? AND c.enabled=1",
+            (cluster_id,),
+        ).fetchone()
+        if cluster is None:
+            raise HTTPException(status_code=404, detail="Cluster not found or disabled")
+        setting = connection.execute(
+            "SELECT setting_value FROM app_settings WHERE setting_key='node_interval_minutes'"
+        ).fetchone()
+        interval_minutes = int(setting["setting_value"]) if setting else 5
+        rows = connection.execute(
+            """SELECT m.node_name,COUNT(*) AS sample_count,
+                      AVG(m.cpu_utilization_pct) AS avg_cpu_pct,
+                      MIN(m.cpu_utilization_pct) AS min_cpu_pct,
+                      MAX(m.cpu_utilization_pct) AS max_cpu_pct,
+                      AVG(CASE WHEN m.memory_total_bytes>0 THEN m.memory_used_bytes*100.0/m.memory_total_bytes END) AS avg_memory_used_pct,
+                      MIN(CASE WHEN m.memory_total_bytes>0 THEN m.memory_used_bytes*100.0/m.memory_total_bytes END) AS min_memory_used_pct,
+                      MAX(CASE WHEN m.memory_total_bytes>0 THEN m.memory_used_bytes*100.0/m.memory_total_bytes END) AS max_memory_used_pct,
+                      AVG(m.load1) AS avg_load1,MAX(m.load1) AS max_load1,
+                      AVG(m.node_exporter_up)*100.0 AS node_exporter_availability_pct,
+                      AVG(m.minio_scrape_up)*100.0 AS minio_scrape_availability_pct
+               FROM node_health_runs r JOIN node_health_metrics m ON m.run_id=r.run_id
+               WHERE r.cluster_id=? AND r.snapshot_ts>=? AND r.snapshot_ts<?
+               GROUP BY m.node_name ORDER BY m.node_name""",
+            (cluster_id, start_text, end_text),
+        ).fetchall()
+        samples = connection.execute(
+            """SELECT r.snapshot_ts,COUNT(m.node_name) AS node_samples,
+                      AVG(m.cpu_utilization_pct) AS avg_cpu_pct,
+                      CASE WHEN SUM(m.memory_total_bytes)>0
+                           THEN SUM(m.memory_used_bytes)*100.0/SUM(m.memory_total_bytes) END AS avg_memory_used_pct,
+                      AVG(m.load1) AS avg_load1
+               FROM node_health_runs r JOIN node_health_metrics m ON m.run_id=r.run_id
+               WHERE r.cluster_id=? AND r.snapshot_ts>=? AND r.snapshot_ts<?
+               GROUP BY r.run_id,r.snapshot_ts ORDER BY r.snapshot_ts""",
+            (cluster_id, start_text, end_text),
+        ).fetchall()
+    expected = max(1, int(hours * 60 / interval_minutes))
+    run_count = len(samples)
+    return {
+        "cluster": dict(cluster),
+        "hours": hours,
+        "start_ts": start_text,
+        "end_ts": end_text,
+        "interval_minutes": interval_minutes,
+        "expected_samples": expected,
+        "sample_count": run_count,
+        "coverage_pct": min(100.0, run_count / expected * 100.0),
+        "nodes": [dict(row) for row in rows],
+        "samples": [dict(row) for row in samples],
     }
 
 
