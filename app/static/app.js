@@ -741,6 +741,7 @@ $("#content").addEventListener("change",async e=>{
   }
   if(e.target.matches("[data-report-column-toggle]")){
     const checkbox=e.target,reportId=checkbox.dataset.reportId,key=checkbox.dataset.reportColumnKey,panel=checkbox.closest(".table-panel");
+    checkbox.closest(".report-column-menu")?.removeAttribute("open");
     const visibility={...(state.reportColumnVisibility[reportId]||{})};
     if(!checkbox.checked&&!Object.entries(visibility).some(([name,visible])=>name!==key&&visible!==false)){
       checkbox.checked=true;toast("At least one column must remain visible.",true);return;
