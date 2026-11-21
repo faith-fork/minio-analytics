@@ -284,8 +284,9 @@ async function renderMasterAdmin(){
     api("/api/master-admin/settings"),
     api("/api/master-admin/backups")
   ]);
-  const s=d.settings;
+  const s=d.settings,u=d.telemetry_usage||{};
   const backupRows=backups.items.map(b=>`<tr><td><span class="cell-strong">${esc(b.filename)}</span></td><td>${timestampLabel(b.created_at)}</td><td>${fmt(b.size_bytes/1024/1024,2)} MiB</td><td>${pill("success")} Verified</td><td><a class="table-link" href="${esc(b.download_url)}">Download ↓</a></td></tr>`);
+  const telemetryPanel='<section class="panel" style="max-width:100%;margin-bottom:16px"><div class="panel-header"><div><h3>Infrastructure telemetry footprint</h3><p>Current high-frequency sample counts and SQLite storage footprint.</p></div><span class="panel-tag">RETENTION MONITORING</span></div><div class="metric-grid">'+metric("COLLECTION RUNS",fmt(u.collection_runs,0),"Stored node-health snapshots","◷")+metric("NODE SAMPLES",fmt(u.node_samples,0),"Per-node records","⌁")+metric("DRIVE SAMPLES",fmt(u.drive_samples,0),"Per-drive records","▤")+metric("DATABASE SIZE",fmt((u.database_size_bytes||0)/1024/1024,2)+" MiB","Entire analytics database","▣")+"</div><p class=\"cell-muted\">Database size includes reports and configuration data, not only infrastructure telemetry. WAL currently uses "+fmt((u.wal_size_bytes||0)/1024/1024,2)+" MiB. Last retention cleanup: "+(u.last_cleanup_at?timestampLabel(u.last_cleanup_at):"Not yet run")+" · "+(u.last_cleanup_status||"Pending")+(u.last_cleanup_error?" · "+esc(u.last_cleanup_error):"")+".</p></section>";
   $("#content").innerHTML=pageHead("Master Admin","Configure collector cadence and manage verified database backups.")+
     `<section class="panel" style="max-width:760px;margin-bottom:16px"><div class="panel-header"><div><h3>Collector schedule</h3><p>All times use Asia/Kolkata (IST).</p></div><span class="panel-tag">LIVE SETTINGS</span></div>
     <form id="master-settings-form" class="form-grid" style="display:grid;gap:14px;max-width:520px">
@@ -297,6 +298,7 @@ async function renderMasterAdmin(){
       <label>Confirm your Master Admin password<input class="form-control" type="password" name="current_password" autocomplete="current-password" required></label>
       <div><button class="primary-button" type="submit">Save collector settings</button></div>
     </form><p class="cell-muted" style="margin-top:14px">The scheduler checks settings every 60 seconds. Retention cleanup runs daily. Daily reports and storage-topology history are not affected. Scheduled database backups continue at their configured time.</p></section>`+
+    telemetryPanel+
     `<section class="panel" style="max-width:100%"><div class="panel-header"><div><h3>Database backups</h3><p>Creates a consistent SQLite online backup and verifies it with PRAGMA integrity_check. The dashboard remains available.</p></div><button class="primary-small" data-action="create-backup">Create backup now</button></div><p class="cell-muted" style="margin:0 0 14px">Manual backups use the same backup directory as scheduled backups. Scheduled retention remains 14 days.</p></section>`+
     table("Backup history",backups.count+" backup file(s)",["FILE","CREATED AT","SIZE","INTEGRITY",""],backupRows,"No database backups found.");
 }
