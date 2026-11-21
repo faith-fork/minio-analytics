@@ -189,7 +189,7 @@ async function renderCapacityReport(){
   const factorControls=state.user?.role==="admin"?'<div class="capacity-factor-toolbar"><div class="capacity-factor-heading"><strong>Capacity planning factors</strong><small>Choose the data protection, risk factor and efficiency values used for capacity calculations.</small></div><form id="capacity-factors-form" class="capacity-factor-controls"><label>DP<input name="dp" type="number" min="0.01" max="100" step="0.01" value="'+Number(f.dp).toFixed(2)+'" required></label><label>RF<input name="rf" type="number" min="0.01" max="100" step="0.01" value="'+Number(f.rf).toFixed(2)+'" required></label><label>Eff<input name="eff" type="number" min="0.01" max="1" step="0.01" value="'+Number(f.eff).toFixed(2)+'" required></label><button class="primary-small" type="submit">Save & recalculate</button></form></div>':'';
 
   const headers=provisionedColumns.map(column=>column.label);
-  $("#content").innerHTML=pageHead("Consolidated Provisioned Report","Fleet-wide installed, used and provisioned capacity from the latest stored SQLite snapshots. Data as of "+esc(dataAsOf)+" IST. Generated on "+esc(generatedAt)+" IST.",reportFactors+'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
+  $("#content").innerHTML=pageHead("Consolidated Provisioned Report","Fleet-wide raw capacity, used and free storage from the latest stored cluster snapshots. Data as of "+esc(dataAsOf)+" IST.",reportFactors+'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
     reportTabs("capacity-report")+
     factorControls+
     '<div class="metric-grid capacity-report-grid">'+cards+'</div>'+
@@ -233,7 +233,7 @@ async function renderRawCapacityReport(){
     '</ul><p>Capacity and growth units are shown in the column headers. A dash indicates missing data. Historical calculations use the scheduled SQLite snapshots aligned to 00:00 IST.</p></div>';
   const rawCapacityColumns=[{key:"cluster",label:"CLUSTER"},{key:"location",label:"LOCATION"},{key:"raw_capacity",label:"RAW CAPACITY (TiB)"},{key:"raw_used",label:"RAW USED (TiB)"},{key:"raw_free",label:"RAW FREE (TiB)"},{key:"raw_used_pct",label:"RAW USED %"},{key:"change_yesterday",label:"CHANGE VS YESTERDAY (TiB)"},{key:"trend_growth",label:"TREND GROWTH (TiB/day)"},{key:"projected_days",label:"PROJECTED DAYS TO FULL"},{key:"nodes",label:"NODES"},{key:"status",label:"STATUS"}];
   const rawCapacityVisibility=loadReportColumnVisibility("raw-capacity",rawCapacityColumns);
-  $("#content").innerHTML=pageHead("Consolidated RAW Capacity Report","Fleet-wide raw capacity, used and free storage from the latest stored cluster snapshots. Data as of "+esc(dataAsOf)+" IST. Generated on "+esc(generatedAt)+" IST.",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
+  $("#content").innerHTML=pageHead("Consolidated RAW Capacity Report","Fleet-wide raw capacity, used and free storage from the latest stored cluster snapshots. Data as of "+esc(dataAsOf)+" IST.",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
     reportTabs("raw-capacity-report")+'<div class="metric-grid raw-capacity-grid">'+cards+'</div>'+
     table("Raw capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · "+fmt(d.available_cluster_count,0)+" with complete raw metrics",rawCapacityColumns.map(column=>column.label),rows,"No enabled clusters are registered.",{id:"raw-capacity",columns:rawCapacityColumns,visibility:rawCapacityVisibility})+notes;
 }
