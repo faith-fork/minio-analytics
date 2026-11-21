@@ -381,14 +381,13 @@ async function showClusterTopology(id, section="infra-overview"){
   const trendSamples=trendData?.samples||[];
   const trendLabels=trendSamples.map(x=>timestampLabel(x.snapshot_ts));
   const trendPanel=(title,description,canvasId)=>'<section class="panel"><div class="panel-header"><div><h3>'+title+'</h3><p>'+description+'</p></div></div>'+(trendSamples.length?'<div class="chart-wrap health-trend-chart"><canvas id="'+canvasId+'"></canvas></div>':'<div class="chart-empty-state"><strong>No historical samples available</strong><p>No telemetry was stored in the selected date range.</p></div>')+'</section>';
-  const infraOverview='<div class="metric-grid infra-overview-metric-grid">'+
-    metric("NODE / DRIVE SNAPSHOT",timestampLabel(d.node_snapshot_ts),"Collected at "+timestampLabel(d.node_collected_at),"◷")+
+  const infraOverview='<div class="metric-grid">'+
     metric("NODES",nodes.length,nodes.filter(n=>n.node_exporter_up===1).length+" Node Exporter targets reachable","⌁")+
     metric("DRIVES",drives.length,drivesOnline==null?"Online/offline counts unavailable":drivesOnline+" online · "+drivesOffline+" offline","▤")+
     metric("NODE EXPORTER",nodes.filter(n=>n.node_exporter_up===1).length+" / "+nodes.length,"Reachable nodes","◉")+
     metric("MINIO SCRAPES",nodes.filter(n=>n.minio_scrape_up===1).length+" / "+nodes.length,"Reachable MinIO targets","◈")+'</div>'+
     table("Node availability","Node Exporter and MinIO scrape status are shown independently.",["NODE","NODE EXPORTER","MINIO TARGET","CPU","MEMORY USED","LOAD 1M","DRIVES UP","DRIVES DOWN"],nodeRows);
-  const storageOverview='<div class="detail-grid"><div class="detail-card"><small>TOPOLOGY SNAPSHOT</small><strong>'+dateLabel(d.snapshot_date)+'</strong><p class="muted">Collected at '+timestampLabel(d.topology_collected_at)+'</p></div></div><div class="metric-grid">'+
+  const storageOverview='<div class="metric-grid">'+
     metric("STORAGE POOLS",pools.length,"Pools discovered","▦")+
     metric("ERASURE SETS",sets.length,"Sets discovered","◫")+
     metric("DRIVES",drives.length,"Drives reported by MinIO","▤")+
@@ -413,8 +412,9 @@ async function showClusterTopology(id, section="infra-overview"){
   const errors=Object.keys(d.family_errors||{}).length?'<div class="detail-card" style="margin-bottom:14px"><strong>Some topology metric families are unavailable</strong><p class="muted">'+esc(JSON.stringify(d.family_errors))+'</p></div>':'';
   clearCharts();
   const pageTitle=storageView?"Storage Topology":"Node Infrastructure";
-  const pageSubtitle=storageView?"MinIO storage pools, erasure sets and quorum topology · Snapshot "+dateLabel(d.snapshot_date):"Node availability, compute resources, drive health and filesystem telemetry · Snapshot "+dateLabel(d.snapshot_date);
-  $("#content").innerHTML=pageHead(esc(d.cluster.name)+" — "+pageTitle,pageSubtitle,'<button class="subtle-button" data-action="back-to-cluster-overview">← Back to cluster</button>')+errors+tabHtml+body;
+  const pageSubtitle=storageView?"MinIO storage pools, erasure sets and quorum topology":"Node availability, compute resources, drive health and filesystem telemetry";
+  const pageSnapshot='<span class="page-heading-snapshot">Snapshot '+esc(dateLabel(d.snapshot_date))+'</span>';
+  $("#content").innerHTML=pageHead(esc(d.cluster.name)+" — "+pageTitle,pageSubtitle+pageSnapshot,'<button class="subtle-button" data-action="back-to-cluster-overview">← Back to cluster</button>')+errors+tabHtml+body;
   if(trendSamples.length&&section==="nodes"){
     chart("infra-node-availability",trendLabels,[{label:"Node Exporter up",data:trendSamples.map(x=>x.node_exporter_availability_pct),color:"#16a085"}],"line",0,"%");
     chart("infra-minio-availability",trendLabels,[{label:"MinIO scrape up",data:trendSamples.map(x=>x.minio_scrape_availability_pct),color:"#4776c7"}],"line",0,"%");
