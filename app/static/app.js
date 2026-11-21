@@ -211,6 +211,13 @@ function bucketUsageFilterControl(key,title,items,valueKey,labelKey){
   const summary=selected.length?selected.length+" selected":"All "+title.toLowerCase();
   return '<div class="bucket-usage-filter-field"><label>'+title+'</label><details class="bucket-usage-multiselect" data-bucket-filter-group="'+key+'"><summary><span data-bucket-filter-summary>'+esc(summary)+'</span><span aria-hidden="true">▾</span></summary><div class="bucket-usage-multiselect-menu"><input type="search" class="bucket-usage-filter-search" placeholder="Search '+title.toLowerCase()+'…" data-bucket-filter-search="'+key+'"><div class="bucket-usage-filter-options">'+unique.map(x=>'<label class="bucket-usage-filter-option"><input type="checkbox" data-bucket-filter-option="'+key+'" value="'+esc(x.value)+'" '+(selected.includes(x.value)?"checked":"")+'><span>'+esc(x.label)+'</span></label>').join("")+'</div><div class="bucket-usage-multiselect-actions"><button type="button" class="subtle-button" data-bucket-filter-action="select-all" data-filter-key="'+key+'">Select all</button><button type="button" class="subtle-button" data-bucket-filter-action="clear" data-filter-key="'+key+'">Clear</button><button type="button" class="primary-small" data-bucket-filter-action="apply" data-filter-key="'+key+'">Apply</button></div></div></details></div>';
 }
+function closeBucketUsageFilterGroup(group){
+  const key=group.dataset.bucketFilterGroup;
+  group.open=false;
+  state.bucketUsageFilterDraft[key]=[...(state.bucketUsageFilters[key]||[])];
+  group.querySelectorAll("[data-bucket-filter-option]").forEach(input=>{input.checked=state.bucketUsageFilterDraft[key].includes(input.value);});
+  updateBucketFilterGroup(group);
+}
 function updateBucketFilterGroup(group){
   const key=group.dataset.bucketFilterGroup,selected=state.bucketUsageFilterDraft[key]||[];
   const summary=group.querySelector("[data-bucket-filter-summary]");
@@ -541,7 +548,21 @@ function bulkAssignBucketsModal(){
   });
 }
 
+document.addEventListener("keydown",e=>{
+  if(e.key!=="Escape")return;
+  const openGroups=$("[data-bucket-filter-group][open]",$("#content"));
+  if(!openGroups.length)return;
+  openGroups.forEach(closeBucketUsageFilterGroup);
+  e.preventDefault();
+});
 document.addEventListener("click",async e=>{
+  const clickedFilterGroup=e.target.closest("[data-bucket-filter-group]");
+  const openFilterGroups=$("[data-bucket-filter-group][open]",$("#content"));
+  if(clickedFilterGroup){
+    openFilterGroups.filter(group=>group!==clickedFilterGroup).forEach(closeBucketUsageFilterGroup);
+  }else if(!e.target.closest("[data-bucket-filter-action]")&&!e.target.closest("[data-action='reset-bucket-usage-filters']")){
+    openFilterGroups.forEach(closeBucketUsageFilterGroup);
+  }
   const exportButton=e.target.closest("[data-export-table]");if(exportButton){exportTableCsv(exportButton);return;}
   const bucketFilterAction=e.target.closest("[data-bucket-filter-action]");
   if(bucketFilterAction){
@@ -555,6 +576,7 @@ document.addEventListener("click",async e=>{
       state.bucketUsageFilterDraft[key]=[];group.querySelectorAll("[data-bucket-filter-option]").forEach(input=>input.checked=false);updateBucketFilterGroup(group);
     }else if(bucketFilterAction.dataset.bucketFilterAction==="apply"){
       state.bucketUsageFilters={...state.bucketUsageFilters,[key]:[...(state.bucketUsageFilterDraft[key]||[])]};
+      group.open=false;
       renderBucketUsageReport().catch(err=>toast(err.message,true));
     }
     return;
