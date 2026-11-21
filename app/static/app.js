@@ -155,7 +155,7 @@ async function renderCapacityReport(){
   state.reportColumns=loadReportColumnVisibility("provisioned",provisionedColumns,columnPreferences.columns||{used_usable:true,used_bkt:true});
   const t=d.totals_bytes||{},f=d.capacity_factors||{dp:1.33,rf:0.85,eff:0.99};
   const cards=[
-    metric("INSTALLED CAPACITY",bytes(t.installed_capacity_bytes),"RAW total capacity","▤"),
+    metric("INSTALLED CAPACITY",bytes(t.installed_capacity_bytes),"Sum of installed capacity","▤"),
     metric("PROVISIONED",bytes(t.provisioned_bytes),"Sum of active bucket quotas","◫"),
     metric("USED USABLE",bytes(t.used_cap_bytes),"Usable total minus usable free","◒"),
     metric("USED BKT",bytes(t.used_bucket_bytes),"Sum of active bucket usage","▤"),
@@ -186,7 +186,7 @@ async function renderCapacityReport(){
   const generatedAt=new Date().toLocaleString("en-IN",{timeZone:"Asia/Kolkata",day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
   const dataAsOf=d.data_as_of?new Date(d.data_as_of).toLocaleString("en-IN",{timeZone:"Asia/Kolkata",day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}):"Unavailable — snapshot missing for one or more clusters";
   const reportFactors='<span class="report-factor-meta" title="Data Protection · Risk Factor · Effective">DP = '+fmt(f.dp,2)+'&nbsp;&nbsp; RF = '+fmt(f.rf,2)+'&nbsp;&nbsp; Eff = '+fmt(f.eff,2)+'</span>';
-  const factorControls=state.user?.role==="admin"?'<div class="capacity-factor-toolbar"><strong>Capacity planning factors</strong><form id="capacity-factors-form" class="capacity-factor-controls"><label>DP<input name="dp" type="number" min="0.01" max="100" step="0.01" value="'+Number(f.dp).toFixed(2)+'" required></label><label>RF<input name="rf" type="number" min="0.01" max="100" step="0.01" value="'+Number(f.rf).toFixed(2)+'" required></label><label>Eff<input name="eff" type="number" min="0.01" max="1" step="0.01" value="'+Number(f.eff).toFixed(2)+'" required></label><button class="primary-small" type="submit">Save & recalculate</button></form></div>':'';
+  const factorControls=state.user?.role==="admin"?'<div class="capacity-factor-toolbar"><div class="capacity-factor-heading"><strong>Capacity planning factors</strong><small>Choose the data protection, risk factor and efficiency values used for capacity calculations.</small></div><form id="capacity-factors-form" class="capacity-factor-controls"><label>DP<input name="dp" type="number" min="0.01" max="100" step="0.01" value="'+Number(f.dp).toFixed(2)+'" required></label><label>RF<input name="rf" type="number" min="0.01" max="100" step="0.01" value="'+Number(f.rf).toFixed(2)+'" required></label><label>Eff<input name="eff" type="number" min="0.01" max="1" step="0.01" value="'+Number(f.eff).toFixed(2)+'" required></label><button class="primary-small" type="submit">Save & recalculate</button></form></div>':'';
 
   const headers=provisionedColumns.map(column=>column.label);
   $("#content").innerHTML=pageHead("Consolidated Provisioned Report","Fleet-wide installed, usable and provisioned capacity from the latest stored SQLite snapshots. Data as of "+esc(dataAsOf)+" IST. Generated on "+esc(generatedAt)+" IST.",reportFactors+'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
@@ -591,6 +591,10 @@ document.addEventListener("keydown",e=>{
   e.preventDefault();
 });
 document.addEventListener("click",async e=>{
+  const openColumnMenus=$(".report-column-menu[open]",$("#content"));
+  const clickedColumnMenu=e.target.closest(".report-column-menu");
+  if(!clickedColumnMenu)openColumnMenus.forEach(menu=>menu.removeAttribute("open"));
+  else if(e.target.closest(".report-column-menu summary"))openColumnMenus.filter(menu=>menu!==clickedColumnMenu).forEach(menu=>menu.removeAttribute("open"));
   const clickedFilterGroup=e.target.closest("[data-bucket-filter-group]");
   const openFilterGroups=$$("[data-bucket-filter-group][open]",$("#content"));
   if(clickedFilterGroup){
