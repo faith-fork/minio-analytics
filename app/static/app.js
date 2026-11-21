@@ -151,13 +151,13 @@ async function renderOverview(){
 
 async function renderCapacityReport(){
   const [d,columnPreferences]=await Promise.all([api("/api/analytics/capacity-report"),api("/api/analytics/report-column-preferences")]);
-  const provisionedColumns=[{key:"cluster",label:"CLUSTER"},{key:"location",label:"LOCATION"},{key:"installed",label:"INSTALLED (TiB)"},{key:"usable",label:"USABLE (TiB)"},{key:"provisioned",label:"PROVISIONED (TiB)"},{key:"used_usable",label:"USED USABLE (TiB)"},{key:"used_bkt",label:"USED BKT (TiB)"},{key:"usable_free",label:"USABLE FREE (TiB)"},{key:"usage_pct",label:"USAGE %"},{key:"prov_pct",label:"PROV %"},{key:"bucket_coverage",label:"BUCKET COVERAGE"}];
+  const provisionedColumns=[{key:"cluster",label:"CLUSTER"},{key:"location",label:"LOCATION"},{key:"installed",label:"INSTALLED (TiB)"},{key:"provisioned",label:"PROVISIONED (TiB)"},{key:"used_usable",label:"USED CAP (TiB)"},{key:"used_bkt",label:"USED BKT (TiB)"},{key:"usable_free",label:"USABLE FREE (TiB)"},{key:"usage_pct",label:"USAGE %"},{key:"prov_pct",label:"PROV %"},{key:"bucket_coverage",label:"BUCKET COVERAGE"}];
   state.reportColumns=loadReportColumnVisibility("provisioned",provisionedColumns,columnPreferences.columns||{used_usable:true,used_bkt:true});
   const t=d.totals_bytes||{},f=d.capacity_factors||{dp:1.33,rf:0.85,eff:0.99};
   const cards=[
     metric("INSTALLED CAPACITY",bytes(t.installed_capacity_bytes),"Sum of installed capacity","▤"),
     metric("PROVISIONED",bytes(t.provisioned_bytes),"Sum of active bucket quotas","◫"),
-    metric("USED USABLE",bytes(t.used_cap_bytes),"Usable total minus usable free","◒"),
+    metric("USED CAP",bytes(t.used_cap_bytes),"Usable capacity minus usable free","◒"),
     metric("USED BKT",bytes(t.used_bucket_bytes),"Sum of active bucket usage","▤"),
     metric("USABLE FREE",bytes(t.free_capacity_bytes),"Usable free capacity","◇"),
     metric("AVG USED %",d.avg_used_pct==null?"—":fmt(d.avg_used_pct,1)+"%","Average of cluster Usage %","◔")
@@ -177,10 +177,10 @@ async function renderCapacityReport(){
     '<li>Installed Capacity = RAW total capacity from the latest cluster snapshot × Eff × (RF ÷ DP). Current factors: Eff '+fmt(f.eff,2)+', RF '+fmt(f.rf,2)+', DP '+fmt(f.dp,2)+'.</li>'+
     '<li>Usable Capacity = usable total capacity after erasure-coding / storage protection.</li>'+
     '<li>Provisioned = sum of quota bytes across all active buckets; shown only when every active bucket has quota data.</li>'+
-    '<li>Used Usable = Usable Capacity − Usable Free.</li>'+
+    '<li>Used Cap = Usable Capacity − Usable Free.</li>'+
     '<li>Used BKT = sum of used bytes across all active buckets; shown only when every active bucket has usage data.</li>'+
     '<li>Usable Free = usable free bytes from the latest cluster snapshot.</li>'+
-    '<li>Usage % = Used Usable ÷ Installed Capacity × 100. Prov % = Provisioned ÷ Installed Capacity × 100.</li>'+
+    '<li>Usage % = Used Cap ÷ Installed Capacity × 100. Prov % = Provisioned ÷ Installed Capacity × 100.</li>'+
     '<li>Avg Used % = arithmetic average of the available per-cluster Usage % values; unavailable values are excluded.</li>'+
     '</ul><p>Usage % colour: green below 70%; amber from 70% to below 80%; red at 80% and above.</p><p>Capacity units are shown in the column headers. N/A (—) indicates a missing snapshot or incomplete metric coverage; it is never treated as zero. Cluster capacity uses the latest cluster snapshot, while bucket totals use the latest bucket snapshot for that cluster.</p></div>';
   const generatedAt=new Date().toLocaleString("en-IN",{timeZone:"Asia/Kolkata",day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
@@ -189,7 +189,7 @@ async function renderCapacityReport(){
   const factorControls=state.user?.role==="admin"?'<div class="capacity-factor-toolbar"><div class="capacity-factor-heading"><strong>Capacity planning factors</strong><small>Choose the data protection, risk factor and efficiency values used for capacity calculations.</small></div><form id="capacity-factors-form" class="capacity-factor-controls"><label>DP<input name="dp" type="number" min="0.01" max="100" step="0.01" value="'+Number(f.dp).toFixed(2)+'" required></label><label>RF<input name="rf" type="number" min="0.01" max="100" step="0.01" value="'+Number(f.rf).toFixed(2)+'" required></label><label>Eff<input name="eff" type="number" min="0.01" max="1" step="0.01" value="'+Number(f.eff).toFixed(2)+'" required></label><button class="primary-small" type="submit">Save & recalculate</button></form></div>':'';
 
   const headers=provisionedColumns.map(column=>column.label);
-  $("#content").innerHTML=pageHead("Consolidated Provisioned Report","Fleet-wide installed, usable and provisioned capacity from the latest stored SQLite snapshots. Data as of "+esc(dataAsOf)+" IST. Generated on "+esc(generatedAt)+" IST.",reportFactors+'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
+  $("#content").innerHTML=pageHead("Consolidated Provisioned Report","Fleet-wide installed, used and provisioned capacity from the latest stored SQLite snapshots. Data as of "+esc(dataAsOf)+" IST. Generated on "+esc(generatedAt)+" IST.",reportFactors+'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
     reportTabs("capacity-report")+
     factorControls+
     '<div class="metric-grid capacity-report-grid">'+cards+'</div>'+
