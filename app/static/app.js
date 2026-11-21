@@ -560,6 +560,10 @@ document.addEventListener("click",async e=>{
   const openFilterGroups=$("[data-bucket-filter-group][open]",$("#content"));
   if(clickedFilterGroup){
     openFilterGroups.filter(group=>group!==clickedFilterGroup).forEach(closeBucketUsageFilterGroup);
+    if(clickedFilterGroup.open&&e.target.closest("summary")){
+      closeBucketUsageFilterGroup(clickedFilterGroup);
+      e.preventDefault();
+    }
   }else if(!e.target.closest("[data-bucket-filter-action]")&&!e.target.closest("[data-action='reset-bucket-usage-filters']")){
     openFilterGroups.forEach(closeBucketUsageFilterGroup);
   }
