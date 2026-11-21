@@ -97,11 +97,11 @@ def main():
         hh,mm=values.get("daily_collection_time","00:15").split(":")
         daily_time=time(int(hh),int(mm))
         now=datetime.now(timezone.utc)
+        if _due_retention(now):
+            _run("telemetry_retention",lambda:_cleanup_expired_telemetry(retention_days),now)
         locations=_load_locations()
         if _due_node(now,interval):
             _run("node_health",lambda:collect_node_health(locations,now),now)
-        if _due_retention(now):
-            _run("telemetry_retention",lambda:_cleanup_expired_telemetry(retention_days),now)
         if _due_daily(now,daily_time):
             from datetime import datetime as dt
             snapshot=dt.combine(now.astimezone(IST).date(),time.min,tzinfo=IST).astimezone(timezone.utc)
