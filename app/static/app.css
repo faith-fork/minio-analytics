@@ -148,6 +148,9 @@
 
 .capacity-factor-controls{display:flex;align-items:end;gap:12px;flex-wrap:wrap;background:#fff;border:1px solid var(--line);border-radius:9px;padding:13px 16px;margin:0 0 16px;box-shadow:var(--shadow)}
 .capacity-factor-controls strong{font-size:11px;color:#526176;margin-right:4px;align-self:center}
+.capacity-factor-heading{display:grid;gap:4px;min-width:260px;margin-right:auto;align-self:center}
+.capacity-factor-heading strong{font-size:11px;color:#526176;margin:0;align-self:auto}
+.capacity-factor-heading small{font-size:10px;line-height:1.45;color:#93a0af;font-weight:400}
 .capacity-factor-controls label{display:grid;gap:5px;font-size:10px;font-weight:700;color:#748196}
 .capacity-factor-controls input{width:92px;height:34px;border:1px solid #dfe5ed;border-radius:6px;padding:0 8px;color:var(--ink);background:#fff}
 .capacity-factor-controls input:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px #13a58b18}
