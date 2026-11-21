@@ -550,7 +550,7 @@ function bulkAssignBucketsModal(){
 
 document.addEventListener("keydown",e=>{
   if(e.key!=="Escape")return;
-  const openGroups=$("[data-bucket-filter-group][open]",$("#content"));
+  const openGroups=$$("[data-bucket-filter-group][open]",$("#content"));
   if(!openGroups.length)return;
   openGroups.forEach(closeBucketUsageFilterGroup);
   openGroups[0]?.querySelector("summary")?.focus();
@@ -558,7 +558,7 @@ document.addEventListener("keydown",e=>{
 });
 document.addEventListener("click",async e=>{
   const clickedFilterGroup=e.target.closest("[data-bucket-filter-group]");
-  const openFilterGroups=$("[data-bucket-filter-group][open]",$("#content"));
+  const openFilterGroups=$$("[data-bucket-filter-group][open]",$("#content"));
   if(clickedFilterGroup){
     openFilterGroups.filter(group=>group!==clickedFilterGroup).forEach(closeBucketUsageFilterGroup);
     if(clickedFilterGroup.open&&e.target.closest("summary")){
