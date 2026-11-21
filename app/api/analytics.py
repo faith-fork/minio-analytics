@@ -1113,6 +1113,73 @@ def collection_health_trends(
     }
 
 
+@router.get("/clusters/{cluster_id}/nodes/performance")
+def node_performance(
+    cluster_id: str,
+    hours: int = Query(default=6, ge=2, le=24),
+    _: dict = Depends(get_current_user),
+) -> dict:
+    """Return per-node averages and timestamped samples for a short monitoring window."""
+    if hours not in (2, 6, 12, 24):
+        raise HTTPException(status_code=422, detail="hours must be one of 2, 6, 12 or 24")
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(hours=hours)
+    start_text = start.isoformat(timespec="seconds").replace("+00:00", "Z")
+    end_text = now.isoformat(timespec="seconds").replace("+00:00", "Z")
+    with transaction() as connection:
+        cluster = connection.execute(
+            "SELECT c.id,c.name,l.name AS location_name FROM clusters c JOIN locations l ON l.id=c.location_id WHERE c.id=? AND c.enabled=1",
+            (cluster_id,),
+        ).fetchone()
+        if cluster is None:
+            raise HTTPException(status_code=404, detail="Cluster not found or disabled")
+        setting = connection.execute(
+            "SELECT setting_value FROM app_settings WHERE setting_key='node_interval_minutes'"
+        ).fetchone()
+        interval_minutes = int(setting["setting_value"]) if setting else 5
+        rows = connection.execute(
+            """SELECT m.node_name,COUNT(*) AS sample_count,
+                      AVG(m.cpu_utilization_pct) AS avg_cpu_pct,
+                      MIN(m.cpu_utilization_pct) AS min_cpu_pct,
+                      MAX(m.cpu_utilization_pct) AS max_cpu_pct,
+                      AVG(CASE WHEN m.memory_total_bytes>0 THEN m.memory_used_bytes*100.0/m.memory_total_bytes END) AS avg_memory_used_pct,
+                      MIN(CASE WHEN m.memory_total_bytes>0 THEN m.memory_used_bytes*100.0/m.memory_total_bytes END) AS min_memory_used_pct,
+                      MAX(CASE WHEN m.memory_total_bytes>0 THEN m.memory_used_bytes*100.0/m.memory_total_bytes END) AS max_memory_used_pct,
+                      AVG(m.load1) AS avg_load1,MAX(m.load1) AS max_load1,
+                      AVG(m.node_exporter_up)*100.0 AS node_exporter_availability_pct,
+                      AVG(m.minio_scrape_up)*100.0 AS minio_scrape_availability_pct
+               FROM node_health_runs r JOIN node_health_metrics m ON m.run_id=r.run_id
+               WHERE r.cluster_id=? AND r.snapshot_ts>=? AND r.snapshot_ts<?
+               GROUP BY m.node_name ORDER BY m.node_name""",
+            (cluster_id, start_text, end_text),
+        ).fetchall()
+        samples = connection.execute(
+            """SELECT r.snapshot_ts,COUNT(m.node_name) AS node_samples,
+                      AVG(m.cpu_utilization_pct) AS avg_cpu_pct,
+                      CASE WHEN SUM(m.memory_total_bytes)>0
+                           THEN SUM(m.memory_used_bytes)*100.0/SUM(m.memory_total_bytes) END AS avg_memory_used_pct,
+                      AVG(m.load1) AS avg_load1
+               FROM node_health_runs r JOIN node_health_metrics m ON m.run_id=r.run_id
+               WHERE r.cluster_id=? AND r.snapshot_ts>=? AND r.snapshot_ts<?
+               GROUP BY r.run_id,r.snapshot_ts ORDER BY r.snapshot_ts""",
+            (cluster_id, start_text, end_text),
+        ).fetchall()
+    expected = max(1, int(hours * 60 / interval_minutes))
+    run_count = len(samples)
+    return {
+        "cluster": dict(cluster),
+        "hours": hours,
+        "start_ts": start_text,
+        "end_ts": end_text,
+        "interval_minutes": interval_minutes,
+        "expected_samples": expected,
+        "sample_count": run_count,
+        "coverage_pct": min(100.0, run_count / expected * 100.0),
+        "nodes": [dict(row) for row in rows],
+        "samples": [dict(row) for row in samples],
+    }
+
+
 @router.get("/clusters/{cluster_id}/topology")
 def cluster_topology(cluster_id: str, _: dict = Depends(get_current_user)) -> dict:
     """Return latest high-frequency node/drive health and daily pool topology."""
