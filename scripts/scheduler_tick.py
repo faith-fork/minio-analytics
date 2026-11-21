@@ -1,7 +1,7 @@
 from __future__ import annotations
 import os
 import fcntl,json,logging
-from datetime import datetime,time,timezone
+from datetime import datetime,time,timedelta,timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from app.collectors.node_health import collect_node_health
@@ -33,7 +33,21 @@ def _due_node(now,interval):
     if not last:return True
     try: previous=datetime.fromisoformat(last.replace("Z","+00:00"))
     except ValueError:return True
-    return (now-previous).total_seconds()>=interval*3600
+    return (now-previous).total_seconds()>=interval*60
+
+def _due_retention(now):
+    last=_state("telemetry_retention")
+    if not last:return True
+    try:return datetime.fromisoformat(last.replace("Z","+00:00")).astimezone(IST).date()<now.astimezone(IST).date()
+    except ValueError:return True
+
+def _cleanup_expired_telemetry(retention_days):
+    cutoff=(datetime.now(timezone.utc)-timedelta(days=retention_days)).isoformat(timespec="seconds").replace("+00:00","Z")
+    with transaction() as c:
+        result=c.execute("DELETE FROM node_health_runs WHERE snapshot_ts < ?",(cutoff,))
+        deleted=result.rowcount
+    LOG.info("Telemetry retention cleanup deleted %s expired node-health runs older than %s days",deleted,retention_days)
+    return [{"deleted_runs":deleted,"retention_days":retention_days,"status":"success"}]
 
 def _due_daily(now,scheduled):
     local=now.astimezone(IST)
@@ -78,13 +92,16 @@ def main():
             return 0
         with transaction() as c:
             values={r["setting_key"]:r["setting_value"] for r in c.execute("SELECT setting_key,setting_value FROM app_settings")}
-        interval=int(values.get("node_interval_hours","4"))
+        interval=int(values.get("node_interval_minutes","5"))
+        retention_days=int(values.get("telemetry_retention_days","3"))
         hh,mm=values.get("daily_collection_time","00:15").split(":")
         daily_time=time(int(hh),int(mm))
         now=datetime.now(timezone.utc)
         locations=_load_locations()
         if _due_node(now,interval):
             _run("node_health",lambda:collect_node_health(locations,now),now)
+        if _due_retention(now):
+            _run("telemetry_retention",lambda:_cleanup_expired_telemetry(retention_days),now)
         if _due_daily(now,daily_time):
             from datetime import datetime as dt
             snapshot=dt.combine(now.astimezone(IST).date(),time.min,tzinfo=IST).astimezone(timezone.utc)
