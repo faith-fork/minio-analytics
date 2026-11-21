@@ -165,7 +165,7 @@ async function renderCapacityReport(){
   const rows=(d.items||[]).map(x=>{
     const coverage=x.active_bucket_count===0?"No active buckets":fmt(x.buckets_with_metrics,0)+" / "+fmt(x.active_bucket_count,0)+" buckets";
     return '<tr><td><span class="cell-strong">'+esc(x.cluster_name)+'</span></td><td><span class="cell-muted">'+esc(x.location_name)+'</span></td>'+
-      '<td>'+tibValue(x.installed_capacity_bytes)+'</td><td>'+tibValue(x.cap_capacity_bytes)+'</td>'+
+      '<td>'+tibValue(x.installed_capacity_bytes)+'</td>'+
       '<td>'+tibValue(x.provisioned_bytes)+'</td>'+
       '<td>'+tibValue(x.used_cap_bytes)+'</td><td>'+tibValue(x.used_bucket_bytes)+'</td>'+
       '<td>'+tibValue(x.free_capacity_bytes)+'</td>'+
