@@ -5,6 +5,16 @@ CREATE TABLE IF NOT EXISTS schema_version (
     applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('admin', 'viewer')),
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
 CREATE TABLE IF NOT EXISTS locations (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
@@ -118,6 +128,108 @@ CREATE TABLE IF NOT EXISTS collection_runs (
     details_json TEXT NOT NULL DEFAULT '{}'
 );
 
+
+
+-- Daily infrastructure topology and health snapshots. Identity is cluster-scoped.
+CREATE TABLE IF NOT EXISTS node_daily_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_date TEXT NOT NULL,
+    cluster_id TEXT NOT NULL REFERENCES clusters(id) ON DELETE RESTRICT,
+    node_name TEXT NOT NULL,
+    node_exporter_instance TEXT,
+    minio_instance TEXT,
+    node_exporter_up REAL,
+    minio_scrape_up REAL,
+    cpu_utilization_pct REAL,
+    memory_total_bytes REAL,
+    memory_available_bytes REAL,
+    memory_used_bytes REAL,
+    load1 REAL,
+    drives_online INTEGER,
+    drives_offline INTEGER,
+    snapshot_ts TEXT NOT NULL,
+    collected_at TEXT NOT NULL,
+    UNIQUE(snapshot_date, cluster_id, node_name)
+);
+
+CREATE TABLE IF NOT EXISTS drive_daily_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_date TEXT NOT NULL,
+    cluster_id TEXT NOT NULL REFERENCES clusters(id) ON DELETE RESTRICT,
+    node_name TEXT NOT NULL,
+    server TEXT NOT NULL,
+    drive_path TEXT NOT NULL,
+    mountpoint TEXT,
+    total_bytes REAL,
+    used_bytes REAL,
+    free_bytes REAL,
+    availability_errors REAL,
+    io_errors REAL,
+    timeout_errors REAL,
+    filesystem_total_bytes REAL,
+    filesystem_available_bytes REAL,
+    filesystem_free_bytes REAL,
+    filesystem_readonly REAL,
+    filesystem_used_bytes REAL,
+    filesystem_used_pct REAL,
+    snapshot_ts TEXT NOT NULL,
+    collected_at TEXT NOT NULL,
+    UNIQUE(snapshot_date, cluster_id, server, drive_path)
+);
+
+CREATE TABLE IF NOT EXISTS pool_daily_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_date TEXT NOT NULL,
+    cluster_id TEXT NOT NULL REFERENCES clusters(id) ON DELETE RESTRICT,
+    pool_id TEXT NOT NULL,
+    erasure_set_count INTEGER,
+    online_drives REAL,
+    healing_drives REAL,
+    snapshot_ts TEXT NOT NULL,
+    collected_at TEXT NOT NULL,
+    UNIQUE(snapshot_date, cluster_id, pool_id)
+);
+
+CREATE TABLE IF NOT EXISTS erasure_set_daily_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_date TEXT NOT NULL,
+    cluster_id TEXT NOT NULL REFERENCES clusters(id) ON DELETE RESTRICT,
+    pool_id TEXT NOT NULL,
+    set_id TEXT NOT NULL,
+    status_value REAL,
+    online_drives REAL,
+    healing_drives REAL,
+    read_quorum REAL,
+    write_quorum REAL,
+    snapshot_ts TEXT NOT NULL,
+    collected_at TEXT NOT NULL,
+    UNIQUE(snapshot_date, cluster_id, pool_id, set_id)
+);
+
+CREATE TABLE IF NOT EXISTS topology_daily_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_date TEXT NOT NULL,
+    cluster_id TEXT NOT NULL REFERENCES clusters(id) ON DELETE RESTRICT,
+    snapshot_ts TEXT NOT NULL,
+    collected_at TEXT NOT NULL,
+    family_errors_json TEXT NOT NULL DEFAULT '{}',
+    node_count INTEGER NOT NULL DEFAULT 0,
+    drive_count INTEGER NOT NULL DEFAULT 0,
+    pool_count INTEGER NOT NULL DEFAULT 0,
+    erasure_set_count INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(snapshot_date, cluster_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_node_metrics_date
+    ON node_daily_metrics(snapshot_date, cluster_id);
+CREATE INDEX IF NOT EXISTS idx_drive_metrics_date
+    ON drive_daily_metrics(snapshot_date, cluster_id, node_name);
+CREATE INDEX IF NOT EXISTS idx_pool_metrics_date
+    ON pool_daily_metrics(snapshot_date, cluster_id);
+CREATE INDEX IF NOT EXISTS idx_erasure_set_metrics_date
+    ON erasure_set_daily_metrics(snapshot_date, cluster_id, pool_id);
+
+CREATE INDEX IF NOT EXISTS idx_users_active_role ON users(is_active, role);
 CREATE INDEX IF NOT EXISTS idx_clusters_location ON clusters(location_id);
 CREATE INDEX IF NOT EXISTS idx_buckets_cluster ON buckets(cluster_id);
 CREATE INDEX IF NOT EXISTS idx_buckets_tenant ON buckets(tenant_id);

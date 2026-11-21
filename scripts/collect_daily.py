@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from app.collectors.orchestrator import collect_all
 from app.config.loader import load_locations
+from app.database.prometheus_config import load_database_locations
 
 
 def _parse_snapshot(value: str) -> datetime:
@@ -34,7 +35,7 @@ def main() -> int:
     parser.add_argument(
         "--config",
         default=None,
-        help="Location YAML path (defaults to MINIO_ANALYTICS_CONFIG).",
+        help="Use this legacy YAML file instead of the default SQLite configuration.",
     )
     snapshot_group = parser.add_mutually_exclusive_group()
     snapshot_group.add_argument(
@@ -69,7 +70,11 @@ def main() -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-    locations = load_locations(args.config)
+    # An explicit --config keeps the legacy YAML path available for rollback
+    # and controlled backfill. Normal collection now reads SQLite.
+    locations = (
+        load_locations(args.config) if args.config else load_database_locations()
+    )
     if args.snapshot_midnight_ist:
         ist = ZoneInfo("Asia/Kolkata")
         snapshot_ts = datetime.combine(
