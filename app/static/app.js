@@ -1,6 +1,6 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
-const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, bucketUsageFilters:{cluster:"",location:"",tenant:""}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null} };
+const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null} };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
 const bytes = n => n == null ? "—" : (n/1024**4).toFixed(2)+" TiB";
 const tibValue = n => n == null ? "—" : (n/1024**4).toFixed(2);
@@ -205,11 +205,22 @@ async function renderRawCapacityReport(){
     reportTabs("raw-capacity-report")+'<div class="metric-grid raw-capacity-grid">'+cards+'</div>'+
     table("Raw capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · "+fmt(d.available_cluster_count,0)+" with complete raw metrics",["CLUSTER","LOCATION","RAW CAPACITY (TiB)","RAW USED (TiB)","RAW FREE (TiB)","RAW USED %","CHANGE VS YESTERDAY (TiB)","TREND GROWTH (TiB/day)","PROJECTED DAYS TO FULL","NODES","STATUS"],rows,"No enabled clusters are registered.")+notes;
 }
+function bucketUsageFilterControl(key,title,items,valueKey,labelKey){
+  const unique=[...new Map(items.map(x=>[String(x[valueKey]??"unassigned"),{value:String(x[valueKey]??"unassigned"),label:x[labelKey]||"Unassigned"}])).values()].sort((a,b)=>a.label.localeCompare(b.label));
+  const selected=state.bucketUsageFilterDraft[key]||[];
+  const summary=selected.length?selected.length+" selected":"All "+title.toLowerCase();
+  return '<div class="bucket-usage-filter-field"><label>'+title+'</label><details class="bucket-usage-multiselect" data-bucket-filter-group="'+key+'"><summary><span data-bucket-filter-summary>'+esc(summary)+'</span><span aria-hidden="true">▾</span></summary><div class="bucket-usage-multiselect-menu"><input type="search" class="bucket-usage-filter-search" placeholder="Search '+title.toLowerCase()+'…" data-bucket-filter-search="'+key+'"><div class="bucket-usage-filter-options">'+unique.map(x=>'<label class="bucket-usage-filter-option"><input type="checkbox" data-bucket-filter-option="'+key+'" value="'+esc(x.value)+'" '+(selected.includes(x.value)?"checked":"")+'><span>'+esc(x.label)+'</span></label>').join("")+'</div><div class="bucket-usage-multiselect-actions"><button type="button" class="subtle-button" data-bucket-filter-action="select-all" data-filter-key="'+key+'">Select all</button><button type="button" class="subtle-button" data-bucket-filter-action="clear" data-filter-key="'+key+'">Clear</button><button type="button" class="primary-small" data-bucket-filter-action="apply" data-filter-key="'+key+'">Apply</button></div></div></details></div>';
+}
+function updateBucketFilterGroup(group){
+  const key=group.dataset.bucketFilterGroup,selected=state.bucketUsageFilterDraft[key]||[];
+  const summary=group.querySelector("[data-bucket-filter-summary]");
+  if(summary)summary.textContent=selected.length?selected.length+" selected":"All "+({cluster:"clusters",location:"locations",tenant:"tenants"}[key]||key);
+}
 async function renderBucketUsageReport(){
   const d=await api("/api/analytics/bucket-usage-report"),allItems=d.items||[],filters=state.bucketUsageFilters;
-  const options=(key,label,selected)=>'<option value="">All</option>'+[...new Map(allItems.map(x=>[String(x[key]??"unassigned"),{value:String(x[key]??"unassigned"),label:x[label]||"Unassigned"}])).values()].sort((a,b)=>a.label.localeCompare(b.label)).map(x=>'<option value="'+esc(x.value)+'"'+(selected===x.value?' selected':'')+'>'+esc(x.label)+'</option>').join("");
-  const filterPanel='<section class="panel bucket-usage-filters"><div class="bucket-usage-filter-field"><label for="bucket-filter-cluster">Cluster</label><select class="form-control" id="bucket-filter-cluster" data-bucket-usage-filter="cluster">'+options("cluster_id","cluster_name",filters.cluster)+'</select></div><div class="bucket-usage-filter-field"><label for="bucket-filter-location">Location</label><select class="form-control" id="bucket-filter-location" data-bucket-usage-filter="location">'+options("location_id","location_name",filters.location)+'</select></div><div class="bucket-usage-filter-field"><label for="bucket-filter-tenant">Tenant</label><select class="form-control" id="bucket-filter-tenant" data-bucket-usage-filter="tenant">'+options("tenant_id_at_snapshot","tenant_name_at_snapshot",filters.tenant)+'</select></div><button type="button" class="subtle-button" data-action="reset-bucket-usage-filters">Clear filters</button></section>';
-  const items=allItems.filter(x=>(!filters.cluster||String(x.cluster_id)===filters.cluster)&&(!filters.location||String(x.location_id)===filters.location)&&(!filters.tenant||String(x.tenant_id_at_snapshot??"unassigned")===filters.tenant));
+  state.bucketUsageFilterDraft={cluster:[...filters.cluster],location:[...filters.location],tenant:[...filters.tenant]};
+  const filterPanel='<section class="panel bucket-usage-filters">'+bucketUsageFilterControl("cluster","Cluster",allItems,"cluster_id","cluster_name")+bucketUsageFilterControl("location","Location",allItems,"location_id","location_name")+bucketUsageFilterControl("tenant","Tenant",allItems,"tenant_id_at_snapshot","tenant_name_at_snapshot")+'<button type="button" class="subtle-button" data-action="reset-bucket-usage-filters">Clear filters</button></section>';
+  const items=allItems.filter(x=>(!filters.cluster.length||filters.cluster.includes(String(x.cluster_id??"unassigned")))&&(!filters.location.length||filters.location.includes(String(x.location_id??"unassigned")))&&(!filters.tenant.length||filters.tenant.includes(String(x.tenant_id_at_snapshot??"unassigned"))));
   const fields=["used_bytes","quota_bytes","object_count","version_count","delete_marker_count"],totals={};
   for(const field of fields)totals[field]=!items.length?0:items.every(x=>x.metrics_available===1&&x[field]!=null)?items.reduce((sum,x)=>sum+x[field],0):null;
   const clusterIds=[...new Set(items.map(x=>x.cluster_id))],withMetrics=items.filter(x=>x.metrics_available===1).length,coverage=items.length?withMetrics/items.length*100:null;
@@ -217,7 +228,7 @@ async function renderBucketUsageReport(){
   const dataAsOf=snapshotMap.size&&[...snapshotMap.values()].every(x=>x.date&&x.ts)?[...snapshotMap.values()].map(x=>x.ts).sort()[0]:null;
   const cards=[metric("USED STORAGE",bytes(totals.used_bytes),"Sum across filtered buckets","◒"),metric("ALLOCATED QUOTA",bytes(totals.quota_bytes),"Sum of filtered bucket quotas","▤"),metric("OBJECTS",totals.object_count==null?"—":fmt(totals.object_count,0),"Across filtered buckets","◫"),metric("VERSIONS",totals.version_count==null?"—":fmt(totals.version_count,0),"Stored object versions","▦"),metric("DELETE MARKERS",totals.delete_marker_count==null?"—":fmt(totals.delete_marker_count,0),"Across filtered buckets","◇"),metric("METRIC COVERAGE",items.length?fmt(withMetrics,0)+" / "+fmt(items.length,0):"0","Filtered buckets with metrics · "+(coverage==null?"—":fmt(coverage,1)+"%"),"◔")].join("");
   const rows=items.map(x=>{const status=x.status==="Available"?'<span class="status-pill">Available</span>':x.status==="Unavailable"?'<span class="status-pill bad">Unavailable</span>':'<span class="status-pill warn">No snapshot</span>';const tenant=x.metric_bucket_id?(x.tenant_name_at_snapshot||"Unassigned"):"—";return '<tr><td><span class="cell-strong">'+esc(x.bucket_name)+'</span></td><td>'+esc(x.cluster_name)+'</td><td>'+esc(x.location_name)+'</td><td>'+esc(tenant)+'</td><td>'+tibValue(x.quota_bytes)+'</td><td>'+tibValue(x.used_bytes)+'</td><td>'+(x.usage_pct==null?"—":fmt(x.usage_pct,1)+"%")+'</td><td>'+(x.object_count==null?"—":fmt(x.object_count,0))+'</td><td>'+(x.version_count==null?"—":fmt(x.version_count,0))+'</td><td>'+(x.delete_marker_count==null?"—":fmt(x.delete_marker_count,0))+'</td><td>'+status+'</td></tr>';});
-  const asOf=dataAsOf?timestampLabel(dataAsOf):"Unavailable — one or more filtered clusters have no bucket snapshot",summary=filters.cluster||filters.location||filters.tenant?"Filtered view · ":"";
+  const asOf=dataAsOf?timestampLabel(dataAsOf):"Unavailable — one or more filtered clusters have no bucket snapshot",summary=filters.cluster.length||filters.location.length||filters.tenant.length?"Filtered view · ":"";
   $("#content").innerHTML=pageHead("Consolidated Bucket Usage Report","Latest stored bucket usage for active buckets across enabled clusters. Data as of "+esc(asOf)+".",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+reportTabs("bucket-usage-report")+filterPanel+'<div class="metric-grid bucket-usage-grid">'+cards+'</div>'+table("Bucket usage by tenant and cluster",summary+fmt(items.length,0)+" of "+fmt(allItems.length,0)+" active bucket(s) · "+fmt(clusterIds.length,0)+" cluster(s) · latest bucket snapshot per cluster",["BUCKET","CLUSTER","LOCATION","TENANT","QUOTA (TiB)","USED (TiB)","USAGE %","OBJECTS","VERSIONS","DELETE MARKERS","STATUS"],rows,"No buckets match the selected filters.")+'<div class="report-footnotes"><strong>Calculation and coverage notes</strong><ul><li>Each cluster uses its latest stored bucket snapshot date; all active buckets in that cluster are represented.</li><li>Totals are shown only when every filtered bucket has an available, non-null value for that metric. Missing values are never treated as zero.</li><li>Tenant attribution is taken from the bucket snapshot, not the current bucket assignment.</li><li>Usage % = Used bytes ÷ Quota bytes × 100; it is unavailable when quota is zero or missing.</li></ul><p>Capacity units are shown in the column headers. A dash indicates missing snapshot data or incomplete metric coverage.</p></div>';
 }
 
@@ -532,6 +543,22 @@ function bulkAssignBucketsModal(){
 
 document.addEventListener("click",async e=>{
   const exportButton=e.target.closest("[data-export-table]");if(exportButton){exportTableCsv(exportButton);return;}
+  const bucketFilterAction=e.target.closest("[data-bucket-filter-action]");
+  if(bucketFilterAction){
+    const key=bucketFilterAction.dataset.filterKey,group=bucketFilterAction.closest("[data-bucket-filter-group]");
+    if(!group)return;
+    if(bucketFilterAction.dataset.bucketFilterAction==="select-all"){
+      const selected=new Set(state.bucketUsageFilterDraft[key]||[]);
+      group.querySelectorAll("[data-bucket-filter-option]:not(:disabled)").forEach(input=>{if(!input.closest(".bucket-usage-filter-option").classList.contains("hidden")){selected.add(input.value);input.checked=true;}});
+      state.bucketUsageFilterDraft[key]=[...selected];updateBucketFilterGroup(group);
+    }else if(bucketFilterAction.dataset.bucketFilterAction==="clear"){
+      state.bucketUsageFilterDraft[key]=[];group.querySelectorAll("[data-bucket-filter-option]").forEach(input=>input.checked=false);updateBucketFilterGroup(group);
+    }else if(bucketFilterAction.dataset.bucketFilterAction==="apply"){
+      state.bucketUsageFilters={...state.bucketUsageFilters,[key]:[...(state.bucketUsageFilterDraft[key]||[])]};
+      renderBucketUsageReport().catch(err=>toast(err.message,true));
+    }
+    return;
+  }
   const expand=e.target.closest("[data-expand-chart]");if(expand){openExpandedChart(expand.dataset.expandChart,expand);return;}
   if(e.target.closest(".chart-expand-close")){closeExpandedChart();return;}
   const histogramMode=e.target.closest("[data-histogram-mode]");
@@ -593,7 +620,7 @@ document.addEventListener("click",async e=>{
     renderHealth().catch(err=>toast(err.message,true));
     return;
   }
-  if(action==="reset-bucket-usage-filters"){state.bucketUsageFilters={cluster:"",location:"",tenant:""};renderBucketUsageReport().catch(err=>toast(err.message,true));return;}
+  if(action==="reset-bucket-usage-filters"){state.bucketUsageFilters={cluster:[],location:[],tenant:[]};state.bucketUsageFilterDraft={cluster:[],location:[],tenant:[]};renderBucketUsageReport().catch(err=>toast(err.message,true));return;}
   if(action==="refresh"){render().catch(err=>toast(err.message,true));}
   if(action==="apply-trend-dates"){
     const el=e.target.closest("[data-action='apply-trend-dates']");
@@ -644,7 +671,13 @@ $("#content").addEventListener("submit",async e=>{
   }catch(err){toast(err.message,true);if(button){button.disabled=false;button.textContent="Save & recalculate";}}
 });
 $("#content").addEventListener("change",async e=>{
-  if(e.target.matches("[data-bucket-usage-filter]")){state.bucketUsageFilters[e.target.dataset.bucketUsageFilter]=e.target.value;renderBucketUsageReport().catch(err=>toast(err.message,true));return;}
+  if(e.target.matches("[data-bucket-filter-option]")){
+    const key=e.target.dataset.bucketFilterOption,value=e.target.value,selected=new Set(state.bucketUsageFilterDraft[key]||[]);
+    if(e.target.checked)selected.add(value);else selected.delete(value);
+    state.bucketUsageFilterDraft[key]=[...selected];
+    updateBucketFilterGroup(e.target.closest("[data-bucket-filter-group]"));
+    return;
+  }
   if(e.target.matches("[data-report-column]")){
     const checkbox=e.target,key=checkbox.dataset.reportColumn;
     const previous=!checkbox.checked;
@@ -684,5 +717,11 @@ $("#content").addEventListener("change",async e=>{
     const button=$("[data-action='bulk-assign']");if(button)button.disabled=!state.selectedBuckets.length;
   }
 });
-$("#content").addEventListener("input",e=>{if(e.target.id==="bucket-filter"){const q=e.target.value.toLowerCase();$("tbody tr",$("#content")).forEach(row=>row.classList.toggle("hidden",!row.textContent.toLowerCase().includes(q)));}});
+$("#content").addEventListener("input",e=>{
+  if(e.target.id==="bucket-filter"){const q=e.target.value.toLowerCase();$("tbody tr",$("#content")).forEach(row=>row.classList.toggle("hidden",!row.textContent.toLowerCase().includes(q)));return;}
+  if(e.target.matches("[data-bucket-filter-search]")){
+    const q=e.target.value.trim().toLowerCase(),group=e.target.closest("[data-bucket-filter-group]");
+    group?.querySelectorAll(".bucket-usage-filter-option").forEach(option=>option.classList.toggle("hidden",!option.textContent.toLowerCase().includes(q)));
+  }
+});
 (async()=>{try{const d=await api("/api/auth/me");showApp(d.user);await setView("overview");}catch{showLogin();}})();
