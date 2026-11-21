@@ -58,11 +58,11 @@ function exportTableCsv(button){
     const cells=new Map([...row.querySelectorAll("td[data-report-column-key]")].map(cell=>[cell.dataset.reportColumnKey,cell]));
     return visibleKeys.map(key=>{
       const cell=cells.get(key);
-      return cell&&!cell.hidden&&getComputedStyle(cell).display!=="none"?cell.innerText.replace(/\\s+/g," ").trim():"";
+      return cell&&!cell.hidden&&getComputedStyle(cell).display!=="none"?cell.innerText.replace(/\s+/g," ").trim():"";
     });
   });
   if(!visibleKeys.length||!rows.length){toast("There is no visible table data to export.",true);return;}
-  const csv="\\uFEFF"+[headers.filter(cell=>visibleKeys.includes(cell.dataset.reportColumnKey)).map(cell=>cell.innerText.replace(/\\s+/g," ").trim()),...rows].map(row=>row.map(csvCell).join(",")).join("\\r\\n");
+  const csv="\uFEFF"+[headers.filter(cell=>visibleKeys.includes(cell.dataset.reportColumnKey)).map(cell=>cell.innerText.replace(/\s+/g," ").trim()),...rows].map(row=>row.map(csvCell).join(",")).join("\r\n");
   const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"}),url=URL.createObjectURL(blob),link=document.createElement("a");
   const title=panel.querySelector(".table-heading h3")?.textContent||"minio-report";
   const filename=title.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"minio-report";
