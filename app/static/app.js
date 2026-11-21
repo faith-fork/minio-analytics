@@ -1,6 +1,6 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
-const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, bucketUsageFilters:{cluster:"",location:"",tenant:""}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null} };
+const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null} };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
 const bytes = n => n == null ? "—" : (n/1024**4).toFixed(2)+" TiB";
 const tibValue = n => n == null ? "—" : (n/1024**4).toFixed(2);
@@ -23,7 +23,19 @@ function reportTabs(active){const tabs=[["capacity-report","Consolidated Provisi
 function metric(label,value,foot,icon="◈",good=false){return `<div class="metric-card"><div class="metric-top"><span>${label}</span><span class="metric-icon">${icon}</span></div><div class="metric-value">${value}</div><div class="metric-foot ${good?"good":""}">${foot}</div></div>`;}
 function pill(status){const cls=status==="success"||status===true?"":status==="partial"?"warn":status==="failed"||status===false?"bad":"neutral";const label=status===true?"Available":status===false?"Unavailable":String(status??"Unknown");return `<span class="status-pill ${cls}"><i></i>${esc(label)}</span>`;}
 function panel(title,subtitle,body,tag=""){const chartId=body.match(/<canvas id="([^"]+)"/)?.[1];return `<section class="panel ${chartId?"chart-panel":""}"><div class="panel-header"><div><h3>${title}</h3><p>${subtitle||""}</p></div><div class="panel-header-actions">${tag?`<span class="panel-tag">${tag}</span>`:""}${chartId?`<button type="button" class="chart-expand-button" data-expand-chart="${chartId}" aria-label="Expand ${esc(title)} chart" title="Expand chart">⛶</button>`:""}</div></div>${body}</section>`;}
-function table(title,subtitle,headers,rows,empty="No records found."){return `<section class="table-panel"><div class="table-heading"><div><h3>${title}</h3><p>${subtitle||""}</p></div></div><div class="table-scroll"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.length?rows.join(""):`<tr><td colspan="${headers.length}" class="empty-state">${empty}</td></tr>`}</tbody></table></div></section>`;}
+function table(title,subtitle,headers,rows,empty="No records found."){return `<section class="table-panel"><div class="table-heading"><div><h3>${title}</h3><p>${subtitle||""}</p></div><button type="button" class="subtle-button table-export-button" data-export-table>↓ Export CSV</button></div><div class="table-scroll"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.length?rows.join(""):`<tr><td colspan="${headers.length}" class="empty-state">${empty}</td></tr>`}</tbody></table></div></section>`;}
+function exportTableCsv(button){
+  const panel=button.closest(".table-panel"),tableEl=panel?.querySelector("table");
+  if(!tableEl)return;
+  const csvCell=value=>'"'+String(value??"").replace(/"/g,'""')+'"';
+  const rows=[...tableEl.querySelectorAll("tr")].filter(row=>!row.querySelector(".empty-state")).map(row=>[...row.querySelectorAll("th,td")].map(cell=>cell.innerText.replace(/\s+/g," ").trim()));
+  if(!rows.length){toast("There is no table data to export.",true);return;}
+  const csv="\uFEFF"+rows.map(row=>row.map(csvCell).join(",")).join("\r\n");
+  const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"}),url=URL.createObjectURL(blob),link=document.createElement("a");
+  const title=panel.querySelector(".table-heading h3")?.textContent||"minio-report";
+  const filename=title.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"minio-report";
+  link.href=url;link.download=filename+"-"+new Date().toISOString().slice(0,10)+".csv";document.body.append(link);link.click();link.remove();URL.revokeObjectURL(url);
+}
 function chart(id,labels,sets,type="line",yMin=null,ySuffix=""){if(!window.Chart)return;const canvas=$("#"+id);if(!canvas)return;const instance=new Chart(canvas,{type,data:{labels,datasets:sets.map(s=>({label:s.label,data:s.data,borderColor:s.color,backgroundColor:s.color+"18",borderWidth:2,borderDash:s.dash?[7,5]:[],pointRadius:labels.length>45?1.5:3,pointHoverRadius:5,tension:.25,fill:false}))},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{position:"bottom",labels:{usePointStyle:true,boxWidth:7,font:{size:10}}},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+": "+(ctx.parsed.y==null?"—":new Intl.NumberFormat("en-IN",{maximumFractionDigits:3}).format(ctx.parsed.y)+ySuffix)}}},scales:{x:{grid:{display:false},ticks:{autoSkip:true,maxTicksLimit:11,maxRotation:45,minRotation:0,font:{size:9},color:"#94a0af"}},y:{...(yMin===null?{}:{min:yMin}),grid:{color:"#edf1f5"},ticks:{font:{size:9},color:"#94a0af",callback:value=>new Intl.NumberFormat("en-IN",{maximumFractionDigits:3}).format(value)+ySuffix}}}}});state.charts.push(instance);}
 function clearCharts(){state.charts.forEach(c=>c.destroy());state.charts=[];}
 function openExpandedChart(chartId,button){
@@ -58,7 +70,7 @@ function closeExpandedChart(){
 }
 
 function histogramRangeLabel(value){
-  return String(value||"").replace(/_/g," ").replace(/LESS THAN/gi,"< ").replace(/GREATER THAN/gi,"> ").replace(/BETWEEN/gi,"").replace(/AND/gi,"–").replace(/\\s+/g," ").trim();
+  return String(value||"").replace(/_/g," ").replace(/LESS THAN/gi,"< ").replace(/GREATER THAN/gi,"> ").replace(/BETWEEN/gi,"").replace(/AND/gi,"–").replace(/\s+/g," ").trim();
 }
 function objectSizeHistogram(data,title){
   if(!data||data.status==="unavailable"||!data.distribution?.length)
@@ -120,7 +132,7 @@ async function renderCapacityReport(){
   ].join("");
   const rows=(d.items||[]).map(x=>{
     const coverage=x.active_bucket_count===0?"No active buckets":fmt(x.buckets_with_metrics,0)+" / "+fmt(x.active_bucket_count,0)+" buckets";
-    return '<tr><td><span class="cell-strong">'+esc(x.cluster_name)+'</span><br><span class="cell-muted">'+esc(x.location_name)+'</span></td>'+
+    return '<tr><td><span class="cell-strong">'+esc(x.cluster_name)+'</span></td><td><span class="cell-muted">'+esc(x.location_name)+'</span></td>'+
       '<td>'+tibValue(x.installed_capacity_bytes)+'</td><td>'+tibValue(x.cap_capacity_bytes)+'</td>'+
       '<td>'+tibValue(x.provisioned_bytes)+'</td>'+
       (showUsedUsable?'<td>'+tibValue(x.used_cap_bytes)+'</td>':'')+
@@ -131,7 +143,7 @@ async function renderCapacityReport(){
       '<td>'+esc(coverage)+'</td></tr>';
   });
   const formulas='<div class="report-footnotes"><strong>Calculation formulas</strong><ul>'+
-    '<li>Installed Capacity = RAW total capacity from the latest cluster snapshot × Eff × (RF ÷ DP). Current factors: Eff '+fmt(f.eff,3)+', RF '+fmt(f.rf,3)+', DP '+fmt(f.dp,3)+'.</li>'+
+    '<li>Installed Capacity = RAW total capacity from the latest cluster snapshot × Eff × (RF ÷ DP). Current factors: Eff '+fmt(f.eff,2)+', RF '+fmt(f.rf,2)+', DP '+fmt(f.dp,2)+'.</li>'+
     '<li>Usable Capacity = usable total capacity after erasure-coding / storage protection.</li>'+
     '<li>Provisioned = sum of quota bytes across all active buckets; shown only when every active bucket has quota data.</li>'+
     '<li>Used Usable = Usable Capacity − Usable Free.</li>'+
@@ -142,11 +154,11 @@ async function renderCapacityReport(){
     '</ul><p>Usage % colour: green below 70%; amber from 70% to below 80%; red at 80% and above.</p><p>Capacity units are shown in the column headers. N/A (—) indicates a missing snapshot or incomplete metric coverage; it is never treated as zero. Cluster capacity uses the latest cluster snapshot, while bucket totals use the latest bucket snapshot for that cluster.</p></div>';
   const generatedAt=new Date().toLocaleString("en-IN",{timeZone:"Asia/Kolkata",day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
   const dataAsOf=d.data_as_of?new Date(d.data_as_of).toLocaleString("en-IN",{timeZone:"Asia/Kolkata",day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}):"Unavailable — snapshot missing for one or more clusters";
-  const reportFactors='<span class="report-factor-meta" title="Data Protection · Risk Factor · Effective">DP = '+fmt(f.dp,3)+'&nbsp;&nbsp; RF = '+fmt(f.rf,3)+'&nbsp;&nbsp; Eff = '+fmt(f.eff,3)+'</span>';
-  const factorControls=state.user?.role==="admin"?'<form id="capacity-factors-form" class="capacity-factor-controls"><strong>Capacity planning factors</strong><label>DP<input name="dp" type="number" min="0.01" max="100" step="0.01" value="'+esc(f.dp)+'" required></label><label>RF<input name="rf" type="number" min="0.01" max="100" step="0.01" value="'+esc(f.rf)+'" required></label><label>Eff<input name="eff" type="number" min="0.001" max="1" step="0.001" value="'+esc(f.eff)+'" required></label><button class="primary-small" type="submit">Save & recalculate</button></form>':'';
+  const reportFactors='<span class="report-factor-meta" title="Data Protection · Risk Factor · Effective">DP = '+fmt(f.dp,2)+'&nbsp;&nbsp; RF = '+fmt(f.rf,2)+'&nbsp;&nbsp; Eff = '+fmt(f.eff,2)+'</span>';
+  const factorControls=state.user?.role==="admin"?'<div class="capacity-factor-toolbar"><strong>Capacity planning factors</strong><form id="capacity-factors-form" class="capacity-factor-controls"><label>DP<input name="dp" type="number" min="0.01" max="100" step="0.01" value="'+Number(f.dp).toFixed(2)+'" required></label><label>RF<input name="rf" type="number" min="0.01" max="100" step="0.01" value="'+Number(f.rf).toFixed(2)+'" required></label><label>Eff<input name="eff" type="number" min="0.01" max="1" step="0.01" value="'+Number(f.eff).toFixed(2)+'" required></label><button class="primary-small" type="submit">Save & recalculate</button></form></div>':'';
 
   const columnControls='<div class="report-column-toolbar"><details class="report-column-menu"><summary>Columns <span>▾</span></summary><div class="report-column-options"><label><input type="checkbox" data-report-column="used_usable" '+(showUsedUsable?"checked":"")+'><span>USED USABLE</span></label><label><input type="checkbox" data-report-column="used_bkt" '+(showUsedBkt?"checked":"")+'><span>USED BKT</span></label></div></details></div>';
-  const headers=["CLUSTER / LOCATION","INSTALLED (TiB)","USABLE (TiB)","PROVISIONED (TiB)",...(showUsedUsable?["USED USABLE (TiB)"]:[]),...(showUsedBkt?["USED BKT (TiB)"]:[]),"USABLE FREE (TiB)","USAGE %","PROV %","BUCKET COVERAGE"];
+  const headers=["CLUSTER","LOCATION","INSTALLED (TiB)","USABLE (TiB)","PROVISIONED (TiB)",...(showUsedUsable?["USED USABLE (TiB)"]:[]),...(showUsedBkt?["USED BKT (TiB)"]:[]),"USABLE FREE (TiB)","USAGE %","PROV %","BUCKET COVERAGE"];
   $("#content").innerHTML=pageHead("Consolidated Provisioned Report","Fleet-wide installed, usable and provisioned capacity from the latest stored SQLite snapshots. Data as of "+esc(dataAsOf)+" IST. Generated on "+esc(generatedAt)+" IST.",reportFactors+'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
     reportTabs("capacity-report")+
     factorControls+
@@ -174,7 +186,7 @@ async function renderRawCapacityReport(){
     const growth=signedTiB(x.trend_growth_bytes_per_day);
     const change=signedTiB(x.change_vs_yesterday_bytes);
     const projection=x.projected_days_to_full==null?"N/A":fmt(x.projected_days_to_full,0);
-    return '<tr><td><span class="cell-strong">'+esc(x.cluster_name)+'</span><br><span class="cell-muted">'+esc(x.location_name)+'</span></td>'+
+    return '<tr><td><span class="cell-strong">'+esc(x.cluster_name)+'</span></td><td><span class="cell-muted">'+esc(x.location_name)+'</span></td>'+
       '<td>'+tibValue(x.raw_total_bytes)+'</td><td>'+tibValue(x.raw_used_bytes)+'</td><td>'+tibValue(x.raw_free_bytes)+'</td>'+
       '<td>'+usedPct+'</td><td>'+change+'</td><td>'+growth+(x.trend_sample_count!=null?' <span class="cell-muted">('+fmt(x.trend_sample_count,0)+' samples)</span>':'')+'</td><td>'+projection+'</td>'+
       '<td>'+nodes+'</td><td>'+status+'</td></tr>';
@@ -191,13 +203,31 @@ async function renderRawCapacityReport(){
     '</ul><p>Capacity and growth units are shown in the column headers. A dash indicates missing data. Historical calculations use the scheduled SQLite snapshots aligned to 00:00 IST.</p></div>';
   $("#content").innerHTML=pageHead("Consolidated RAW Capacity Report","Fleet-wide raw capacity, used and free storage from the latest stored cluster snapshots. Data as of "+esc(dataAsOf)+" IST. Generated on "+esc(generatedAt)+" IST.",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
     reportTabs("raw-capacity-report")+'<div class="metric-grid raw-capacity-grid">'+cards+'</div>'+
-    table("Raw capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · "+fmt(d.available_cluster_count,0)+" with complete raw metrics",["CLUSTER / LOCATION","RAW CAPACITY (TiB)","RAW USED (TiB)","RAW FREE (TiB)","RAW USED %","CHANGE VS YESTERDAY (TiB)","TREND GROWTH (TiB/day)","PROJECTED DAYS TO FULL","NODES","STATUS"],rows,"No enabled clusters are registered.")+notes;
+    table("Raw capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · "+fmt(d.available_cluster_count,0)+" with complete raw metrics",["CLUSTER","LOCATION","RAW CAPACITY (TiB)","RAW USED (TiB)","RAW FREE (TiB)","RAW USED %","CHANGE VS YESTERDAY (TiB)","TREND GROWTH (TiB/day)","PROJECTED DAYS TO FULL","NODES","STATUS"],rows,"No enabled clusters are registered.")+notes;
+}
+function bucketUsageFilterControl(key,title,items,valueKey,labelKey){
+  const unique=[...new Map(items.map(x=>[String(x[valueKey]??"unassigned"),{value:String(x[valueKey]??"unassigned"),label:x[labelKey]||"Unassigned"}])).values()].sort((a,b)=>a.label.localeCompare(b.label));
+  const selected=state.bucketUsageFilterDraft[key]||[];
+  const summary=selected.length?selected.length+" selected":"All "+({Cluster:"clusters",Location:"locations",Tenant:"tenants"}[title]||title.toLowerCase());
+  return '<div class="bucket-usage-filter-field"><label>'+title+'</label><details class="bucket-usage-multiselect" data-bucket-filter-group="'+key+'"><summary><span data-bucket-filter-summary>'+esc(summary)+'</span><span aria-hidden="true">▾</span></summary><div class="bucket-usage-multiselect-menu"><input type="search" class="bucket-usage-filter-search" placeholder="Search '+title.toLowerCase()+'…" data-bucket-filter-search="'+key+'"><div class="bucket-usage-filter-options">'+unique.map(x=>'<label class="bucket-usage-filter-option"><input type="checkbox" data-bucket-filter-option="'+key+'" value="'+esc(x.value)+'" '+(selected.includes(x.value)?"checked":"")+'><span>'+esc(x.label)+'</span></label>').join("")+'</div><div class="bucket-usage-multiselect-actions"><button type="button" class="subtle-button" data-bucket-filter-action="select-all" data-filter-key="'+key+'">Select all</button><button type="button" class="subtle-button" data-bucket-filter-action="clear" data-filter-key="'+key+'">Clear</button><button type="button" class="primary-small" data-bucket-filter-action="apply" data-filter-key="'+key+'">Apply</button></div></div></details></div>';
+}
+function closeBucketUsageFilterGroup(group){
+  const key=group.dataset.bucketFilterGroup;
+  group.open=false;
+  state.bucketUsageFilterDraft[key]=[...(state.bucketUsageFilters[key]||[])];
+  group.querySelectorAll("[data-bucket-filter-option]").forEach(input=>{input.checked=state.bucketUsageFilterDraft[key].includes(input.value);});
+  updateBucketFilterGroup(group);
+}
+function updateBucketFilterGroup(group){
+  const key=group.dataset.bucketFilterGroup,selected=state.bucketUsageFilterDraft[key]||[];
+  const summary=group.querySelector("[data-bucket-filter-summary]");
+  if(summary)summary.textContent=selected.length?selected.length+" selected":"All "+({cluster:"clusters",location:"locations",tenant:"tenants"}[key]||key);
 }
 async function renderBucketUsageReport(){
   const d=await api("/api/analytics/bucket-usage-report"),allItems=d.items||[],filters=state.bucketUsageFilters;
-  const options=(key,label,selected)=>'<option value="">All</option>'+[...new Map(allItems.map(x=>[String(x[key]??"unassigned"),{value:String(x[key]??"unassigned"),label:x[label]||"Unassigned"}])).values()].sort((a,b)=>a.label.localeCompare(b.label)).map(x=>'<option value="'+esc(x.value)+'"'+(selected===x.value?' selected':'')+'>'+esc(x.label)+'</option>').join("");
-  const filterPanel='<section class="panel bucket-usage-filters"><div class="bucket-usage-filter-field"><label for="bucket-filter-cluster">Cluster</label><select class="form-control" id="bucket-filter-cluster" data-bucket-usage-filter="cluster">'+options("cluster_id","cluster_name",filters.cluster)+'</select></div><div class="bucket-usage-filter-field"><label for="bucket-filter-location">Location</label><select class="form-control" id="bucket-filter-location" data-bucket-usage-filter="location">'+options("location_id","location_name",filters.location)+'</select></div><div class="bucket-usage-filter-field"><label for="bucket-filter-tenant">Tenant</label><select class="form-control" id="bucket-filter-tenant" data-bucket-usage-filter="tenant">'+options("tenant_id_at_snapshot","tenant_name_at_snapshot",filters.tenant)+'</select></div><button type="button" class="subtle-button" data-action="reset-bucket-usage-filters">Clear filters</button></section>';
-  const items=allItems.filter(x=>(!filters.cluster||String(x.cluster_id)===filters.cluster)&&(!filters.location||String(x.location_id)===filters.location)&&(!filters.tenant||String(x.tenant_id_at_snapshot??"unassigned")===filters.tenant));
+  state.bucketUsageFilterDraft={cluster:[...filters.cluster],location:[...filters.location],tenant:[...filters.tenant]};
+  const filterPanel='<section class="panel bucket-usage-filters">'+bucketUsageFilterControl("cluster","Cluster",allItems,"cluster_id","cluster_name")+bucketUsageFilterControl("location","Location",allItems,"location_id","location_name")+bucketUsageFilterControl("tenant","Tenant",allItems,"tenant_id_at_snapshot","tenant_name_at_snapshot")+'<button type="button" class="subtle-button" data-action="reset-bucket-usage-filters">Clear filters</button></section>';
+  const items=allItems.filter(x=>(!filters.cluster.length||filters.cluster.includes(String(x.cluster_id??"unassigned")))&&(!filters.location.length||filters.location.includes(String(x.location_id??"unassigned")))&&(!filters.tenant.length||filters.tenant.includes(String(x.tenant_id_at_snapshot??"unassigned"))));
   const fields=["used_bytes","quota_bytes","object_count","version_count","delete_marker_count"],totals={};
   for(const field of fields)totals[field]=!items.length?0:items.every(x=>x.metrics_available===1&&x[field]!=null)?items.reduce((sum,x)=>sum+x[field],0):null;
   const clusterIds=[...new Set(items.map(x=>x.cluster_id))],withMetrics=items.filter(x=>x.metrics_available===1).length,coverage=items.length?withMetrics/items.length*100:null;
@@ -205,7 +235,7 @@ async function renderBucketUsageReport(){
   const dataAsOf=snapshotMap.size&&[...snapshotMap.values()].every(x=>x.date&&x.ts)?[...snapshotMap.values()].map(x=>x.ts).sort()[0]:null;
   const cards=[metric("USED STORAGE",bytes(totals.used_bytes),"Sum across filtered buckets","◒"),metric("ALLOCATED QUOTA",bytes(totals.quota_bytes),"Sum of filtered bucket quotas","▤"),metric("OBJECTS",totals.object_count==null?"—":fmt(totals.object_count,0),"Across filtered buckets","◫"),metric("VERSIONS",totals.version_count==null?"—":fmt(totals.version_count,0),"Stored object versions","▦"),metric("DELETE MARKERS",totals.delete_marker_count==null?"—":fmt(totals.delete_marker_count,0),"Across filtered buckets","◇"),metric("METRIC COVERAGE",items.length?fmt(withMetrics,0)+" / "+fmt(items.length,0):"0","Filtered buckets with metrics · "+(coverage==null?"—":fmt(coverage,1)+"%"),"◔")].join("");
   const rows=items.map(x=>{const status=x.status==="Available"?'<span class="status-pill">Available</span>':x.status==="Unavailable"?'<span class="status-pill bad">Unavailable</span>':'<span class="status-pill warn">No snapshot</span>';const tenant=x.metric_bucket_id?(x.tenant_name_at_snapshot||"Unassigned"):"—";return '<tr><td><span class="cell-strong">'+esc(x.bucket_name)+'</span></td><td>'+esc(x.cluster_name)+'</td><td>'+esc(x.location_name)+'</td><td>'+esc(tenant)+'</td><td>'+tibValue(x.quota_bytes)+'</td><td>'+tibValue(x.used_bytes)+'</td><td>'+(x.usage_pct==null?"—":fmt(x.usage_pct,1)+"%")+'</td><td>'+(x.object_count==null?"—":fmt(x.object_count,0))+'</td><td>'+(x.version_count==null?"—":fmt(x.version_count,0))+'</td><td>'+(x.delete_marker_count==null?"—":fmt(x.delete_marker_count,0))+'</td><td>'+status+'</td></tr>';});
-  const asOf=dataAsOf?timestampLabel(dataAsOf):"Unavailable — one or more filtered clusters have no bucket snapshot",summary=filters.cluster||filters.location||filters.tenant?"Filtered view · ":"";
+  const asOf=dataAsOf?timestampLabel(dataAsOf):"Unavailable — one or more filtered clusters have no bucket snapshot",summary=filters.cluster.length||filters.location.length||filters.tenant.length?"Filtered view · ":"";
   $("#content").innerHTML=pageHead("Consolidated Bucket Usage Report","Latest stored bucket usage for active buckets across enabled clusters. Data as of "+esc(asOf)+".",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+reportTabs("bucket-usage-report")+filterPanel+'<div class="metric-grid bucket-usage-grid">'+cards+'</div>'+table("Bucket usage by tenant and cluster",summary+fmt(items.length,0)+" of "+fmt(allItems.length,0)+" active bucket(s) · "+fmt(clusterIds.length,0)+" cluster(s) · latest bucket snapshot per cluster",["BUCKET","CLUSTER","LOCATION","TENANT","QUOTA (TiB)","USED (TiB)","USAGE %","OBJECTS","VERSIONS","DELETE MARKERS","STATUS"],rows,"No buckets match the selected filters.")+'<div class="report-footnotes"><strong>Calculation and coverage notes</strong><ul><li>Each cluster uses its latest stored bucket snapshot date; all active buckets in that cluster are represented.</li><li>Totals are shown only when every filtered bucket has an available, non-null value for that metric. Missing values are never treated as zero.</li><li>Tenant attribution is taken from the bucket snapshot, not the current bucket assignment.</li><li>Usage % = Used bytes ÷ Quota bytes × 100; it is unavailable when quota is zero or missing.</li></ul><p>Capacity units are shown in the column headers. A dash indicates missing snapshot data or incomplete metric coverage.</p></div>';
 }
 
@@ -518,7 +548,44 @@ function bulkAssignBucketsModal(){
   });
 }
 
+document.addEventListener("keydown",e=>{
+  if(e.key!=="Escape")return;
+  const openGroups=$$("[data-bucket-filter-group][open]",$("#content"));
+  if(!openGroups.length)return;
+  openGroups.forEach(closeBucketUsageFilterGroup);
+  openGroups[0]?.querySelector("summary")?.focus();
+  e.preventDefault();
+});
 document.addEventListener("click",async e=>{
+  const clickedFilterGroup=e.target.closest("[data-bucket-filter-group]");
+  const openFilterGroups=$$("[data-bucket-filter-group][open]",$("#content"));
+  if(clickedFilterGroup){
+    openFilterGroups.filter(group=>group!==clickedFilterGroup).forEach(closeBucketUsageFilterGroup);
+    if(clickedFilterGroup.open&&e.target.closest("summary")){
+      closeBucketUsageFilterGroup(clickedFilterGroup);
+      e.preventDefault();
+    }
+  }else if(!e.target.closest("[data-bucket-filter-action]")&&!e.target.closest("[data-action='reset-bucket-usage-filters']")){
+    openFilterGroups.forEach(closeBucketUsageFilterGroup);
+  }
+  const exportButton=e.target.closest("[data-export-table]");if(exportButton){exportTableCsv(exportButton);return;}
+  const bucketFilterAction=e.target.closest("[data-bucket-filter-action]");
+  if(bucketFilterAction){
+    const key=bucketFilterAction.dataset.filterKey,group=bucketFilterAction.closest("[data-bucket-filter-group]");
+    if(!group)return;
+    if(bucketFilterAction.dataset.bucketFilterAction==="select-all"){
+      const selected=new Set(state.bucketUsageFilterDraft[key]||[]);
+      group.querySelectorAll("[data-bucket-filter-option]:not(:disabled)").forEach(input=>{if(!input.closest(".bucket-usage-filter-option").classList.contains("hidden")){selected.add(input.value);input.checked=true;}});
+      state.bucketUsageFilterDraft[key]=[...selected];updateBucketFilterGroup(group);
+    }else if(bucketFilterAction.dataset.bucketFilterAction==="clear"){
+      state.bucketUsageFilterDraft[key]=[];group.querySelectorAll("[data-bucket-filter-option]").forEach(input=>input.checked=false);updateBucketFilterGroup(group);
+    }else if(bucketFilterAction.dataset.bucketFilterAction==="apply"){
+      state.bucketUsageFilters={...state.bucketUsageFilters,[key]:[...(state.bucketUsageFilterDraft[key]||[])]};
+      group.open=false;
+      renderBucketUsageReport().catch(err=>toast(err.message,true));
+    }
+    return;
+  }
   const expand=e.target.closest("[data-expand-chart]");if(expand){openExpandedChart(expand.dataset.expandChart,expand);return;}
   if(e.target.closest(".chart-expand-close")){closeExpandedChart();return;}
   const histogramMode=e.target.closest("[data-histogram-mode]");
@@ -580,7 +647,7 @@ document.addEventListener("click",async e=>{
     renderHealth().catch(err=>toast(err.message,true));
     return;
   }
-  if(action==="reset-bucket-usage-filters"){state.bucketUsageFilters={cluster:"",location:"",tenant:""};renderBucketUsageReport().catch(err=>toast(err.message,true));return;}
+  if(action==="reset-bucket-usage-filters"){state.bucketUsageFilters={cluster:[],location:[],tenant:[]};state.bucketUsageFilterDraft={cluster:[],location:[],tenant:[]};renderBucketUsageReport().catch(err=>toast(err.message,true));return;}
   if(action==="refresh"){render().catch(err=>toast(err.message,true));}
   if(action==="apply-trend-dates"){
     const el=e.target.closest("[data-action='apply-trend-dates']");
@@ -631,7 +698,13 @@ $("#content").addEventListener("submit",async e=>{
   }catch(err){toast(err.message,true);if(button){button.disabled=false;button.textContent="Save & recalculate";}}
 });
 $("#content").addEventListener("change",async e=>{
-  if(e.target.matches("[data-bucket-usage-filter]")){state.bucketUsageFilters[e.target.dataset.bucketUsageFilter]=e.target.value;renderBucketUsageReport().catch(err=>toast(err.message,true));return;}
+  if(e.target.matches("[data-bucket-filter-option]")){
+    const key=e.target.dataset.bucketFilterOption,value=e.target.value,selected=new Set(state.bucketUsageFilterDraft[key]||[]);
+    if(e.target.checked)selected.add(value);else selected.delete(value);
+    state.bucketUsageFilterDraft[key]=[...selected];
+    updateBucketFilterGroup(e.target.closest("[data-bucket-filter-group]"));
+    return;
+  }
   if(e.target.matches("[data-report-column]")){
     const checkbox=e.target,key=checkbox.dataset.reportColumn;
     const previous=!checkbox.checked;
@@ -671,5 +744,11 @@ $("#content").addEventListener("change",async e=>{
     const button=$("[data-action='bulk-assign']");if(button)button.disabled=!state.selectedBuckets.length;
   }
 });
-$("#content").addEventListener("input",e=>{if(e.target.id==="bucket-filter"){const q=e.target.value.toLowerCase();$("tbody tr",$("#content")).forEach(row=>row.classList.toggle("hidden",!row.textContent.toLowerCase().includes(q)));}});
+$("#content").addEventListener("input",e=>{
+  if(e.target.id==="bucket-filter"){const q=e.target.value.toLowerCase();$("tbody tr",$("#content")).forEach(row=>row.classList.toggle("hidden",!row.textContent.toLowerCase().includes(q)));return;}
+  if(e.target.matches("[data-bucket-filter-search]")){
+    const q=e.target.value.trim().toLowerCase(),group=e.target.closest("[data-bucket-filter-group]");
+    group?.querySelectorAll(".bucket-usage-filter-option").forEach(option=>option.classList.toggle("hidden",!option.textContent.toLowerCase().includes(q)));
+  }
+});
 (async()=>{try{const d=await api("/api/auth/me");showApp(d.user);await setView("overview");}catch{showLogin();}})();
