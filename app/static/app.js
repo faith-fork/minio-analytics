@@ -391,7 +391,7 @@ async function showClusterTopology(id, section="infra-overview"){
     metric("STORAGE POOLS",pools.length,"Pools discovered","▦")+
     metric("ERASURE SETS",sets.length,"Sets discovered","◫")+
     metric("DRIVES",drives.length,"Drives reported by MinIO","▤")+
-    metric("HEALING DRIVES",drives.reduce((sum,v)=>sum+(v.healing===1?1:0),0),"Reported healing state where available","◇")+'</div>'+
+    metric("ONLINE DRIVES",pools.every(p=>p.online_drives!=null)?pools.reduce((sum,p)=>sum+p.online_drives,0):"—","Reported online drive count","◇")+'</div>'+
     table("Storage pools","Pool counts and drive state derived from discovered erasure-set metrics.",["POOL","ERASURE SETS","ONLINE DRIVES","HEALING DRIVES"],poolRows);
   let body="";
   if(section==="infra-overview") body=infraOverview;
