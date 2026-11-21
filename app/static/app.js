@@ -289,12 +289,14 @@ async function renderMasterAdmin(){
   $("#content").innerHTML=pageHead("Master Admin","Configure collector cadence and manage verified database backups.")+
     `<section class="panel" style="max-width:760px;margin-bottom:16px"><div class="panel-header"><div><h3>Collector schedule</h3><p>All times use Asia/Kolkata (IST).</p></div><span class="panel-tag">LIVE SETTINGS</span></div>
     <form id="master-settings-form" class="form-grid" style="display:grid;gap:14px;max-width:520px">
-      <label>Node, drive health and filesystem interval (hours)<input class="form-control" type="number" name="node_interval_hours" min="1" max="24" step="1" value="${s.node_interval_hours}" required></label>
-      <p class="cell-muted">Default: every 4 hours. Valid range: 1–24 hours. Includes node availability, CPU, memory, load, per-drive health/error counters and filesystem utilization.</p>
+      <label>Node, drive health and filesystem interval (minutes)<input class="form-control" type="number" name="node_interval_minutes" min="1" max="60" step="1" value="${s.node_interval_minutes}" required></label>
+      <p class="cell-muted">Default: every 5 minutes. Valid range: 1–60 minutes. Daily capacity, bucket and storage-topology collection remains separate.</p>
+      <label>Detailed infrastructure telemetry retention (days)<input class="form-control" type="number" name="telemetry_retention_days" min="1" max="90" step="1" value="${s.telemetry_retention_days}" required></label>
+      <p class="cell-muted">Default: 3 days. Applies to high-frequency node and drive samples across all configured clusters. Expired samples are removed automatically once per day.</p>
       <label>Daily capacity, bucket and pool collection time (IST)<input class="form-control" type="time" name="daily_collection_time" value="${esc(s.daily_collection_time)}" required></label>
       <label>Confirm your Master Admin password<input class="form-control" type="password" name="current_password" autocomplete="current-password" required></label>
       <div><button class="primary-button" type="submit">Save collector settings</button></div>
-    </form><p class="cell-muted" style="margin-top:14px">The scheduler checks settings every 60 seconds. Pool and erasure-set telemetry remains part of the daily collection. Scheduled backups continue at their configured time.</p></section>`+
+    </form><p class="cell-muted" style="margin-top:14px">The scheduler checks settings every 60 seconds. Retention cleanup runs daily. Daily reports and storage-topology history are not affected. Scheduled database backups continue at their configured time.</p></section>`+
     `<section class="panel" style="max-width:100%"><div class="panel-header"><div><h3>Database backups</h3><p>Creates a consistent SQLite online backup and verifies it with PRAGMA integrity_check. The dashboard remains available.</p></div><button class="primary-small" data-action="create-backup">Create backup now</button></div><p class="cell-muted" style="margin:0 0 14px">Manual backups use the same backup directory as scheduled backups. Scheduled retention remains 14 days.</p></section>`+
     table("Backup history",backups.count+" backup file(s)",["FILE","CREATED AT","SIZE","INTEGRITY",""],backupRows,"No database backups found.");
 }
@@ -734,8 +736,8 @@ $("#content").addEventListener("submit",async e=>{
   if(e.target.id!=="master-settings-form")return;
   e.preventDefault();const f=new FormData(e.target);
   try{
-    await api("/api/master-admin/settings",{method:"PUT",body:JSON.stringify({node_interval_hours:Number(f.get("node_interval_hours")),daily_collection_time:f.get("daily_collection_time"),current_password:f.get("current_password")})});
-    toast("Collector settings saved; scheduler will apply them within 60 seconds.");
+    await api("/api/master-admin/settings",{method:"PUT",body:JSON.stringify({node_interval_minutes:Number(f.get("node_interval_minutes")),telemetry_retention_days:Number(f.get("telemetry_retention_days")),daily_collection_time:f.get("daily_collection_time"),current_password:f.get("current_password")})});
+    toast("Collector cadence and telemetry retention settings saved.");
     await renderMasterAdmin();
   }catch(err){toast(err.message,true);}
 });
