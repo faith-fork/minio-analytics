@@ -36,9 +36,10 @@ def _due_node(now,interval):
     return (now-previous).total_seconds()>=interval*60
 
 def _due_retention(now):
-    last=_state("telemetry_retention")
-    if not last:return True
-    try:return datetime.fromisoformat(last.replace("Z","+00:00")).astimezone(IST).date()<now.astimezone(IST).date()
+    with transaction() as c:
+        row=c.execute("SELECT last_completed_at,last_status FROM scheduler_state WHERE job_key='telemetry_retention'").fetchone()
+    if not row or row["last_status"]!="success" or not row["last_completed_at"]:return True
+    try:return datetime.fromisoformat(row["last_completed_at"].replace("Z","+00:00")).astimezone(IST).date()<now.astimezone(IST).date()
     except ValueError:return True
 
 def _cleanup_expired_telemetry(retention_days):
