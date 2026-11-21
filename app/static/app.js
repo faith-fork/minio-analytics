@@ -553,6 +553,7 @@ document.addEventListener("keydown",e=>{
   const openGroups=$("[data-bucket-filter-group][open]",$("#content"));
   if(!openGroups.length)return;
   openGroups.forEach(closeBucketUsageFilterGroup);
+  openGroups[0]?.querySelector("summary")?.focus();
   e.preventDefault();
 });
 document.addEventListener("click",async e=>{
