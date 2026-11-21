@@ -590,11 +590,15 @@ document.addEventListener("keydown",e=>{
   openGroups[0]?.querySelector("summary")?.focus();
   e.preventDefault();
 });
-document.addEventListener("click",async e=>{
-  const openColumnMenus=$(".report-column-menu[open]",$("#content"));
+document.addEventListener("click",e=>{
+  if(!(e.target instanceof Element))return;
   const clickedColumnMenu=e.target.closest(".report-column-menu");
+  const openColumnMenus=$(".report-column-menu[open]",$("#content"));
   if(!clickedColumnMenu)openColumnMenus.forEach(menu=>menu.removeAttribute("open"));
   else if(e.target.closest(".report-column-menu summary"))openColumnMenus.filter(menu=>menu!==clickedColumnMenu).forEach(menu=>menu.removeAttribute("open"));
+});
+
+document.addEventListener("click",async e=>{
   const clickedFilterGroup=e.target.closest("[data-bucket-filter-group]");
   const openFilterGroups=$$("[data-bucket-filter-group][open]",$("#content"));
   if(clickedFilterGroup){
