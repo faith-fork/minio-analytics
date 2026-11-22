@@ -1166,6 +1166,57 @@ def node_performance(
         ).fetchall()
     expected = max(1, int(hours * 60 / interval_minutes))
     run_count = len(samples)
+    interval_seconds = interval_minutes * 60
+    covered_slots: set[int] = set()
+    timestamps: list[datetime] = []
+    for sample in samples:
+        try:
+            stamp = datetime.fromisoformat(sample["snapshot_ts"].replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+            stamp = stamp.astimezone(timezone.utc)
+        except (TypeError, ValueError):
+            continue
+        timestamps.append(stamp)
+        slot = int((stamp - start).total_seconds() // interval_seconds)
+        if 0 <= slot < expected:
+            covered_slots.add(slot)
+
+    gaps_minutes = [
+        (later - earlier).total_seconds() / 60
+        for earlier, later in zip(timestamps, timestamps[1:])
+    ]
+    ordered_gaps = sorted(gaps_minutes)
+    if ordered_gaps:
+        midpoint = len(ordered_gaps) // 2
+        observed_interval = (
+            ordered_gaps[midpoint]
+            if len(ordered_gaps) % 2
+            else (ordered_gaps[midpoint - 1] + ordered_gaps[midpoint]) / 2
+        )
+        observed_min_interval = ordered_gaps[0]
+        observed_max_interval = ordered_gaps[-1]
+        cadence_tolerance = max(1.0, interval_minutes * 0.2)
+        cadence_adherence = (
+            sum(abs(gap - interval_minutes) <= cadence_tolerance for gap in ordered_gaps)
+            / len(ordered_gaps)
+            * 100.0
+        )
+        if observed_interval < interval_minutes - cadence_tolerance:
+            cadence_status = "faster_than_configured"
+        elif observed_interval > interval_minutes + cadence_tolerance:
+            cadence_status = "slower_than_configured"
+        elif cadence_adherence < 80.0:
+            cadence_status = "irregular"
+        else:
+            cadence_status = "on_schedule"
+    else:
+        observed_interval = observed_min_interval = observed_max_interval = None
+        cadence_adherence = None
+        cadence_status = "insufficient_history"
+
+    covered_intervals = len(covered_slots)
+    coverage_pct = covered_intervals / expected * 100.0
     return {
         "cluster": dict(cluster),
         "hours": hours,
@@ -1174,9 +1225,18 @@ def node_performance(
         "interval_minutes": interval_minutes,
         "expected_samples": expected,
         "sample_count": run_count,
-        "coverage_pct": min(100.0, run_count / expected * 100.0),
-        "collection_run_coverage_pct": min(100.0, run_count / expected * 100.0),
-        "coverage_basis": "collection_runs",
+        "covered_intervals": covered_intervals,
+        "missing_intervals": max(0, expected - covered_intervals),
+        "excess_runs": max(0, run_count - expected),
+        "coverage_pct": coverage_pct,
+        "collection_run_coverage_pct": coverage_pct,
+        "coverage_basis": "configured_interval_windows",
+        "coverage_definition": "Percentage of expected collection intervals containing at least one collection run",
+        "observed_interval_minutes": round(observed_interval, 2) if observed_interval is not None else None,
+        "observed_min_interval_minutes": round(observed_min_interval, 2) if observed_min_interval is not None else None,
+        "observed_max_interval_minutes": round(observed_max_interval, 2) if observed_max_interval is not None else None,
+        "cadence_adherence_pct": round(cadence_adherence, 1) if cadence_adherence is not None else None,
+        "cadence_status": cadence_status,
         "nodes": [dict(row) for row in rows],
         "samples": [dict(row) for row in samples],
     }
