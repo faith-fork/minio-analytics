@@ -1175,6 +1175,8 @@ def node_performance(
         "expected_samples": expected,
         "sample_count": run_count,
         "coverage_pct": min(100.0, run_count / expected * 100.0),
+        "collection_run_coverage_pct": min(100.0, run_count / expected * 100.0),
+        "coverage_basis": "collection_runs",
         "nodes": [dict(row) for row in rows],
         "samples": [dict(row) for row in samples],
     }
