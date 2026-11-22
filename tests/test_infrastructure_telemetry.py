@@ -16,7 +16,7 @@ def test_node_performance_endpoint_accepts_supported_windows(viewer_client):
     assert payload["interval_minutes"] == 5
     assert payload["expected_samples"] == 72
     assert payload["sample_count"] == 0
-    assert payload["coverage_basis"] == "collection_runs"
+    assert payload["coverage_basis"] == "configured_interval_windows"
     assert payload["collection_run_coverage_pct"] == 0
     assert payload["nodes"] == []
 
