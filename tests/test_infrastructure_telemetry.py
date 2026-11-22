@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from app.database.database import transaction
+import pytest
+
+from app.database.database import initialize_database, transaction
 from scripts.scheduler_tick import _cleanup_expired_telemetry
 
 
@@ -14,12 +16,85 @@ def test_node_performance_endpoint_accepts_supported_windows(viewer_client):
     assert payload["interval_minutes"] == 5
     assert payload["expected_samples"] == 72
     assert payload["sample_count"] == 0
+    assert payload["coverage_basis"] == "collection_runs"
+    assert payload["collection_run_coverage_pct"] == 0
     assert payload["nodes"] == []
 
 
 def test_node_performance_endpoint_rejects_unsupported_window(viewer_client):
     response = viewer_client.get("/api/analytics/clusters/cluster-1/nodes/performance?hours=3")
     assert response.status_code == 422
+
+
+def test_node_performance_coverage_is_explicitly_collection_run_coverage(viewer_client):
+    stamp = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    with transaction() as connection:
+        connection.execute(
+            """INSERT INTO node_health_runs
+               (run_id,cluster_id,snapshot_ts,collected_at,node_count,drive_count)
+               VALUES('partial-run','cluster-1',?,?,2,0)""",
+            (stamp, stamp),
+        )
+        # Only one of the two expected nodes has a row in this collection run.
+        connection.execute(
+            """INSERT INTO node_health_metrics
+               (run_id,cluster_id,node_name,node_exporter_up,minio_scrape_up,cpu_utilization_pct)
+               VALUES('partial-run','cluster-1','node-1',1,1,25)"""
+        )
+
+    response = viewer_client.get("/api/analytics/clusters/cluster-1/nodes/performance?hours=2")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["sample_count"] == 1
+    assert payload["coverage_basis"] == "collection_runs"
+    assert payload["collection_run_coverage_pct"] == pytest.approx(100 / 24)
+    assert len(payload["nodes"]) == 1
+    assert payload["nodes"][0]["node_name"] == "node-1"
+
+
+@pytest.mark.parametrize(
+    ("existing_minutes", "expected_minutes"),
+    [(None, "60"), ("5", "60"), ("15", "15")],
+)
+def test_legacy_collection_interval_migration_is_audited_and_versioned(
+    client, existing_minutes, expected_minutes
+):
+    with transaction() as connection:
+        connection.execute("DELETE FROM schema_version WHERE version=10")
+        connection.execute(
+            "UPDATE app_settings SET setting_value='2' WHERE setting_key='node_interval_hours'"
+        )
+        if existing_minutes is None:
+            connection.execute(
+                "DELETE FROM app_settings WHERE setting_key='node_interval_minutes'"
+            )
+        else:
+            connection.execute(
+                "UPDATE app_settings SET setting_value=? WHERE setting_key='node_interval_minutes'",
+                (existing_minutes,),
+            )
+
+    initialize_database()
+
+    with transaction() as connection:
+        interval = connection.execute(
+            "SELECT setting_value FROM app_settings WHERE setting_key='node_interval_minutes'"
+        ).fetchone()["setting_value"]
+        version = connection.execute(
+            "SELECT 1 FROM schema_version WHERE version=10"
+        ).fetchone()
+        audits = connection.execute(
+            "SELECT old_value,new_value,changed_by FROM settings_audit WHERE setting_key='node_interval_minutes' AND changed_by='system-migration-v10'"
+        ).fetchall()
+
+    assert interval == expected_minutes
+    assert version is not None
+    if expected_minutes == "60":
+        assert len(audits) == 1
+        assert audits[0]["new_value"] == "60"
+        assert audits[0]["changed_by"] == "system-migration-v10"
+    else:
+        assert audits == []
 
 
 def test_retention_cleanup_removes_expired_runs_and_cascades_samples(client):
@@ -31,13 +106,19 @@ def test_retention_cleanup_removes_expired_runs_and_cascades_samples(client):
             connection.execute(
                 """INSERT INTO node_health_runs
                    (run_id,cluster_id,snapshot_ts,collected_at,node_count,drive_count)
-                   VALUES(?, 'cluster-1', ?, ?, 1, 0)""",
+                   VALUES(?, 'cluster-1', ?, ?, 1, 1)""",
                 (run_id, stamp, stamp),
             )
             connection.execute(
                 """INSERT INTO node_health_metrics
                    (run_id,cluster_id,node_name,node_exporter_up,minio_scrape_up)
                    VALUES(?, 'cluster-1', 'node-1', 1, 1)""",
+                (run_id,),
+            )
+            connection.execute(
+                """INSERT INTO drive_health_metrics
+                   (run_id,cluster_id,node_name,server,drive_path)
+                   VALUES(?, 'cluster-1', 'node-1', 'node-1:9000', '/mnt/disk1')""",
                 (run_id,),
             )
 
@@ -47,5 +128,7 @@ def test_retention_cleanup_removes_expired_runs_and_cascades_samples(client):
     with transaction() as connection:
         runs = connection.execute("SELECT run_id FROM node_health_runs ORDER BY run_id").fetchall()
         metrics = connection.execute("SELECT run_id FROM node_health_metrics ORDER BY run_id").fetchall()
+        drives = connection.execute("SELECT run_id FROM drive_health_metrics ORDER BY run_id").fetchall()
     assert [row["run_id"] for row in runs] == ["recent-run"]
     assert [row["run_id"] for row in metrics] == ["recent-run"]
+    assert [row["run_id"] for row in drives] == ["recent-run"]
