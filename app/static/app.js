@@ -377,6 +377,12 @@ async function showClusterTopology(id, section="infra-overview"){
 
   let trendData=null,performanceData=null;
   const trendFilter=state.topologyTrendFilters?.[id]||{startDate:"",endDate:""};
+  if(section==="drives"||(section==="nodes"&&nodeSubsection==="health")){
+    const trendParams=new URLSearchParams();
+    if(trendFilter.startDate)trendParams.set("start_date",trendFilter.startDate);
+    if(trendFilter.endDate)trendParams.set("end_date",trendFilter.endDate);
+    trendData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/topology/trends?"+trendParams.toString());
+  }
   if(section==="drives"){
     const trendParams=new URLSearchParams();
     if(trendFilter.startDate)trendParams.set("start_date",trendFilter.startDate);
@@ -386,7 +392,7 @@ async function showClusterTopology(id, section="infra-overview"){
   if(section==="nodes"){
     performanceData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/nodes/performance?hours="+state.nodePerformanceHours);
   }
-  const trendControls=trendData?'<section class="panel health-trends-panel"><div class="panel-header"><div><h3>Historical infrastructure trends</h3><p>Four-hour telemetry samples · '+fmt(trendData.sample_count||0,0)+' samples</p></div></div><div class="health-trend-filters"><label>FROM DATE<input id="infra-trend-start" type="date" value="'+esc(trendFilter.startDate)+'"></label><label>TO DATE<input id="infra-trend-end" type="date" value="'+esc(trendFilter.endDate)+'"></label><button class="primary-small" data-action="apply-infra-trends">Apply</button><button class="subtle-button" data-action="reset-infra-trends">Last 30 days</button></div></section>':'';
+  const trendControls=trendData?'<section class="panel health-trends-panel"><div class="panel-header"><div><h3>Historical infrastructure trends</h3><p>Persisted high-frequency telemetry · '+fmt(trendData.sample_count||0,0)+' samples</p></div></div><div class="health-trend-filters"><label>FROM DATE<input id="infra-trend-start" type="date" value="'+esc(trendFilter.startDate)+'"></label><label>TO DATE<input id="infra-trend-end" type="date" value="'+esc(trendFilter.endDate)+'"></label><button class="primary-small" data-action="apply-infra-trends">Apply</button><button class="subtle-button" data-action="reset-infra-trends">Last 30 days</button></div></section>':'';
   const trendSamples=trendData?.samples||[];
   const trendLabels=trendSamples.map(x=>timestampLabel(x.snapshot_ts));
   const trendPanel=(title,description,canvasId)=>'<section class="panel"><div class="panel-header"><div><h3>'+title+'</h3><p>'+description+'</p></div></div>'+(trendSamples.length?'<div class="chart-wrap health-trend-chart"><canvas id="'+canvasId+'"></canvas></div>':'<div class="chart-empty-state"><strong>No historical samples available</strong><p>No telemetry was stored in the selected date range.</p></div>')+'</section>';
@@ -414,7 +420,10 @@ async function showClusterTopology(id, section="infra-overview"){
   const nodeHealthBody=table("Node availability","Node Exporter and MinIO scrape status are shown independently.",["NODE","NODE EXPORTER","MINIO TARGET","CPU (LATEST)","MEMORY (LATEST)","LOAD 1M","DRIVES UP","DRIVES DOWN"],nodeRows);
   const nodePerformanceBody=perfToolbar+perfCoverage+'<div class="metric-grid">'+metric("AVG CPU",avgCpu==null?"—":fmt(avgCpu,1)+"%","Across nodes · selected window","◒")+metric("AVG MEMORY",avgMem==null?"—":fmt(avgMem,1)+"%","Across nodes · selected window","▤")+metric("AVG LOAD",avgLoad==null?"—":fmt(avgLoad,2),"1-minute load · selected window","⌁")+'</div><div class="health-infra-trend-grid">'+perfTrendPanel("Average CPU utilization","Average across nodes at each five-minute sample","infra-cpu-trend")+perfTrendPanel("Average memory utilization","Weighted memory utilization across nodes","infra-memory-trend")+perfTrendPanel("Average load","Average 1-minute load across nodes","infra-load-trend")+'</div>'+table("Node performance","Per-node averages for the selected time window.",["NODE","AVG CPU","AVG MEMORY","AVG LOAD 1M","SAMPLES","NODE EXPORTER AVAILABILITY"],perfRows);
   const nodeReportsBody=perfToolbar+perfCoverage+table("Node performance report","Average, minimum and peak values for each node over the selected window.",["NODE","CPU AVG / MIN / PEAK","MEMORY AVG / MIN / PEAK","LOAD AVG / PEAK","SAMPLES","EXPORTER AVAILABILITY"],perfNodes.map(n=>'<tr><td><span class="cell-strong">'+esc(n.node_name)+'</span></td><td>'+fmt(n.avg_cpu_pct,1)+'% / '+fmt(n.min_cpu_pct,1)+'% / '+fmt(n.max_cpu_pct,1)+'%</td><td>'+fmt(n.avg_memory_used_pct,1)+'% / '+fmt(n.min_memory_used_pct,1)+'% / '+fmt(n.max_memory_used_pct,1)+'%</td><td>'+fmt(n.avg_load1,2)+' / '+fmt(n.max_load1,2)+'</td><td>'+fmt(n.sample_count,0)+'</td><td>'+fmt(n.node_exporter_availability_pct,1)+'%</td></tr>'));
-  if(section==="nodes") body=nodeSubTabsHtml+(nodeSubsection==="health"?nodeHealthBody:nodeSubsection==="performance"?nodePerformanceBody:nodeReportsBody);
+  if(section==="nodes") body=nodeSubTabsHtml+(nodeSubsection==="health"?trendControls+'<div class="health-infra-trend-grid">'+
+    trendPanel("Node Exporter availability","Percentage of nodes reporting successfully","infra-node-availability")+
+    trendPanel("MinIO scrape availability","Percentage of MinIO node targets reporting","infra-minio-availability")+
+    '</div>'+nodeHealthBody:nodeSubsection==="performance"?nodePerformanceBody:nodeReportsBody);
   if(section==="drives") body=trendControls+'<div class="health-infra-trend-grid">'+
     trendPanel("Drive availability","Online and offline drive counts across the cluster","infra-drive-availability")+
     trendPanel("Drive error counters","Cumulative availability, I/O and timeout errors reported by drives","infra-drive-errors")+
@@ -429,6 +438,10 @@ async function showClusterTopology(id, section="infra-overview"){
   const pageSubtitle=storageView?"MinIO storage pools, erasure sets and quorum topology":"Node availability, compute resources, drive health and filesystem telemetry";
   const pageSnapshot='<span class="page-heading-snapshot">Snapshot '+esc(timestampLabel(storageView?d.topology_snapshot_ts:d.node_snapshot_ts))+'</span>';
   $("#content").innerHTML=pageHead(esc(d.cluster.name)+" — "+pageTitle,pageSubtitle+pageSnapshot,'<button class="subtle-button" data-action="back-to-cluster-overview">← Back to cluster</button>')+errors+tabHtml+body;
+  if(trendSamples.length&&section==="nodes"&&nodeSubsection==="health"){
+    chart("infra-node-availability",trendLabels,[{label:"Node Exporter up",data:trendSamples.map(x=>x.node_exporter_availability_pct),color:"#16a085"}],"line",0,"%");
+    chart("infra-minio-availability",trendLabels,[{label:"MinIO scrape up",data:trendSamples.map(x=>x.minio_scrape_availability_pct),color:"#4776c7"}],"line",0,"%");
+  }
   if(perfSamples.length&&section==="nodes"&&nodeSubsection==="performance"){
     const perfLabels=perfSamples.map(x=>timestampLabel(x.snapshot_ts));
     chart("infra-cpu-trend",perfLabels,[{label:"Average CPU",data:perfSamples.map(x=>x.avg_cpu_pct),color:"#4776c7"}],"line",0,"%");
