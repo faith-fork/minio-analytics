@@ -294,7 +294,7 @@ def test_master_admin_settings_require_privilege_and_password(admin_client, view
     assert settings.status_code == 200
     assert settings.json()["settings"] == {
         "node_interval_minutes": 5,
-        "node_interval_hours": 5 / 60,
+        "node_interval_hours": 1,
         "telemetry_retention_days": 3,
         "daily_collection_time": "00:15",
     }
@@ -319,7 +319,7 @@ def test_master_admin_settings_require_privilege_and_password(admin_client, view
     assert updated.json()["effective_within_seconds"] == 60
     assert admin_client.get("/api/master-admin/settings").json()["settings"] == {
         "node_interval_minutes": 10,
-        "node_interval_hours": 10 / 60,
+        "node_interval_hours": 1,
         "telemetry_retention_days": 7,
         "daily_collection_time": "00:30",
     }
