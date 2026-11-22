@@ -30,7 +30,7 @@ def get_settings(actor:dict=Depends(require_master_admin)):
     wal_path=Path(str(db_path)+"-wal")
     wal_size=wal_path.stat().st_size if wal_path.exists() else 0
     return {
-        "settings":{"node_interval_minutes":int(v.get("node_interval_minutes","5")),"node_interval_hours":max(1,(int(v.get("node_interval_minutes","5"))+59)//60),"telemetry_retention_days":int(v.get("telemetry_retention_days","3")),"daily_collection_time":v.get("daily_collection_time","00:15")},
+        "settings":{"node_interval_minutes":int(v.get("node_interval_minutes","5")),"node_interval_hours":(int(v.get("node_interval_minutes","5"))//60 if int(v.get("node_interval_minutes","5")) % 60 == 0 else None),"telemetry_retention_days":int(v.get("telemetry_retention_days","3")),"daily_collection_time":v.get("daily_collection_time","00:15")},
         "telemetry_usage":{"collection_runs":run_count,"node_samples":node_samples,"drive_samples":drive_samples,"database_size_bytes":db_size,"wal_size_bytes":wal_size,"last_cleanup_at":cleanup["last_completed_at"] if cleanup else None,"last_cleanup_status":cleanup["last_status"] if cleanup else None,"last_cleanup_error":cleanup["last_error"] if cleanup else None},
         "last_change_at":last,"scheduler_refresh_seconds":60
     }
@@ -43,6 +43,11 @@ def update_settings(p:SettingsUpdate,actor:dict=Depends(require_master_admin)):
         interval_minutes=p.node_interval_minutes if p.node_interval_minutes is not None else (p.node_interval_hours*60 if p.node_interval_hours is not None else None)
         if interval_minutes is None:
             raise HTTPException(status_code=422,detail="node_interval_minutes or legacy node_interval_hours is required")
+        if interval_minutes > 60:
+            raise HTTPException(
+                status_code=422,
+                detail="Node telemetry collection interval cannot exceed 60 minutes; use node_interval_minutes",
+            )
         updates={"node_interval_minutes":str(interval_minutes),"daily_collection_time":p.daily_collection_time}
         if p.telemetry_retention_days is not None:
             updates["telemetry_retention_days"]=str(p.telemetry_retention_days)
