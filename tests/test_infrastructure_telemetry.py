@@ -15,6 +15,7 @@ def test_node_performance_endpoint_accepts_supported_windows(viewer_client):
     assert payload["hours"] == 6
     assert payload["interval_minutes"] == 5
     assert payload["expected_samples"] == 72
+    assert payload["expected_intervals"] == 72
     assert payload["sample_count"] == 0
     assert payload["coverage_basis"] == "configured_interval_windows"
     assert payload["collection_run_coverage_pct"] == 0
@@ -177,6 +178,8 @@ def test_node_performance_coverage_does_not_count_excess_runs_as_extra_coverage(
     assert payload["missing_intervals"] == 0
     assert payload["excess_runs"] == 22
     assert payload["collection_run_coverage_pct"] == 100
+    assert payload["interval_coverage_pct"] == 100
+    assert payload["expected_intervals"] == 2
     assert payload["observed_interval_minutes"] == 5
     assert payload["cadence_adherence_pct"] == 0
     assert payload["cadence_status"] == "faster_than_configured"
@@ -242,4 +245,5 @@ def test_node_performance_coverage_reports_missing_expected_intervals(
     assert payload["covered_intervals"] == 1
     assert payload["missing_intervals"] == 1
     assert payload["collection_run_coverage_pct"] == 50
+    assert payload["interval_coverage_pct"] == 50
     assert payload["cadence_status"] == "insufficient_history"
