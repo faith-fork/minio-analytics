@@ -53,8 +53,12 @@ def test_node_performance_coverage_is_explicitly_collection_run_coverage(viewer_
     assert response.status_code == 200
     payload = response.json()
     assert payload["sample_count"] == 2
-    assert payload["coverage_basis"] == "collection_runs"
-    assert payload["collection_run_coverage_pct"] == pytest.approx(200 / 24)
+    assert payload["coverage_basis"] == "configured_interval_windows"
+    assert payload["covered_intervals"] == 1
+    assert payload["missing_intervals"] == 23
+    assert payload["collection_run_coverage_pct"] == pytest.approx(100 / 24)
+    assert payload["observed_interval_minutes"] == 0
+    assert payload["cadence_status"] == "faster_than_configured"
     assert len(payload["nodes"]) == 1
     assert payload["nodes"][0]["node_name"] == "node-1"
 
@@ -139,3 +143,103 @@ def test_retention_cleanup_removes_expired_runs_and_cascades_samples(client):
     assert [row["run_id"] for row in runs] == ["recent-run"]
     assert [row["run_id"] for row in metrics] == ["recent-run"]
     assert [row["run_id"] for row in drives] == ["recent-run"]
+
+
+
+def test_node_performance_coverage_does_not_count_excess_runs_as_extra_coverage(
+    viewer_client,
+):
+    now = datetime.now(timezone.utc)
+    with transaction() as connection:
+        connection.execute(
+            "UPDATE app_settings SET setting_value='60' WHERE setting_key='node_interval_minutes'"
+        )
+        for index in range(24):
+            stamp = (
+                now - timedelta(hours=2) + timedelta(minutes=2.5 + index * 5)
+            ).isoformat(timespec="seconds").replace("+00:00", "Z")
+            connection.execute(
+                """INSERT INTO node_health_runs
+                   (run_id,cluster_id,snapshot_ts,collected_at,node_count,drive_count)
+                   VALUES(?,?,?, ?,0,0)""",
+                (f"five-minute-run-{index}", "cluster-1", stamp, stamp),
+            )
+
+    response = viewer_client.get(
+        "/api/analytics/clusters/cluster-1/nodes/performance?hours=2"
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["interval_minutes"] == 60
+    assert payload["expected_samples"] == 2
+    assert payload["sample_count"] == 24
+    assert payload["covered_intervals"] == 2
+    assert payload["missing_intervals"] == 0
+    assert payload["excess_runs"] == 22
+    assert payload["collection_run_coverage_pct"] == 100
+    assert payload["observed_interval_minutes"] == 5
+    assert payload["cadence_adherence_pct"] == 0
+    assert payload["cadence_status"] == "faster_than_configured"
+
+
+def test_node_performance_cadence_reports_hourly_schedule_as_on_schedule(
+    viewer_client,
+):
+    now = datetime.now(timezone.utc)
+    with transaction() as connection:
+        connection.execute(
+            "UPDATE app_settings SET setting_value='60' WHERE setting_key='node_interval_minutes'"
+        )
+        for index, minutes_ago in enumerate((110, 50)):
+            stamp = (now - timedelta(minutes=minutes_ago)).isoformat(
+                timespec="seconds"
+            ).replace("+00:00", "Z")
+            connection.execute(
+                """INSERT INTO node_health_runs
+                   (run_id,cluster_id,snapshot_ts,collected_at,node_count,drive_count)
+                   VALUES(?,?,?, ?,0,0)""",
+                (f"hourly-run-{index}", "cluster-1", stamp, stamp),
+            )
+
+    response = viewer_client.get(
+        "/api/analytics/clusters/cluster-1/nodes/performance?hours=2"
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["sample_count"] == 2
+    assert payload["covered_intervals"] == 2
+    assert payload["collection_run_coverage_pct"] == 100
+    assert payload["observed_interval_minutes"] == 60
+    assert payload["cadence_adherence_pct"] == 100
+    assert payload["cadence_status"] == "on_schedule"
+
+
+def test_node_performance_coverage_reports_missing_expected_intervals(
+    viewer_client,
+):
+    now = datetime.now(timezone.utc)
+    with transaction() as connection:
+        connection.execute(
+            "UPDATE app_settings SET setting_value='60' WHERE setting_key='node_interval_minutes'"
+        )
+        stamp = (now - timedelta(minutes=110)).isoformat(
+            timespec="seconds"
+        ).replace("+00:00", "Z")
+        connection.execute(
+            """INSERT INTO node_health_runs
+               (run_id,cluster_id,snapshot_ts,collected_at,node_count,drive_count)
+               VALUES('single-hourly-run','cluster-1',?,?,0,0)""",
+            (stamp, stamp),
+        )
+
+    response = viewer_client.get(
+        "/api/analytics/clusters/cluster-1/nodes/performance?hours=2"
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["expected_samples"] == 2
+    assert payload["sample_count"] == 1
+    assert payload["covered_intervals"] == 1
+    assert payload["missing_intervals"] == 1
+    assert payload["collection_run_coverage_pct"] == 50
+    assert payload["cadence_status"] == "insufficient_history"
