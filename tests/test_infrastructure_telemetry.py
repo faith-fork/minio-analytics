@@ -35,7 +35,14 @@ def test_node_performance_coverage_is_explicitly_collection_run_coverage(viewer_
                VALUES('partial-run','cluster-1',?,?,2,0)""",
             (stamp, stamp),
         )
-        # Only one of the two expected nodes has a row in this collection run.
+        connection.execute(
+            """INSERT INTO node_health_runs
+               (run_id,cluster_id,snapshot_ts,collected_at,node_count,drive_count)
+               VALUES('empty-run','cluster-1',?,?,2,0)""",
+            (stamp, stamp),
+        )
+        # Only one of the two expected nodes has a row in the partial run;
+        # the empty run must still count as an attempted collection run.
         connection.execute(
             """INSERT INTO node_health_metrics
                (run_id,cluster_id,node_name,node_exporter_up,minio_scrape_up,cpu_utilization_pct)
@@ -45,9 +52,9 @@ def test_node_performance_coverage_is_explicitly_collection_run_coverage(viewer_
     response = viewer_client.get("/api/analytics/clusters/cluster-1/nodes/performance?hours=2")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["sample_count"] == 1
+    assert payload["sample_count"] == 2
     assert payload["coverage_basis"] == "collection_runs"
-    assert payload["collection_run_coverage_pct"] == pytest.approx(100 / 24)
+    assert payload["collection_run_coverage_pct"] == pytest.approx(200 / 24)
     assert len(payload["nodes"]) == 1
     assert payload["nodes"][0]["node_name"] == "node-1"
 
