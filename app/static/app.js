@@ -377,7 +377,7 @@ async function showClusterTopology(id, section="infra-overview"){
 
   let trendData=null,performanceData=null;
   const trendFilter=state.topologyTrendFilters?.[id]||{startDate:"",endDate:""};
-  if(section==="drives"||(section==="nodes"&&nodeSubsection==="health")){
+  if(section==="nodes"&&nodeSubsection==="health"){
     const trendParams=new URLSearchParams();
     if(trendFilter.startDate)trendParams.set("start_date",trendFilter.startDate);
     if(trendFilter.endDate)trendParams.set("end_date",trendFilter.endDate);
