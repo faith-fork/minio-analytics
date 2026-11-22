@@ -11,8 +11,9 @@ from app.database.database import database_path, transaction
 router=APIRouter(prefix="/api/master-admin",tags=["master administration"])
 class SettingsUpdate(BaseModel):
     current_password:str=Field(min_length=1,max_length=1024)
-    node_interval_minutes:int=Field(ge=1,le=60)
-    telemetry_retention_days:int=Field(ge=1,le=90)
+    node_interval_minutes:int|None=Field(default=None,ge=1,le=60)
+    node_interval_hours:int|None=Field(default=None,ge=1,le=24)
+    telemetry_retention_days:int|None=Field(default=None,ge=1,le=90)
     daily_collection_time:str=Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 @router.get("/settings")
 def get_settings(actor:dict=Depends(require_master_admin)):
@@ -29,7 +30,7 @@ def get_settings(actor:dict=Depends(require_master_admin)):
     wal_path=Path(str(db_path)+"-wal")
     wal_size=wal_path.stat().st_size if wal_path.exists() else 0
     return {
-        "settings":{"node_interval_minutes":int(v.get("node_interval_minutes","5")),"telemetry_retention_days":int(v.get("telemetry_retention_days","3")),"daily_collection_time":v.get("daily_collection_time","00:15")},
+        "settings":{"node_interval_minutes":int(v.get("node_interval_minutes","5")),"node_interval_hours":int(v.get("node_interval_minutes","5"))/60,"telemetry_retention_days":int(v.get("telemetry_retention_days","3")),"daily_collection_time":v.get("daily_collection_time","00:15")},
         "telemetry_usage":{"collection_runs":run_count,"node_samples":node_samples,"drive_samples":drive_samples,"database_size_bytes":db_size,"wal_size_bytes":wal_size,"last_cleanup_at":cleanup["last_completed_at"] if cleanup else None,"last_cleanup_status":cleanup["last_status"] if cleanup else None,"last_cleanup_error":cleanup["last_error"] if cleanup else None},
         "last_change_at":last,"scheduler_refresh_seconds":60
     }
@@ -39,7 +40,12 @@ def update_settings(p:SettingsUpdate,actor:dict=Depends(require_master_admin)):
         u=c.execute("SELECT password_hash,is_active FROM users WHERE id=?",(actor["id"],)).fetchone()
         if u is None or not u["is_active"] or not verify_password(p.current_password,u["password_hash"]):
             raise HTTPException(status_code=403,detail="Password confirmation failed")
-        updates={"node_interval_minutes":str(p.node_interval_minutes),"telemetry_retention_days":str(p.telemetry_retention_days),"daily_collection_time":p.daily_collection_time}
+        interval_minutes=p.node_interval_minutes if p.node_interval_minutes is not None else (p.node_interval_hours*60 if p.node_interval_hours is not None else None)
+        if interval_minutes is None:
+            raise HTTPException(status_code=422,detail="node_interval_minutes or legacy node_interval_hours is required")
+        updates={"node_interval_minutes":str(interval_minutes),"daily_collection_time":p.daily_collection_time}
+        if p.telemetry_retention_days is not None:
+            updates["telemetry_retention_days"]=str(p.telemetry_retention_days)
         for k,v in updates.items():
             old=c.execute("SELECT setting_value FROM app_settings WHERE setting_key=?",(k,)).fetchone()
             ov=old["setting_value"] if old else None
