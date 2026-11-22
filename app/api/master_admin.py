@@ -30,7 +30,7 @@ def get_settings(actor:dict=Depends(require_master_admin)):
     wal_path=Path(str(db_path)+"-wal")
     wal_size=wal_path.stat().st_size if wal_path.exists() else 0
     return {
-        "settings":{"node_interval_minutes":int(v.get("node_interval_minutes","5")),"node_interval_hours":int(v.get("node_interval_minutes","5"))/60,"telemetry_retention_days":int(v.get("telemetry_retention_days","3")),"daily_collection_time":v.get("daily_collection_time","00:15")},
+        "settings":{"node_interval_minutes":int(v.get("node_interval_minutes","5")),"node_interval_hours":max(1,(int(v.get("node_interval_minutes","5"))+59)//60),"telemetry_retention_days":int(v.get("telemetry_retention_days","3")),"daily_collection_time":v.get("daily_collection_time","00:15")},
         "telemetry_usage":{"collection_runs":run_count,"node_samples":node_samples,"drive_samples":drive_samples,"database_size_bytes":db_size,"wal_size_bytes":wal_size,"last_cleanup_at":cleanup["last_completed_at"] if cleanup else None,"last_cleanup_status":cleanup["last_status"] if cleanup else None,"last_cleanup_error":cleanup["last_error"] if cleanup else None},
         "last_change_at":last,"scheduler_refresh_seconds":60
     }
