@@ -26,7 +26,7 @@ def test_node_performance_endpoint_rejects_unsupported_window(viewer_client):
     assert response.status_code == 422
 
 
-def test_node_performance_coverage_is_explicitly_collection_run_coverage(viewer_client):
+def test_node_performance_coverage_uses_distinct_expected_intervals(viewer_client):
     stamp = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(timespec="seconds").replace("+00:00", "Z")
     with transaction() as connection:
         connection.execute(
