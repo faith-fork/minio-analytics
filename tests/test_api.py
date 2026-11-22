@@ -319,6 +319,7 @@ def test_master_admin_settings_require_privilege_and_password(admin_client, view
     assert updated.json()["effective_within_seconds"] == 60
     assert admin_client.get("/api/master-admin/settings").json()["settings"] == {
         "node_interval_minutes": 10,
+        "node_interval_hours": 10 / 60,
         "telemetry_retention_days": 7,
         "daily_collection_time": "00:30",
     }
