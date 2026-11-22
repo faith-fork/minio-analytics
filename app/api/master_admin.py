@@ -7,26 +7,50 @@ from pathlib import Path
 from scripts.backup_database import backup_database
 from app.auth.dependencies import require_master_admin
 from app.auth.security import verify_password
-from app.database.database import transaction
+from app.database.database import database_path, transaction
 router=APIRouter(prefix="/api/master-admin",tags=["master administration"])
 class SettingsUpdate(BaseModel):
     current_password:str=Field(min_length=1,max_length=1024)
-    node_interval_hours:int=Field(ge=1,le=24)
+    node_interval_minutes:int|None=Field(default=None,ge=1,le=60)
+    node_interval_hours:int|None=Field(default=None,ge=1,le=24)
+    telemetry_retention_days:int|None=Field(default=None,ge=1,le=90)
     daily_collection_time:str=Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 @router.get("/settings")
 def get_settings(actor:dict=Depends(require_master_admin)):
     with transaction() as c:
         rows=c.execute("SELECT setting_key,setting_value,updated_at FROM app_settings").fetchall()
         last=c.execute("SELECT MAX(changed_at) t FROM settings_audit").fetchone()["t"]
+        run_count=c.execute("SELECT COUNT(*) FROM node_health_runs").fetchone()[0]
+        node_samples=c.execute("SELECT COUNT(*) FROM node_health_metrics").fetchone()[0]
+        drive_samples=c.execute("SELECT COUNT(*) FROM drive_health_metrics").fetchone()[0]
+        cleanup=c.execute("SELECT last_completed_at,last_status,last_error FROM scheduler_state WHERE job_key='telemetry_retention'").fetchone()
     v={r["setting_key"]:r["setting_value"] for r in rows}
-    return {"settings":{"node_interval_hours":int(v.get("node_interval_hours","4")),"daily_collection_time":v.get("daily_collection_time","00:15")},"last_change_at":last,"scheduler_refresh_seconds":60}
+    db_path=database_path()
+    db_size=db_path.stat().st_size if db_path.exists() else 0
+    wal_path=Path(str(db_path)+"-wal")
+    wal_size=wal_path.stat().st_size if wal_path.exists() else 0
+    return {
+        "settings":{"node_interval_minutes":int(v.get("node_interval_minutes","5")),"node_interval_hours":(int(v.get("node_interval_minutes","5"))//60 if int(v.get("node_interval_minutes","5")) % 60 == 0 else None),"telemetry_retention_days":int(v.get("telemetry_retention_days","3")),"daily_collection_time":v.get("daily_collection_time","00:15")},
+        "telemetry_usage":{"collection_runs":run_count,"node_samples":node_samples,"drive_samples":drive_samples,"database_size_bytes":db_size,"wal_size_bytes":wal_size,"last_cleanup_at":cleanup["last_completed_at"] if cleanup else None,"last_cleanup_status":cleanup["last_status"] if cleanup else None,"last_cleanup_error":cleanup["last_error"] if cleanup else None},
+        "last_change_at":last,"scheduler_refresh_seconds":60
+    }
 @router.put("/settings")
 def update_settings(p:SettingsUpdate,actor:dict=Depends(require_master_admin)):
     with transaction() as c:
         u=c.execute("SELECT password_hash,is_active FROM users WHERE id=?",(actor["id"],)).fetchone()
         if u is None or not u["is_active"] or not verify_password(p.current_password,u["password_hash"]):
             raise HTTPException(status_code=403,detail="Password confirmation failed")
-        updates={"node_interval_hours":str(p.node_interval_hours),"daily_collection_time":p.daily_collection_time}
+        interval_minutes=p.node_interval_minutes if p.node_interval_minutes is not None else (p.node_interval_hours*60 if p.node_interval_hours is not None else None)
+        if interval_minutes is None:
+            raise HTTPException(status_code=422,detail="node_interval_minutes or legacy node_interval_hours is required")
+        if interval_minutes > 60:
+            raise HTTPException(
+                status_code=422,
+                detail="Node telemetry collection interval cannot exceed 60 minutes; use node_interval_minutes",
+            )
+        updates={"node_interval_minutes":str(interval_minutes),"daily_collection_time":p.daily_collection_time}
+        if p.telemetry_retention_days is not None:
+            updates["telemetry_retention_days"]=str(p.telemetry_retention_days)
         for k,v in updates.items():
             old=c.execute("SELECT setting_value FROM app_settings WHERE setting_key=?",(k,)).fetchone()
             ov=old["setting_value"] if old else None

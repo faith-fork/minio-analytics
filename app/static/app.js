@@ -1,6 +1,6 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
-const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null} };
+const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6 };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
 const bytes = n => n == null ? "—" : (n/1024**4).toFixed(2)+" TiB";
 const tibValue = n => n == null ? "—" : (n/1024**4).toFixed(2);
@@ -8,6 +8,7 @@ const pct = (used,total) => used == null || !total ? null : Math.max(0,Math.min(
 const esc = s => String(s ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const dateLabel = s => s ? new Date(s+"T00:00:00").toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}) : "—";
 const timestampLabel = s => s ? new Intl.DateTimeFormat("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:true,timeZone:"Asia/Kolkata"}).format(new Date(s))+" IST" : "Not collected";
+const snapshotTimestampLabel = s => s ? new Intl.DateTimeFormat("en-IN",{day:"2-digit",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:true,timeZone:"Asia/Kolkata"}).format(new Date(s))+" IST" : "Not collected";
 async function api(path, options={}) {
   const response = await fetch(path,{credentials:"same-origin",headers:{"Content-Type":"application/json",...(options.headers||{})},...options});
   if(response.status===401){showLogin();throw new Error("Your session has expired. Please sign in again.");}
@@ -267,7 +268,7 @@ async function renderBucketUsageReport(){
   const dataAsOf=snapshotMap.size&&[...snapshotMap.values()].every(x=>x.date&&x.ts)?[...snapshotMap.values()].map(x=>x.ts).sort()[0]:null;
   const cards=[metric("USED STORAGE",bytes(totals.used_bytes),"Sum across filtered buckets","◒"),metric("ALLOCATED QUOTA",bytes(totals.quota_bytes),"Sum of filtered bucket quotas","▤"),metric("OBJECTS",totals.object_count==null?"—":fmt(totals.object_count,0),"Across filtered buckets","◫"),metric("VERSIONS",totals.version_count==null?"—":fmt(totals.version_count,0),"Stored object versions","▦"),metric("DELETE MARKERS",totals.delete_marker_count==null?"—":fmt(totals.delete_marker_count,0),"Across filtered buckets","◇"),metric("METRIC COVERAGE",items.length?fmt(withMetrics,0)+" / "+fmt(items.length,0):"0","Filtered buckets with metrics · "+(coverage==null?"—":fmt(coverage,1)+"%"),"◔")].join("");
   const rows=items.map(x=>{const status=x.status==="Available"?'<span class="status-pill">Available</span>':x.status==="Unavailable"?'<span class="status-pill bad">Unavailable</span>':'<span class="status-pill warn">No snapshot</span>';const tenant=x.metric_bucket_id?(x.tenant_name_at_snapshot||"Unassigned"):"—";return '<tr><td><span class="cell-strong">'+esc(x.bucket_name)+'</span></td><td>'+esc(x.cluster_name)+'</td><td>'+esc(x.location_name)+'</td><td>'+esc(tenant)+'</td><td>'+tibValue(x.quota_bytes)+'</td><td>'+tibValue(x.used_bytes)+'</td><td>'+(x.usage_pct==null?"—":fmt(x.usage_pct,1)+"%")+'</td><td>'+(x.object_count==null?"—":fmt(x.object_count,0))+'</td><td>'+(x.version_count==null?"—":fmt(x.version_count,0))+'</td><td>'+(x.delete_marker_count==null?"—":fmt(x.delete_marker_count,0))+'</td><td>'+status+'</td></tr>';});
-  const asOf=dataAsOf?timestampLabel(dataAsOf):"Unavailable — one or more filtered clusters have no bucket snapshot",summary=filters.cluster.length||filters.location.length||filters.tenant.length?"Filtered view · ":"";
+  const asOf=dataAsOf?snapshotTimestampLabel(dataAsOf):"Unavailable — one or more filtered clusters have no bucket snapshot",summary=filters.cluster.length||filters.location.length||filters.tenant.length?"Filtered view · ":"";
   const bucketUsageColumns=[{key:"bucket",label:"BUCKET"},{key:"cluster",label:"CLUSTER"},{key:"location",label:"LOCATION"},{key:"tenant",label:"TENANT"},{key:"quota",label:"QUOTA (TiB)"},{key:"used",label:"USED (TiB)"},{key:"usage_pct",label:"USAGE %"},{key:"objects",label:"OBJECTS"},{key:"versions",label:"VERSIONS"},{key:"delete_markers",label:"DELETE MARKERS"},{key:"status",label:"STATUS"}];
   const bucketUsageVisibility=loadReportColumnVisibility("bucket-usage",bucketUsageColumns);
   $("#content").innerHTML=pageHead("Consolidated Bucket Usage Report","Latest stored bucket usage for active buckets across enabled clusters. Data as of "+esc(asOf)+".",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+reportTabs("bucket-usage-report")+filterPanel+'<div class="metric-grid bucket-usage-grid">'+cards+'</div>'+table("Bucket usage by tenant and cluster",summary+fmt(items.length,0)+" of "+fmt(allItems.length,0)+" active bucket(s) · "+fmt(clusterIds.length,0)+" cluster(s) · latest bucket snapshot per cluster",bucketUsageColumns.map(column=>column.label),rows,"No buckets match the selected filters.",{id:"bucket-usage",columns:bucketUsageColumns,visibility:bucketUsageVisibility})+'<div class="report-footnotes"><strong>Calculation and coverage notes</strong><ul><li>Each cluster uses its latest stored bucket snapshot date; all active buckets in that cluster are represented.</li><li>Totals are shown only when every filtered bucket has an available, non-null value for that metric. Missing values are never treated as zero.</li><li>Tenant attribution is taken from the bucket snapshot, not the current bucket assignment.</li><li>Usage % = Used bytes ÷ Quota bytes × 100; it is unavailable when quota is zero or missing.</li></ul><p>Capacity units are shown in the column headers. A dash indicates missing snapshot data or incomplete metric coverage.</p></div>';
@@ -284,17 +285,21 @@ async function renderMasterAdmin(){
     api("/api/master-admin/settings"),
     api("/api/master-admin/backups")
   ]);
-  const s=d.settings;
+  const s=d.settings,u=d.telemetry_usage||{};
   const backupRows=backups.items.map(b=>`<tr><td><span class="cell-strong">${esc(b.filename)}</span></td><td>${timestampLabel(b.created_at)}</td><td>${fmt(b.size_bytes/1024/1024,2)} MiB</td><td>${pill("success")} Verified</td><td><a class="table-link" href="${esc(b.download_url)}">Download ↓</a></td></tr>`);
+  const telemetryPanel='<section class="panel" style="max-width:100%;margin-bottom:16px"><div class="panel-header"><div><h3>Infrastructure telemetry footprint</h3><p>Current high-frequency sample counts and SQLite storage footprint.</p></div><span class="panel-tag">RETENTION MONITORING</span></div><div class="metric-grid">'+metric("COLLECTION RUNS",fmt(u.collection_runs,0),"Stored node-health snapshots","◷")+metric("NODE SAMPLES",fmt(u.node_samples,0),"Per-node records","⌁")+metric("DRIVE SAMPLES",fmt(u.drive_samples,0),"Per-drive records","▤")+metric("DATABASE SIZE",fmt((u.database_size_bytes||0)/1024/1024,2)+" MiB","Entire analytics database","▣")+"</div><p class=\"cell-muted\">Database size includes reports and configuration data, not only infrastructure telemetry. SQLite reuses freed pages, so the file may not shrink after cleanup. WAL currently uses "+fmt((u.wal_size_bytes||0)/1024/1024,2)+" MiB. Last retention cleanup: "+(u.last_cleanup_at?timestampLabel(u.last_cleanup_at):"Not yet run")+" · "+(u.last_cleanup_status||"Pending")+(u.last_cleanup_error?" · "+esc(u.last_cleanup_error):"")+".</p></section>";
   $("#content").innerHTML=pageHead("Master Admin","Configure collector cadence and manage verified database backups.")+
     `<section class="panel" style="max-width:760px;margin-bottom:16px"><div class="panel-header"><div><h3>Collector schedule</h3><p>All times use Asia/Kolkata (IST).</p></div><span class="panel-tag">LIVE SETTINGS</span></div>
     <form id="master-settings-form" class="form-grid" style="display:grid;gap:14px;max-width:520px">
-      <label>Node, drive health and filesystem interval (hours)<input class="form-control" type="number" name="node_interval_hours" min="1" max="24" step="1" value="${s.node_interval_hours}" required></label>
-      <p class="cell-muted">Default: every 4 hours. Valid range: 1–24 hours. Includes node availability, CPU, memory, load, per-drive health/error counters and filesystem utilization.</p>
+      <label>Node, drive health and filesystem interval (minutes)<input class="form-control" type="number" name="node_interval_minutes" min="1" max="60" step="1" value="${s.node_interval_minutes}" required></label>
+      <p class="cell-muted">Default: every 5 minutes. Valid range: 1–60 minutes. Daily capacity, bucket and storage-topology collection remains separate.</p>
+      <label>Detailed infrastructure telemetry retention (days)<input class="form-control" type="number" name="telemetry_retention_days" min="1" max="90" step="1" value="${s.telemetry_retention_days}" required></label>
+      <p class="cell-muted">Default: 3 days. Applies to high-frequency node and drive samples across all configured clusters. Expired samples are removed automatically once per day. Reducing retention deletes older samples at the next cleanup; increasing it cannot restore deleted data.</p>
       <label>Daily capacity, bucket and pool collection time (IST)<input class="form-control" type="time" name="daily_collection_time" value="${esc(s.daily_collection_time)}" required></label>
       <label>Confirm your Master Admin password<input class="form-control" type="password" name="current_password" autocomplete="current-password" required></label>
       <div><button class="primary-button" type="submit">Save collector settings</button></div>
-    </form><p class="cell-muted" style="margin-top:14px">The scheduler checks settings every 60 seconds. Pool and erasure-set telemetry remains part of the daily collection. Scheduled backups continue at their configured time.</p></section>`+
+    </form><p class="cell-muted" style="margin-top:14px">The scheduler checks settings every 60 seconds. Retention cleanup runs daily. Daily reports and storage-topology history are not affected. Scheduled database backups continue at their configured time.</p></section>`+
+    telemetryPanel+
     `<section class="panel" style="max-width:100%"><div class="panel-header"><div><h3>Database backups</h3><p>Creates a consistent SQLite online backup and verifies it with PRAGMA integrity_check. The dashboard remains available.</p></div><button class="primary-small" data-action="create-backup">Create backup now</button></div><p class="cell-muted" style="margin:0 0 14px">Manual backups use the same backup directory as scheduled backups. Scheduled retention remains 14 days.</p></section>`+
     table("Backup history",backups.count+" backup file(s)",["FILE","CREATED AT","SIZE","INTEGRITY",""],backupRows,"No database backups found.");
 }
@@ -351,6 +356,8 @@ async function showClusterTopology(id, section="infra-overview"){
   const storageView=section==="storage-overview"||section==="pools"||section==="sets";
   const tabs=storageView?[["storage-overview","Overview"],["pools","Pools"],["sets","Erasure Sets"]]:[["infra-overview","Overview"],["nodes","Nodes"],["drives","Drives"]];
   const tabHtml='<div class="tabs">'+tabs.map(([key,label])=>'<button class="tab '+(section===key?'active':'')+'" data-topology-tab="'+key+'">'+label+'</button>').join("")+'</div>';
+  const nodeSubsection=state.nodeSubsection||"health";
+  const nodeSubTabsHtml='<div class="tabs node-subtabs">'+[["health","Health & Availability"],["performance","Performance"],["reports","Reports"]].map(([key,label])=>'<button class="tab '+(nodeSubsection===key?'active':'')+'" data-node-subtab="'+key+'">'+label+'</button>').join("")+'</div>';
   const nodes=d.nodes||[],drives=d.drives||[],pools=d.pools||[],sets=d.erasure_sets||[];
   const driveCountsComplete=nodes.length>0&&nodes.every(n=>n.drives_online!=null&&n.drives_offline!=null);
   const drivesOnline=driveCountsComplete?nodes.reduce((sum,n)=>sum+n.drives_online,0):null;
@@ -369,24 +376,32 @@ async function showClusterTopology(id, section="infra-overview"){
   const poolRows=pools.map(p=>'<tr><td>'+esc(p.pool_id)+'</td><td>'+p.erasure_set_count+'</td><td>'+(p.online_drives??'—')+'</td><td>'+(p.healing_drives??'—')+'</td></tr>');
   const setRows=sets.map(s=>'<tr><td>'+esc(s.pool_id)+'</td><td>'+esc(s.set_id)+'</td><td>'+(s.status_value??'—')+'</td><td>'+(s.online_drives??'—')+'</td><td>'+(s.healing_drives??'—')+'</td><td>'+(s.read_quorum??'—')+'</td><td>'+(s.write_quorum??'—')+'</td></tr>');
 
-  let trendData=null;
+  let trendData=null,performanceData=null;
   const trendFilter=state.topologyTrendFilters?.[id]||{startDate:"",endDate:""};
-  if(section==="nodes"||section==="drives"){
+  if(section==="nodes"&&nodeSubsection==="health"){
     const trendParams=new URLSearchParams();
     if(trendFilter.startDate)trendParams.set("start_date",trendFilter.startDate);
     if(trendFilter.endDate)trendParams.set("end_date",trendFilter.endDate);
     trendData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/topology/trends?"+trendParams.toString());
   }
-  const trendControls=trendData?'<section class="panel health-trends-panel"><div class="panel-header"><div><h3>Historical infrastructure trends</h3><p>Four-hour telemetry samples · '+fmt(trendData.sample_count||0,0)+' samples</p></div></div><div class="health-trend-filters"><label>FROM DATE<input id="infra-trend-start" type="date" value="'+esc(trendFilter.startDate)+'"></label><label>TO DATE<input id="infra-trend-end" type="date" value="'+esc(trendFilter.endDate)+'"></label><button class="primary-small" data-action="apply-infra-trends">Apply</button><button class="subtle-button" data-action="reset-infra-trends">Last 30 days</button></div></section>':'';
+  if(section==="drives"){
+    const trendParams=new URLSearchParams();
+    if(trendFilter.startDate)trendParams.set("start_date",trendFilter.startDate);
+    if(trendFilter.endDate)trendParams.set("end_date",trendFilter.endDate);
+    trendData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/topology/trends?"+trendParams.toString());
+  }
+  if(section==="nodes"){
+    performanceData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/nodes/performance?hours="+state.nodePerformanceHours);
+  }
+  const trendControls=trendData?'<section class="panel health-trends-panel"><div class="panel-header"><div><h3>Historical infrastructure trends</h3><p>Persisted high-frequency telemetry · '+fmt(trendData.sample_count||0,0)+' samples</p></div></div><div class="health-trend-filters"><label>FROM DATE<input id="infra-trend-start" type="date" value="'+esc(trendFilter.startDate)+'"></label><label>TO DATE<input id="infra-trend-end" type="date" value="'+esc(trendFilter.endDate)+'"></label><button class="primary-small" data-action="apply-infra-trends">Apply</button><button class="subtle-button" data-action="reset-infra-trends">Last 30 days</button></div></section>':'';
   const trendSamples=trendData?.samples||[];
-  const trendLabels=trendSamples.map(x=>timestampLabel(x.snapshot_ts));
+  const trendLabels=trendSamples.map(x=>snapshotTimestampLabel(x.snapshot_ts));
   const trendPanel=(title,description,canvasId)=>'<section class="panel"><div class="panel-header"><div><h3>'+title+'</h3><p>'+description+'</p></div></div>'+(trendSamples.length?'<div class="chart-wrap health-trend-chart"><canvas id="'+canvasId+'"></canvas></div>':'<div class="chart-empty-state"><strong>No historical samples available</strong><p>No telemetry was stored in the selected date range.</p></div>')+'</section>';
   const infraOverview='<div class="metric-grid">'+
     metric("NODES",nodes.length,nodes.filter(n=>n.node_exporter_up===1).length+" Node Exporter targets reachable","⌁")+
     metric("DRIVES",drives.length,drivesOnline==null?"Online/offline counts unavailable":drivesOnline+" online · "+drivesOffline+" offline","▤")+
     metric("NODE EXPORTER",nodes.filter(n=>n.node_exporter_up===1).length+" / "+nodes.length,"Reachable nodes","◉")+
-    metric("MINIO SCRAPES",nodes.filter(n=>n.minio_scrape_up===1).length+" / "+nodes.length,"Reachable MinIO targets","◈")+'</div>'+
-    table("Node availability","Node Exporter and MinIO scrape status are shown independently.",["NODE","NODE EXPORTER","MINIO TARGET","CPU","MEMORY USED","LOAD 1M","DRIVES UP","DRIVES DOWN"],nodeRows);
+    metric("MINIO SCRAPES",nodes.filter(n=>n.minio_scrape_up===1).length+" / "+nodes.length,"Reachable MinIO targets","◈")+'</div>';
   const storageOverview='<div class="metric-grid">'+
     metric("STORAGE POOLS",pools.length,"Pools discovered","▦")+
     metric("ERASURE SETS",sets.length,"Sets discovered","◫")+
@@ -395,12 +410,25 @@ async function showClusterTopology(id, section="infra-overview"){
     table("Storage pools","Pool counts and drive state derived from discovered erasure-set metrics.",["POOL","ERASURE SETS","ONLINE DRIVES","HEALING DRIVES"],poolRows);
   let body="";
   if(section==="infra-overview") body=infraOverview;
-  if(section==="nodes") body=trendControls+'<div class="health-infra-trend-grid">'+
+  const perfNodes=performanceData?.nodes||[],perfSamples=performanceData?.samples||[];
+  const perfRows=perfNodes.map(n=>'<tr><td><span class="cell-strong">'+esc(n.node_name)+'</span></td><td>'+(n.avg_cpu_pct==null?'—':fmt(n.avg_cpu_pct,1)+'%')+'</td><td>'+(n.avg_memory_used_pct==null?'—':fmt(n.avg_memory_used_pct,1)+'%')+'</td><td>'+(n.avg_load1==null?'—':fmt(n.avg_load1,2))+'</td><td>'+fmt(n.sample_count,0)+'</td><td>'+(n.node_exporter_availability_pct==null?'—':fmt(n.node_exporter_availability_pct,1)+'%')+'</td></tr>');
+  const perfToolbar='<div class="toolbar node-performance-range"><span class="cell-muted">AVERAGING WINDOW</span>'+[2,6,12,24].map(h=>'<button class="secondary-button '+(state.nodePerformanceHours===h?'active':'')+'" data-node-hours="'+h+'">'+h+'h</button>').join("")+'</div>';
+  const perfCoverage=performanceData?'<p class="cell-muted">Samples: '+fmt(performanceData.sample_count,0)+' / '+fmt(performanceData.expected_samples,0)+' expected · '+fmt(performanceData.collection_run_coverage_pct??performanceData.coverage_pct,1)+'% collection-run coverage · collected every '+performanceData.interval_minutes+' minutes</p>':'';
+  const perfTrendPanel=(title,description,canvasId)=>'<section class="panel"><div class="panel-header"><div><h3>'+title+'</h3><p>'+description+'</p></div></div>'+(perfSamples.length?'<div class="chart-wrap health-trend-chart"><canvas id="'+canvasId+'"></canvas></div>':'<div class="chart-empty-state"><strong>No historical samples available</strong><p>Wait for the configured '+fmt(performanceData?.interval_minutes??5,0)+' minute collection interval to build the selected time window.</p></div>')+'</section>';
+  const averageAvailableMetric=key=>{
+    const values=perfNodes.map(node=>node[key]).filter(value=>typeof value==="number"&&Number.isFinite(value));
+    return values.length?values.reduce((sum,value)=>sum+value,0)/values.length:null;
+  };
+  const avgCpu=averageAvailableMetric("avg_cpu_pct");
+  const avgMem=averageAvailableMetric("avg_memory_used_pct");
+  const avgLoad=averageAvailableMetric("avg_load1");
+  const nodeHealthBody=table("Node availability","Node Exporter and MinIO scrape status are shown independently.",["NODE","NODE EXPORTER","MINIO TARGET","CPU (LATEST)","MEMORY (LATEST)","LOAD 1M","DRIVES UP","DRIVES DOWN"],nodeRows);
+  const nodePerformanceBody=perfToolbar+perfCoverage+'<div class="metric-grid">'+metric("AVG CPU",avgCpu==null?"—":fmt(avgCpu,1)+"%","Across nodes · selected window","◒")+metric("AVG MEMORY",avgMem==null?"—":fmt(avgMem,1)+"%","Across nodes · selected window","▤")+metric("AVG LOAD",avgLoad==null?"—":fmt(avgLoad,2),"1-minute load · selected window","⌁")+'</div><div class="health-infra-trend-grid">'+perfTrendPanel("Average CPU utilization","Average across nodes at each configured collection interval","infra-cpu-trend")+perfTrendPanel("Average memory utilization","Weighted memory utilization across nodes at each configured collection interval","infra-memory-trend")+perfTrendPanel("Average load","Average 1-minute load across nodes","infra-load-trend")+'</div>'+table("Node performance","Per-node averages for the selected time window.",["NODE","AVG CPU","AVG MEMORY","AVG LOAD 1M","SAMPLES","NODE EXPORTER AVAILABILITY"],perfRows);
+  const nodeReportsBody=perfToolbar+perfCoverage+table("Node performance report","Average, minimum and peak values for each node over the selected window.",["NODE","CPU AVG / MIN / PEAK","MEMORY AVG / MIN / PEAK","LOAD AVG / PEAK","SAMPLES","EXPORTER AVAILABILITY"],perfNodes.map(n=>'<tr><td><span class="cell-strong">'+esc(n.node_name)+'</span></td><td>'+fmt(n.avg_cpu_pct,1)+'% / '+fmt(n.min_cpu_pct,1)+'% / '+fmt(n.max_cpu_pct,1)+'%</td><td>'+fmt(n.avg_memory_used_pct,1)+'% / '+fmt(n.min_memory_used_pct,1)+'% / '+fmt(n.max_memory_used_pct,1)+'%</td><td>'+fmt(n.avg_load1,2)+' / '+fmt(n.max_load1,2)+'</td><td>'+fmt(n.sample_count,0)+'</td><td>'+fmt(n.node_exporter_availability_pct,1)+'%</td></tr>'));
+  if(section==="nodes") body=nodeSubTabsHtml+(nodeSubsection==="health"?trendControls+'<div class="health-infra-trend-grid">'+
     trendPanel("Node Exporter availability","Percentage of nodes reporting successfully","infra-node-availability")+
     trendPanel("MinIO scrape availability","Percentage of MinIO node targets reporting","infra-minio-availability")+
-    trendPanel("CPU utilization","Average CPU utilization across cluster nodes","infra-cpu-trend")+
-    trendPanel("Memory utilization","Aggregate memory used as a percentage of total node memory","infra-memory-trend")+
-    '</div>'+table("Node health","CPU is calculated from a five-minute rate; memory uses MemAvailable.",["NODE","NODE EXPORTER","MINIO TARGET","CPU","MEMORY USED","LOAD 1M","DRIVES UP","DRIVES DOWN"],nodeRows);
+    '</div>'+nodeHealthBody:nodeSubsection==="performance"?nodePerformanceBody:nodeReportsBody);
   if(section==="drives") body=trendControls+'<div class="health-infra-trend-grid">'+
     trendPanel("Drive availability","Online and offline drive counts across the cluster","infra-drive-availability")+
     trendPanel("Drive error counters","Cumulative availability, I/O and timeout errors reported by drives","infra-drive-errors")+
@@ -413,13 +441,17 @@ async function showClusterTopology(id, section="infra-overview"){
   clearCharts();
   const pageTitle=storageView?"Storage Topology":"Node Infrastructure";
   const pageSubtitle=storageView?"MinIO storage pools, erasure sets and quorum topology":"Node availability, compute resources, drive health and filesystem telemetry";
-  const pageSnapshot='<span class="page-heading-snapshot">Snapshot '+esc(dateLabel(d.snapshot_date))+'</span>';
+  const pageSnapshot='<span class="page-heading-snapshot">Snapshot '+esc(snapshotTimestampLabel(storageView?d.topology_snapshot_ts:d.node_snapshot_ts))+'</span>';
   $("#content").innerHTML=pageHead(esc(d.cluster.name)+" — "+pageTitle,pageSubtitle+pageSnapshot,'<button class="subtle-button" data-action="back-to-cluster-overview">← Back to cluster</button>')+errors+tabHtml+body;
-  if(trendSamples.length&&section==="nodes"){
+  if(trendSamples.length&&section==="nodes"&&nodeSubsection==="health"){
     chart("infra-node-availability",trendLabels,[{label:"Node Exporter up",data:trendSamples.map(x=>x.node_exporter_availability_pct),color:"#16a085"}],"line",0,"%");
     chart("infra-minio-availability",trendLabels,[{label:"MinIO scrape up",data:trendSamples.map(x=>x.minio_scrape_availability_pct),color:"#4776c7"}],"line",0,"%");
-    chart("infra-cpu-trend",trendLabels,[{label:"CPU utilization",data:trendSamples.map(x=>x.avg_cpu_pct),color:"#4776c7"}],"line",0,"%");
-    chart("infra-memory-trend",trendLabels,[{label:"Memory utilization",data:trendSamples.map(x=>x.memory_used_pct),color:"#16a085"}],"line",0,"%");
+  }
+  if(perfSamples.length&&section==="nodes"&&nodeSubsection==="performance"){
+    const perfLabels=perfSamples.map(x=>snapshotTimestampLabel(x.snapshot_ts));
+    chart("infra-cpu-trend",perfLabels,[{label:"Average CPU",data:perfSamples.map(x=>x.avg_cpu_pct),color:"#4776c7"}],"line",0,"%");
+    chart("infra-memory-trend",perfLabels,[{label:"Average memory",data:perfSamples.map(x=>x.avg_memory_used_pct),color:"#16a085"}],"line",0,"%");
+    chart("infra-load-trend",perfLabels,[{label:"Average load 1m",data:perfSamples.map(x=>x.avg_load1),color:"#d99a35"}],"line",0,"");
   }
   if(trendSamples.length&&section==="drives"){
     chart("infra-drive-availability",trendLabels,[{label:"Drives online",data:trendSamples.map(x=>x.drives_online),color:"#16a085"},{label:"Drives offline",data:trendSamples.map(x=>x.drives_offline),color:"#d9534f"}],"line",0,"");
@@ -541,7 +573,7 @@ async function renderHealth(){
     const down=(c.node_exporter_down||0)+(c.minio_scrape_down||0);
     const status=Object.keys(errors).length||down>0||!c.node_count||!c.drive_count?"partial":"success";
     const errorText=Object.entries(errors).map(([k,v])=>k+": "+v).join("; ");
-    return `<tr><td><span class="cell-strong">${esc(n.cluster_name)}</span><br><span class="cell-muted">${esc(n.location_name)}</span></td><td>${timestampLabel(n.snapshot_ts)}</td><td>${pill(status)}</td><td>${fmt(c.node_exporter_up,0)} / ${fmt(c.node_count,0)}</td><td>${fmt(c.minio_scrape_up,0)} / ${fmt(c.node_count,0)}</td><td>${fmt(c.drive_count,0)}</td><td>${fmt(c.availability_error_drives,0)} / ${fmt(c.io_error_drives,0)} / ${fmt(c.timeout_error_drives,0)}</td><td>${esc(errorText||"—")}</td></tr>`;
+    return `<tr><td><span class="cell-strong">${esc(n.cluster_name)}</span><br><span class="cell-muted">${esc(n.location_name)}</span></td><td>${snapshotTimestampLabel(n.snapshot_ts)}</td><td>${pill(status)}</td><td>${fmt(c.node_exporter_up,0)} / ${fmt(c.node_count,0)}</td><td>${fmt(c.minio_scrape_up,0)} / ${fmt(c.node_count,0)}</td><td>${fmt(c.drive_count,0)}</td><td>${fmt(c.availability_error_drives,0)} / ${fmt(c.io_error_drives,0)} / ${fmt(c.timeout_error_drives,0)}</td><td>${esc(errorText||"—")}</td></tr>`;
   });
   const runRows=(h.recent_runs||[]).map(r=>{
     const detail=r.details||{},detailErrors=detail.errors||[],topologyErrors=detail.topology_errors||{};
@@ -554,7 +586,7 @@ async function renderHealth(){
   $("#content").innerHTML=pageHead("Collection health","Scheduler cadence, collection freshness and infrastructure telemetry status.",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
     `<div class="metric-grid">${metric("SUCCESSFUL DAILY RUNS",fmt(counts.success||0,0),"Persisted successful cluster runs","✓",true)}${metric("PARTIAL RUNS",fmt(counts.partial||0,0),"One or more metric families unavailable","◒")}${metric("FAILED RUNS",fmt(counts.failed||0,0),"Collector runs that failed","!")}${metric("RECENT EXECUTIONS",fmt(pg.total_items||0,0),"Matching runs in current filter","◷")}</div>`+
     '<div class="health-section-heading"><h2>Scheduler</h2><p>Settings are read from SQLite. The scheduler checks for due work every minute.</p></div>'+
-    `<div class="panel-grid scheduler-grid">${jobCard("Node & drive health",node,"NEXT EXPECTED RUN","Every "+fmt(s.node_interval_hours,0)+" hours · node exporter, MinIO scrape and drive telemetry")}${jobCard("Daily capacity & bucket collection",daily,"NEXT EXPECTED RUN","Daily at "+esc(s.daily_collection_time||"—")+" "+esc(s.timezone||"IST")+" · cluster, bucket and pool snapshots")}</div>`+
+    `<div class="panel-grid scheduler-grid">${jobCard("Node & drive health",node,"NEXT EXPECTED RUN","Every "+fmt(s.node_interval_minutes,0)+" minutes · node exporter, MinIO scrape and drive telemetry")}${jobCard("Daily capacity & bucket collection",daily,"NEXT EXPECTED RUN","Daily at "+esc(s.daily_collection_time||"—")+" "+esc(s.timezone||"IST")+" · cluster, bucket and pool snapshots")}</div>`+
     '<div class="health-section-heading"><h2>Daily collection by cluster</h2><p>Latest persisted daily collector result for each configured cluster.</p></div>'+
     table("Cluster collection status",(h.cluster_daily_status||[]).length+" cluster(s)",["CLUSTER / LOCATION","STATUS","STARTED","FINISHED","ATTEMPT","METRICS","ERRORS / DETAILS"],dailyRows,"No daily collection runs recorded.")+
     '<div class="health-section-heading"><h2>Node & drive telemetry</h2><p>Latest high-frequency sample per cluster. Drive error columns show affected drive counts: availability / I/O / timeout.</p></div>'+
@@ -657,6 +689,8 @@ document.addEventListener("click",async e=>{
   const bucket=e.target.closest("[data-bucket]");if(bucket){try{await showBucket(bucket.dataset.bucket);}catch(err){toast(err.message,true);}return;}
   const assign=e.target.closest("[data-assign]");if(assign){assignBucketModal(Number(assign.dataset.assign));return;}
   const topologyTab=e.target.closest("[data-topology-tab]");if(topologyTab){showClusterTopology(state.topologyClusterId,topologyTab.dataset.topologyTab).catch(err=>toast(err.message,true));return;}
+  const nodeSubTab=e.target.closest("[data-node-subtab]");if(nodeSubTab){state.nodeSubsection=nodeSubTab.dataset.nodeSubtab;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
+  const nodeHours=e.target.closest("[data-node-hours]");if(nodeHours){state.nodePerformanceHours=Number(nodeHours.dataset.nodeHours);showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   const action=e.target.closest("[data-action]")?.dataset.action;
   if(action==="open-tenant-snapshots"){const c=state.snapshotContext;showTenantSnapshots(c.id,c.attribution,c.days,c.startDate,c.endDate).catch(err=>toast(err.message,true));return;}
   if(action==="open-bucket-snapshots"){const c=state.snapshotContext;showBucketSnapshots(c.id,c.days,c.startDate,c.endDate).catch(err=>toast(err.message,true));return;}
@@ -734,8 +768,8 @@ $("#content").addEventListener("submit",async e=>{
   if(e.target.id!=="master-settings-form")return;
   e.preventDefault();const f=new FormData(e.target);
   try{
-    await api("/api/master-admin/settings",{method:"PUT",body:JSON.stringify({node_interval_hours:Number(f.get("node_interval_hours")),daily_collection_time:f.get("daily_collection_time"),current_password:f.get("current_password")})});
-    toast("Collector settings saved; scheduler will apply them within 60 seconds.");
+    await api("/api/master-admin/settings",{method:"PUT",body:JSON.stringify({node_interval_minutes:Number(f.get("node_interval_minutes")),telemetry_retention_days:Number(f.get("telemetry_retention_days")),daily_collection_time:f.get("daily_collection_time"),current_password:f.get("current_password")})});
+    toast("Collector cadence and telemetry retention settings saved.");
     await renderMasterAdmin();
   }catch(err){toast(err.message,true);}
 });

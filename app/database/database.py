@@ -33,12 +33,43 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
     CREATE TABLE IF NOT EXISTS scheduler_state(job_key TEXT PRIMARY KEY,last_started_at TEXT,last_completed_at TEXT,last_status TEXT,last_error TEXT);
     CREATE TABLE IF NOT EXISTS node_health_runs(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT NULL UNIQUE,cluster_id TEXT NOT NULL REFERENCES clusters(id),snapshot_ts TEXT NOT NULL,collected_at TEXT NOT NULL,family_errors_json TEXT NOT NULL DEFAULT '{}',node_count INTEGER NOT NULL DEFAULT 0,drive_count INTEGER NOT NULL DEFAULT 0);
     CREATE INDEX IF NOT EXISTS idx_node_health_runs_cluster_ts ON node_health_runs(cluster_id,snapshot_ts DESC);
+    CREATE INDEX IF NOT EXISTS idx_node_health_runs_snapshot_ts ON node_health_runs(snapshot_ts);
     CREATE TABLE IF NOT EXISTS node_health_metrics(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT NULL REFERENCES node_health_runs(run_id) ON DELETE CASCADE,cluster_id TEXT NOT NULL REFERENCES clusters(id),node_name TEXT NOT NULL,node_exporter_instance TEXT,minio_instance TEXT,node_exporter_up REAL,minio_scrape_up REAL,cpu_utilization_pct REAL,memory_total_bytes REAL,memory_available_bytes REAL,memory_used_bytes REAL,load1 REAL,drives_online INTEGER,drives_offline INTEGER,UNIQUE(run_id,node_name));
     CREATE TABLE IF NOT EXISTS drive_health_metrics(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT NULL REFERENCES node_health_runs(run_id) ON DELETE CASCADE,cluster_id TEXT NOT NULL REFERENCES clusters(id),node_name TEXT NOT NULL,server TEXT NOT NULL,drive_path TEXT NOT NULL,mountpoint TEXT,total_bytes REAL,used_bytes REAL,free_bytes REAL,availability_errors REAL,io_errors REAL,timeout_errors REAL,filesystem_total_bytes REAL,filesystem_available_bytes REAL,filesystem_free_bytes REAL,filesystem_readonly REAL,filesystem_used_bytes REAL,filesystem_used_pct REAL,UNIQUE(run_id,server,drive_path));
     """)
-    for k,v in (("node_interval_hours","4"),("daily_collection_time","00:15"),
+    legacy_interval = c.execute(
+        "SELECT setting_value FROM app_settings WHERE setting_key='node_interval_hours'"
+    ).fetchone()
+    existing_interval = c.execute(
+        "SELECT setting_value FROM app_settings WHERE setting_key='node_interval_minutes'"
+    ).fetchone()
+    migration_v10 = c.execute(
+        "SELECT 1 FROM schema_version WHERE version=10"
+    ).fetchone()
+    for k,v in (("node_interval_hours","4"),("node_interval_minutes","5"),("telemetry_retention_days","3"),("daily_collection_time","00:15"),
                 ("capacity_dp","1.33"),("capacity_rf","0.85"),("capacity_eff","0.99")):
         c.execute("INSERT OR IGNORE INTO app_settings(setting_key,setting_value) VALUES(?,?)",(k,v))
+    # The previous hourly collector setting must not be silently replaced by the
+    # new five-minute default. Also repair databases where the earlier telemetry
+    # migration already inserted its default 5-minute value but did not record v10.
+    if not migration_v10 and legacy_interval is not None and (
+        existing_interval is None or existing_interval["setting_value"] == "5"
+    ):
+        try:
+            legacy_hours = max(1, int(legacy_interval["setting_value"]))
+        except (TypeError, ValueError):
+            legacy_hours = 1
+        migrated_minutes = str(min(60, legacy_hours * 60))
+        c.execute(
+            """UPDATE app_settings SET setting_value=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+               updated_by='system-migration-v10' WHERE setting_key='node_interval_minutes'""",
+            (migrated_minutes,),
+        )
+        c.execute(
+            """INSERT INTO settings_audit(setting_key,old_value,new_value,changed_by)
+               VALUES('node_interval_minutes',?,?,?)""",
+            (f"{legacy_hours} hours (legacy)", migrated_minutes, "system-migration-v10"),
+        )
     c.executescript("""
     CREATE TABLE IF NOT EXISTS prometheus_connections (
         connection_id TEXT PRIMARY KEY,
@@ -78,6 +109,7 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
     );
     """)
     c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (9)")
+    c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (10)")
 def initialize_database() -> None:
     c=get_connection()
     try:

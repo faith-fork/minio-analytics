@@ -293,7 +293,9 @@ def test_master_admin_settings_require_privilege_and_password(admin_client, view
     settings = admin_client.get("/api/master-admin/settings")
     assert settings.status_code == 200
     assert settings.json()["settings"] == {
-        "node_interval_hours": 4,
+        "node_interval_minutes": 5,
+        "node_interval_hours": None,
+        "telemetry_retention_days": 3,
         "daily_collection_time": "00:15",
     }
     viewer_login = viewer_client.post("/api/auth/login", json={"username": "viewer-test", "password": "Viewer-Test-Password-123!"})
@@ -304,19 +306,21 @@ def test_master_admin_settings_require_privilege_and_password(admin_client, view
     assert admin_login.status_code == 200
     bad_password = admin_client.put(
         "/api/master-admin/settings",
-        json={"node_interval_hours": 6, "daily_collection_time": "00:30",
+        json={"node_interval_minutes": 10, "telemetry_retention_days": 7, "daily_collection_time": "00:30",
               "current_password": "Wrong-Password-123!"},
     )
     assert bad_password.status_code == 403
     updated = admin_client.put(
         "/api/master-admin/settings",
-        json={"node_interval_hours": 6, "daily_collection_time": "00:30",
+        json={"node_interval_minutes": 10, "telemetry_retention_days": 7, "daily_collection_time": "00:30",
               "current_password": "Admin-Test-Password-123!"},
     )
     assert updated.status_code == 200
     assert updated.json()["effective_within_seconds"] == 60
     assert admin_client.get("/api/master-admin/settings").json()["settings"] == {
-        "node_interval_hours": 6,
+        "node_interval_minutes": 10,
+        "node_interval_hours": None,
+        "telemetry_retention_days": 7,
         "daily_collection_time": "00:30",
     }
 
@@ -508,3 +512,23 @@ def test_cluster_analytics_reports_quota_metric_coverage(viewer_client: TestClie
     assert row["quota_bucket_count"] == 2
     assert row["bucket_quota_bytes"] is None
 
+
+def test_master_admin_settings_reject_legacy_interval_above_policy_limit(admin_client):
+    response = admin_client.put(
+        "/api/master-admin/settings",
+        json={"node_interval_hours": 2, "daily_collection_time": "00:45",
+              "current_password": "Admin-Test-Password-123!"},
+    )
+    assert response.status_code == 422
+    assert "cannot exceed 60 minutes" in response.json()["detail"]
+
+    one_hour = admin_client.put(
+        "/api/master-admin/settings",
+        json={"node_interval_hours": 1, "daily_collection_time": "00:45",
+              "current_password": "Admin-Test-Password-123!"},
+    )
+    assert one_hour.status_code == 200
+    settings = admin_client.get("/api/master-admin/settings").json()["settings"]
+    assert settings["node_interval_minutes"] == 60
+    assert settings["node_interval_hours"] == 1
+    assert settings["telemetry_retention_days"] == 3
