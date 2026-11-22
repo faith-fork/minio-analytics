@@ -1196,7 +1196,7 @@ def node_performance(
         )
         observed_min_interval = ordered_gaps[0]
         observed_max_interval = ordered_gaps[-1]
-        cadence_tolerance = max(1.0, interval_minutes * 0.2)
+        cadence_tolerance = max(0.5, interval_minutes * 0.2)
         cadence_adherence = (
             sum(abs(gap - interval_minutes) <= cadence_tolerance for gap in ordered_gaps)
             / len(ordered_gaps)
