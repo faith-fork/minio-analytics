@@ -1159,7 +1159,7 @@ def node_performance(
                       CASE WHEN SUM(m.memory_total_bytes)>0
                            THEN SUM(m.memory_used_bytes)*100.0/SUM(m.memory_total_bytes) END AS avg_memory_used_pct,
                       AVG(m.load1) AS avg_load1
-               FROM node_health_runs r JOIN node_health_metrics m ON m.run_id=r.run_id
+               FROM node_health_runs r LEFT JOIN node_health_metrics m ON m.run_id=r.run_id
                WHERE r.cluster_id=? AND r.snapshot_ts>=? AND r.snapshot_ts<?
                GROUP BY r.run_id,r.snapshot_ts ORDER BY r.snapshot_ts""",
             (cluster_id, start_text, end_text),
