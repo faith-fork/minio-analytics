@@ -81,7 +81,8 @@ function ensureChartControls(instance){
     actions.className="panel-header-actions";
     header.append(actions);
   }
-  if(!actions.querySelector('[data-chart-id="'+CSS.escape(canvas.id)+'"][data-chart-zoom]')){
+  // Object-size distribution is a categorical histogram: keep fullscreen, omit zoom controls.
+  if(canvas.id!=="object-size-histogram"&&!actions.querySelector('[data-chart-id="'+CSS.escape(canvas.id)+'"][data-chart-zoom]')){
     const controls=document.createElement("div");
     controls.className="chart-zoom-controls";
     controls.setAttribute("role","group");
