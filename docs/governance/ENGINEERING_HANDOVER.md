@@ -306,3 +306,29 @@ This section supersedes older handover snapshots above where their branch HEAD, 
 3. Complete the Prometheus authentication/secret-management design as a separate reviewed increment before production use.
 
 This section supersedes Section 14's PR-open, pre-merge, and pending-CI statements. Historical checkpoints are retained.
+
+
+## 16. Prometheus private shared-address regression correction — 23 November 2026
+
+### Root cause
+- PR #42 accepted RFC1918 IPv4, IPv6 ULA and globally routable addresses.
+- The user's previously working Prometheus endpoint is configured as a literal IPv4 address in RFC 6598 Shared Address Space (100.64.0.0/10).
+- Python classifies this address as neither RFC1918-private nor globally routable, so validation rejected it before opening the HTTP connection.
+- This is an application policy regression introduced by PR #42, not a subnet connectivity failure.
+
+### Corrective implementation under review
+- Feature branch: fix/prometheus-shared-address-endpoints.
+- Base integration commit: f3487f92bf7540d1c65559f6efe75e80c8eaee5c.
+- Permit RFC 6598 only for explicitly configured literal IPv4 endpoints; DNS names resolving into this range remain rejected.
+- Preserve metadata-address blocking, loopback/link-local/multicast/unspecified/reserved checks, DNS validation, socket IP pinning, redirect blocking, proxy isolation, response limits and TLS verification.
+- Add regression tests for allowed literal endpoints, CIDR boundaries, DNS-resolved shared addresses and metadata protection.
+- No database schema, UI, credential, runtime configuration or VM changes.
+
+### Validation and release boundary
+- Automated tests and CI: pending on this feature branch; not yet verified.
+- Full diff review and branch ancestry: pending.
+- PR merge: not authorized.
+- VM deployment/runtime validation: not authorized; user owns deployment and acceptance.
+- No merge or deployment without separate explicit user approval.
+
+This checkpoint supersedes the prior handover statement that customer private-network Prometheus connectivity was merely unverified: the reported failure is attributed to the new address-policy rejection, while successful post-fix runtime connectivity remains pending.
