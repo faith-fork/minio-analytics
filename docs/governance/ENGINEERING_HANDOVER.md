@@ -270,3 +270,39 @@ The transport connects to a validated literal IP and does not perform a second D
 4. Do not merge or deploy until CI, review, lab validation and explicit user approvals are satisfied.
 
 This section supersedes older handover snapshots above where their branch HEAD, open-PR list, next actions or merge/deployment boundary differ. The older sections are retained as historical checkpoints.
+
+
+## 15. Prometheus outbound security merge and post-merge verification — 23 November 2026
+
+### Integration state
+- PR #42: https://github.com/faith-fork/minio-analytics/pull/42
+- Title: Harden Prometheus outbound endpoint handling.
+- Feature branch: `feature/prometheus-egress-security`.
+- Exact reviewed PR head: `37fb667b42bd19bfd37f335e2ac6b52ea841f66c`.
+- PR comparison before merge: 10 commits ahead, 0 behind; merge base `7edb9223b94df42a6c7b7c951d1d1dd80d6f4923`.
+- Pre-merge PR CI run [45229185521](https://github.com/faith-fork/minio-analytics/actions/runs/45229185521): Python 3.12 regression tests and frontend syntax validation both passed.
+- No review submissions or inline review threads were present at the final pre-merge check.
+- User explicitly authorized proceeding with merge if all checks were good.
+- PR #42 was squash-merged successfully. Merge commit: `50563c749ce0adfb421713c8b09353a005cd7767`.
+- Verified integration branch `feature/auth-foundation` now points to `50563c749ce0adfb421713c8b09353a005cd7767`.
+
+### Post-merge CI
+- GitHub Actions run [45231779294](https://github.com/faith-fork/minio-analytics/actions/runs/45231779294) on exact merge commit `50563c749ce0adfb421713c8b09353a005cd7767`.
+- Python 3.12 regression tests: passed.
+- Frontend syntax validation: passed.
+- Both post-merge jobs completed successfully.
+
+### Deployment and runtime boundary
+- No VM commands were run; no service restart, deployment, or runtime configuration change was performed.
+- Lab deployment target remains the documented Rocky Linux 10.0 environment at `/opt/minio-analytics`, with persistent data under `/data/minio-analytics`.
+- Runtime validation still required: private customer-network Prometheus connectivity, DNS resolution/address pinning under the target network, HTTPS certificate validation and SNI/hostname behaviour, timeout/error handling.
+- Prometheus authentication and secure secret lifecycle remain a separate P0 item. Do not put credentials in endpoint URLs or ordinary configuration rows.
+- Deployment must use the verified integration branch and exact merge commit above, not the feature branch or an older checkout.
+- User owns VM operations and runtime acceptance. Provide commands and expected checks; do not execute VM deployment without explicit deployment authorization.
+
+### Next actions
+1. Prepare the VM deployment procedure for exact commit `50563c749ce0adfb421713c8b09353a005cd7767`, including backup, clean working-tree checks, dependency installation, restart, journal/health checks and rollback.
+2. Have the user execute the VM steps and provide runtime evidence.
+3. Complete the Prometheus authentication/secret-management design as a separate reviewed increment before production use.
+
+This section supersedes Section 14's PR-open, pre-merge, and pending-CI statements. Historical checkpoints are retained.
