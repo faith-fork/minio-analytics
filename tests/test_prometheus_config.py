@@ -59,7 +59,7 @@ def test_database_migration_creates_prometheus_configuration_tables(tmp_path, mo
 
     assert "prometheus_connections" in tables
     assert "cluster_prometheus_bindings" in tables
-    assert version == 10
+    assert version == 11
 
 
 def test_import_yaml_configuration_preserves_cluster_ids_and_binds_endpoints(
