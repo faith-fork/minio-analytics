@@ -1162,7 +1162,7 @@ def node_performance(
                       AVG(m.load1) AS avg_load1
                FROM node_health_runs r LEFT JOIN node_health_metrics m ON m.run_id=r.run_id
                WHERE r.cluster_id=? AND r.snapshot_ts>=? AND r.snapshot_ts<?
-               GROUP BY r.run_id,r.snapshot_ts,r.status ORDER BY r.snapshot_ts""",
+               GROUP BY r.run_id,r.snapshot_ts,r.status ORDER BY r.snapshot_ts,r.id""",
             (cluster_id, start_text, end_text),
         ).fetchall()
     expected = max(1, int(hours * 60 / interval_minutes))
