@@ -390,8 +390,9 @@ async function showClusterTopology(id, section="infra-overview"){
     if(trendFilter.endDate)trendParams.set("end_date",trendFilter.endDate);
     trendData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/topology/trends?"+trendParams.toString());
   }
-  if(section==="nodes"&&nodeSubsection==="performance"){
+  if(section==="nodes"){
     performanceData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/nodes/performance?hours="+state.nodePerformanceHours);
+    if(nodeSubsection==="performance"){
     const seriesParams=new URLSearchParams();
     if(state.performanceStart&&state.performanceEnd){
       seriesParams.set("start_ts",new Date(state.performanceStart).toISOString());
@@ -399,6 +400,7 @@ async function showClusterTopology(id, section="infra-overview"){
     }else seriesParams.set("hours",String(state.performanceRangeHours));
     (state.performanceSelectedNodes||[]).forEach(name=>seriesParams.append("node_names",name));
     var performanceSeriesData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/nodes/performance-series?"+seriesParams.toString());
+    }
   }
   const trendControls=trendData?'<section class="panel health-trends-panel"><div class="panel-header"><div><h3>Historical infrastructure trends</h3><p>Persisted high-frequency telemetry · '+fmt(trendData.sample_count||0,0)+' samples</p></div></div><div class="health-trend-filters"><label>FROM DATE<input id="infra-trend-start" type="date" value="'+esc(trendFilter.startDate)+'"></label><label>TO DATE<input id="infra-trend-end" type="date" value="'+esc(trendFilter.endDate)+'"></label><button class="primary-small" data-action="apply-infra-trends">Apply</button><button class="subtle-button" data-action="reset-infra-trends">Last 30 days</button></div></section>':'';
   const trendSamples=trendData?.samples||[];
@@ -418,6 +420,7 @@ async function showClusterTopology(id, section="infra-overview"){
   let body="";
   if(section==="infra-overview") body=infraOverview;
   const perfNodes=performanceData?.nodes||[],perfSamples=performanceData?.samples||[];
+  const perfToolbar='<div class="toolbar node-performance-range"><span class="cell-muted">AVERAGING WINDOW</span>'+[2,6,12,24].map(h=>'<button class="secondary-button '+(state.nodePerformanceHours===h?'active':'')+'" data-node-hours="'+h+'">'+h+'h</button>').join("")+'</div>';
   const perfRows=perfNodes.map(n=>'<tr><td><span class="cell-strong">'+esc(n.node_name)+'</span></td><td>'+(n.avg_cpu_pct==null?'—':fmt(n.avg_cpu_pct,1)+'%')+'</td><td>'+(n.avg_memory_used_pct==null?'—':fmt(n.avg_memory_used_pct,1)+'%')+'</td><td>'+(n.avg_load1==null?'—':fmt(n.avg_load1,2))+'</td><td>'+fmt(n.sample_count,0)+'</td><td>'+(n.node_exporter_availability_pct==null?'—':fmt(n.node_exporter_availability_pct,1)+'%')+'</td></tr>');
   const cadenceStatusLabels={on_schedule:"on schedule",faster_than_configured:"faster than configured",slower_than_configured:"slower than configured",irregular:"irregular",insufficient_history:"insufficient history"};
   const observedCadence=performanceData?.observed_interval_minutes==null?"not enough history":fmt(performanceData.observed_interval_minutes,1)+" min";
