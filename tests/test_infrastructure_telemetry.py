@@ -254,3 +254,104 @@ def test_node_performance_coverage_reports_missing_expected_intervals(
     assert payload["collection_run_coverage_pct"] == 50
     assert payload["interval_coverage_pct"] == 50
     assert payload["cadence_status"] == "insufficient_history"
+
+
+def test_node_performance_reports_collection_outcomes_and_hourly_reliability(
+    viewer_client,
+):
+    now = datetime.now(timezone.utc)
+    outcomes = (
+        (115, "failed"),
+        (65, "partial"),
+        (5, "success"),
+    )
+    with transaction() as connection:
+        for index, (minutes_ago, status) in enumerate(outcomes):
+            stamp = (now - timedelta(minutes=minutes_ago)).isoformat(
+                timespec="seconds"
+            ).replace("+00:00", "Z")
+            connection.execute(
+                """INSERT INTO node_health_runs
+                   (run_id,cluster_id,snapshot_ts,collected_at,node_count,drive_count,status)
+                   VALUES(?,?,?, ?,0,0,?)""",
+                (f"outcome-run-{index}", "cluster-1", stamp, stamp, status),
+            )
+
+    response = viewer_client.get(
+        "/api/analytics/clusters/cluster-1/nodes/performance?hours=2"
+    )
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["sample_count"] == 3
+    assert payload["run_status_counts"] == {
+        "success": 1,
+        "partial": 1,
+        "failed": 1,
+    }
+    assert payload["interval_status_counts"] == {
+        "success": 1,
+        "partial": 1,
+        "failed": 1,
+        "missing": 21,
+    }
+    assert payload["successful_interval_pct"] == pytest.approx(100 / 24)
+    assert len(payload["interval_statuses"]) == 24
+    assert len(payload["reliability_trend"]) == 2
+    assert sum(item["success_intervals"] for item in payload["reliability_trend"]) == 1
+    assert sum(item["partial_intervals"] for item in payload["reliability_trend"]) == 1
+    assert sum(item["failed_intervals"] for item in payload["reliability_trend"]) == 1
+    assert sum(item["missing_intervals"] for item in payload["reliability_trend"]) == 21
+
+
+def test_node_health_collection_persists_failed_cluster_outcome(
+    monkeypatch, viewer_client
+):
+    from app.collectors import node_health
+    from app.config.loader import ClusterConfig, LocationConfig
+
+    def fail_collection(*args, **kwargs):
+        raise RuntimeError("Prometheus unavailable")
+
+    monkeypatch.setattr(node_health, "collect_topology_snapshot", fail_collection)
+    location = LocationConfig(
+        id="LOC1",
+        name="Test Location",
+        prometheus_url="http://prometheus.example:9090",
+        clusters=(
+            ClusterConfig(
+                id="cluster-1",
+                name="Test Cluster",
+                prometheus_label_value="test-cluster",
+            ),
+        ),
+    )
+    snapshot = datetime.now(timezone.utc)
+
+    results = node_health.collect_node_health([location], snapshot_ts=snapshot)
+
+    assert results[0]["status"] == "failed"
+    with transaction() as connection:
+        row = connection.execute(
+            """SELECT status,node_count,drive_count
+               FROM node_health_runs WHERE run_id=?""",
+            (results[0]["run_id"],),
+        ).fetchone()
+    assert row["status"] == "failed"
+    assert row["node_count"] == 0
+    assert row["drive_count"] == 0
+
+
+def test_node_health_run_outcome_schema_is_versioned(viewer_client):
+    with transaction() as connection:
+        columns = {
+            row["name"] for row in connection.execute(
+                "PRAGMA table_info(node_health_runs)"
+            )
+        }
+        version = connection.execute(
+            "SELECT 1 FROM schema_version WHERE version=11"
+        ).fetchone()
+
+    assert {"status", "error_text"}.issubset(columns)
+    assert version is not None
