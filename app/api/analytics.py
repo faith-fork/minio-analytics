@@ -1300,6 +1300,131 @@ def node_performance(
     }
 
 
+
+@router.get("/clusters/{cluster_id}/nodes/performance-series")
+def node_performance_series(
+    cluster_id: str,
+    hours: int | None = Query(default=6, ge=1, le=72),
+    start_ts: str | None = Query(default=None),
+    end_ts: str | None = Query(default=None),
+    node_names: list[str] = Query(default=[]),
+    _: dict = Depends(get_current_user),
+) -> dict:
+    """Return raw timestamped node and filesystem samples for Performance Explorer."""
+    now = datetime.now(timezone.utc)
+    if bool(start_ts) != bool(end_ts):
+        raise HTTPException(status_code=422, detail="start_ts and end_ts must be supplied together")
+    if start_ts and end_ts:
+        try:
+            start = datetime.fromisoformat(start_ts.replace("Z", "+00:00"))
+            end = datetime.fromisoformat(end_ts.replace("Z", "+00:00"))
+            if start.tzinfo is None or end.tzinfo is None:
+                raise ValueError("Timezone offset is required")
+            start = start.astimezone(timezone.utc)
+            end = end.astimezone(timezone.utc)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Custom timestamps must be valid ISO-8601 values with timezone") from exc
+        if end <= start:
+            raise HTTPException(status_code=422, detail="end_ts must be later than start_ts")
+        if end > now:
+            raise HTTPException(status_code=422, detail="end_ts cannot be in the future")
+    else:
+        if hours not in (2, 6, 12, 24, 48, 72):
+            raise HTTPException(status_code=422, detail="hours must be 2, 6, 12, 24, 48 or 72")
+        end = now
+        start = now - timedelta(hours=hours)
+    start_text = start.isoformat(timespec="seconds").replace("+00:00", "Z")
+    end_text = end.isoformat(timespec="seconds").replace("+00:00", "Z")
+    with transaction() as connection:
+        cluster = connection.execute(
+            "SELECT c.id,c.name,l.name AS location_name FROM clusters c JOIN locations l ON l.id=c.location_id WHERE c.id=? AND c.enabled=1",
+            (cluster_id,),
+        ).fetchone()
+        if cluster is None:
+            raise HTTPException(status_code=404, detail="Cluster not found or disabled")
+        retention_row = connection.execute(
+            "SELECT setting_value FROM app_settings WHERE setting_key='telemetry_retention_days'"
+        ).fetchone()
+        retention_days = max(1, int(retention_row["setting_value"])) if retention_row else 3
+        interval_row = connection.execute(
+            "SELECT setting_value FROM app_settings WHERE setting_key='node_interval_minutes'"
+        ).fetchone()
+        interval_minutes = max(1, int(interval_row["setting_value"])) if interval_row else 5
+        if (end - start) > timedelta(days=retention_days):
+            raise HTTPException(status_code=422, detail=f"Selected range exceeds configured telemetry retention of {retention_days} days")
+        node_sql = """
+            SELECT r.snapshot_ts,m.node_name,m.cpu_utilization_pct,
+                   CASE WHEN m.memory_total_bytes>0
+                        THEN m.memory_used_bytes*100.0/m.memory_total_bytes END AS memory_used_pct,
+                   m.load1
+            FROM node_health_runs r
+            JOIN node_health_metrics m ON m.run_id=r.run_id
+            WHERE r.cluster_id=? AND r.snapshot_ts>=? AND r.snapshot_ts<=?
+        """
+        drive_sql = """
+            SELECT r.snapshot_ts,d.node_name,d.drive_path,d.mountpoint,
+                   d.filesystem_used_pct,
+                   CASE WHEN d.total_bytes>0 THEN d.used_bytes*100.0/d.total_bytes END AS minio_drive_used_pct
+            FROM node_health_runs r
+            JOIN drive_health_metrics d ON d.run_id=r.run_id
+            WHERE r.cluster_id=? AND r.snapshot_ts>=? AND r.snapshot_ts<=?
+        """
+        params: list = [cluster_id, start_text, end_text]
+        drive_params: list = list(params)
+        if node_names:
+            safe_names = list(dict.fromkeys(name.strip() for name in node_names if name.strip()))
+            if safe_names:
+                placeholders = ",".join("?" for _ in safe_names)
+                node_sql += f" AND m.node_name IN ({placeholders})"
+                drive_sql += f" AND d.node_name IN ({placeholders})"
+                params.extend(safe_names)
+                drive_params.extend(safe_names)
+        node_rows = connection.execute(node_sql + " ORDER BY r.snapshot_ts,m.node_name", params).fetchall()
+        drive_rows = connection.execute(drive_sql + " ORDER BY r.snapshot_ts,d.node_name,d.drive_path", drive_params).fetchall()
+        all_nodes = connection.execute(
+            "SELECT DISTINCT m.node_name FROM node_health_runs r JOIN node_health_metrics m ON m.run_id=r.run_id WHERE r.cluster_id=? ORDER BY m.node_name",
+            (cluster_id,),
+        ).fetchall()
+    series = [dict(row) for row in node_rows]
+    drives = [dict(row) for row in drive_rows]
+    metric_fields = {
+        "cpu": ("cpu_utilization_pct", "%"),
+        "memory": ("memory_used_pct", "%"),
+        "load": ("load1", ""),
+    }
+    statistics = {}
+    for node in sorted({row["node_name"] for row in series}):
+        node_samples = [row for row in series if row["node_name"] == node]
+        stats = {"sample_count": len(node_samples)}
+        for metric, (field, _) in metric_fields.items():
+            values = [row[field] for row in node_samples if row[field] is not None]
+            stats[metric] = {
+                "average": round(sum(values) / len(values), 3) if values else None,
+                "minimum": round(min(values), 3) if values else None,
+                "maximum": round(max(values), 3) if values else None,
+                "latest": values[-1] if values else None,
+                "sample_count": len(values),
+            }
+        statistics[node] = stats
+    return {
+        "cluster": dict(cluster),
+        "start_ts": start_text,
+        "end_ts": end_text,
+        "hours": round((end - start).total_seconds() / 3600, 2),
+        "retention_days": retention_days,
+        "interval_minutes": interval_minutes,
+        "available_nodes": [row["node_name"] for row in all_nodes],
+        "selected_nodes": node_names,
+        "series": series,
+        "drive_series": drives,
+        "statistics": statistics,
+        "sample_count": len(series),
+        "drive_sample_count": len(drives),
+        "supported_metrics": ["cpu", "memory", "load", "filesystem_utilization"],
+        "unavailable_metrics": ["disk_latency", "network_throughput"],
+    }
+
+
 @router.get("/clusters/{cluster_id}/topology")
 def cluster_topology(cluster_id: str, _: dict = Depends(get_current_user)) -> dict:
     """Return latest high-frequency node/drive health and daily pool topology."""
