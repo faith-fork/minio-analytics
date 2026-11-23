@@ -90,6 +90,7 @@ Do not issue deployment instructions based on this handover alone.
 This checkpoint is being committed through a dedicated documentation branch and PR:
 
 - Branch: `docs/engineering-governance-baseline`
+- Pull request: https://github.com/faith-fork/minio-analytics/pull/39
 - Base: `feature/auth-foundation` at `850d6394e61948a11f40e80c0ce4b7cc427466ba`
 - Intended files:
   - `docs/governance/MASTER_ENGINEERING_CHARTER.md` — faithful copy of the agreed v1.0 Charter.
