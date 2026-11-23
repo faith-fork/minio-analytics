@@ -488,3 +488,32 @@ def test_performance_series_accepts_72_hour_preset(viewer_client):
     )
     assert response.status_code == 200
     assert response.json()["hours"] == 72.0
+
+@pytest.mark.parametrize(
+    ("run_status", "family_errors_json"),
+    [
+        ("success", "{}"),
+        ("partial", '{"cpu":"timeout"}'),
+        # A failed collection can have no family-level error payload; the
+        # persisted run outcome remains authoritative.
+        ("failed", "{}"),
+    ],
+)
+def test_collection_health_exposes_persisted_node_collection_status(
+    viewer_client, run_status, family_errors_json
+):
+    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    with transaction() as connection:
+        connection.execute(
+            """INSERT INTO node_health_runs
+               (run_id,cluster_id,snapshot_ts,collected_at,node_count,drive_count,
+                family_errors_json,status)
+               VALUES('collection-health-status-run','cluster-1',?,?,0,0,?,?)""",
+            (stamp, stamp, family_errors_json, run_status),
+        )
+
+    response = viewer_client.get("/api/analytics/collection-health")
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload["node_health"]) == 1
+    assert payload["node_health"][0]["status"] == run_status
