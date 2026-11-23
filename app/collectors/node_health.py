@@ -39,9 +39,10 @@ def collect_node_health(locations:list[LocationConfig],snapshot_ts:datetime|None
                 try:
                     with transaction() as c:
                         c.execute("""INSERT INTO node_health_runs
-                        (run_id,cluster_id,snapshot_ts,collected_at,family_errors_json,node_count,drive_count,status)
-                        VALUES(?,?,?,?, '{}',0,0,'failed')""",
-                        (run_id,cluster.id,failed_snapshot_text,failed_collected_text))
+                        (run_id,cluster_id,snapshot_ts,collected_at,family_errors_json,node_count,drive_count,status,error_text)
+                        VALUES(?,?,?,?, '{}',0,0,'failed',?)""",
+                        (run_id,cluster.id,failed_snapshot_text,failed_collected_text,
+                         "Collection failed; inspect scheduler logs for details."))
                 except Exception:
                     logger.exception("Unable to persist failed node-health outcome for %s",cluster.id)
                 results.append({"cluster_id":cluster.id,"run_id":run_id,"error":str(exc),"status":"failed"})
