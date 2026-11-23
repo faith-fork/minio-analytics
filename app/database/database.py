@@ -31,7 +31,7 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
     CREATE TABLE IF NOT EXISTS app_settings(setting_key TEXT PRIMARY KEY,setting_value TEXT NOT NULL,updated_at TEXT NOT NULL DEFAULT(strftime('%Y-%m-%dT%H:%M:%fZ','now')),updated_by TEXT);
     CREATE TABLE IF NOT EXISTS settings_audit(id INTEGER PRIMARY KEY AUTOINCREMENT,setting_key TEXT NOT NULL,old_value TEXT,new_value TEXT NOT NULL,changed_at TEXT NOT NULL DEFAULT(strftime('%Y-%m-%dT%H:%M:%fZ','now')),changed_by TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS scheduler_state(job_key TEXT PRIMARY KEY,last_started_at TEXT,last_completed_at TEXT,last_status TEXT,last_error TEXT);
-    CREATE TABLE IF NOT EXISTS node_health_runs(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT NULL UNIQUE,cluster_id TEXT NOT NULL REFERENCES clusters(id),snapshot_ts TEXT NOT NULL,collected_at TEXT NOT NULL,family_errors_json TEXT NOT NULL DEFAULT '{}',node_count INTEGER NOT NULL DEFAULT 0,drive_count INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS node_health_runs(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT NULL UNIQUE,cluster_id TEXT NOT NULL REFERENCES clusters(id),snapshot_ts TEXT NOT NULL,collected_at TEXT NOT NULL,family_errors_json TEXT NOT NULL DEFAULT '{}',node_count INTEGER NOT NULL DEFAULT 0,drive_count INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'success' CHECK(status IN ('success','partial','failed')),error_text TEXT);
     CREATE INDEX IF NOT EXISTS idx_node_health_runs_cluster_ts ON node_health_runs(cluster_id,snapshot_ts DESC);
     CREATE INDEX IF NOT EXISTS idx_node_health_runs_snapshot_ts ON node_health_runs(snapshot_ts);
     CREATE TABLE IF NOT EXISTS node_health_metrics(id INTEGER PRIMARY KEY AUTOINCREMENT,run_id TEXT NOT NULL REFERENCES node_health_runs(run_id) ON DELETE CASCADE,cluster_id TEXT NOT NULL REFERENCES clusters(id),node_name TEXT NOT NULL,node_exporter_instance TEXT,minio_instance TEXT,node_exporter_up REAL,minio_scrape_up REAL,cpu_utilization_pct REAL,memory_total_bytes REAL,memory_available_bytes REAL,memory_used_bytes REAL,load1 REAL,drives_online INTEGER,drives_offline INTEGER,UNIQUE(run_id,node_name));
@@ -110,6 +110,20 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
     """)
     c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (9)")
     c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (10)")
+    run_cols = {r["name"] for r in c.execute("PRAGMA table_info(node_health_runs)")}
+    if "status" not in run_cols:
+        c.execute(
+            "ALTER TABLE node_health_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'success' "
+            "CHECK(status IN ('success','partial','failed'))"
+        )
+    if "error_text" not in run_cols:
+        c.execute("ALTER TABLE node_health_runs ADD COLUMN error_text TEXT")
+    # Preserve historical partial outcomes from the pre-v11 family-error record.
+    c.execute(
+        """UPDATE node_health_runs SET status='partial'
+           WHERE status='success' AND family_errors_json NOT IN ('{}', '')"""
+    )
+    c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (11)")
 def initialize_database() -> None:
     c=get_connection()
     try:
