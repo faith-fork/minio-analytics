@@ -357,7 +357,7 @@ async function showClusterTopology(id, section="infra-overview"){
   const tabs=storageView?[["storage-overview","Overview"],["pools","Pools"],["sets","Erasure Sets"]]:[["infra-overview","Overview"],["nodes","Nodes"],["drives","Drives"]];
   const tabHtml='<div class="tabs">'+tabs.map(([key,label])=>'<button class="tab '+(section===key?'active':'')+'" data-topology-tab="'+key+'">'+label+'</button>').join("")+'</div>';
   const nodeSubsection=state.nodeSubsection||"health";
-  const nodeSubTabsHtml='<div class="tabs node-subtabs">'+[["health","Health & Availability"],["performance","Performance"],["reports","Reports"]].map(([key,label])=>'<button class="tab '+(nodeSubsection===key?'active':'')+'" data-node-subtab="'+key+'">'+label+'</button>').join("")+'</div>';
+  const nodeSubTabsHtml='<div class="tabs node-subtabs">'+[["health","Health & Availability"],["performance","Performance"],["collection","Collection Health"],["reports","Reports"]].map(([key,label])=>'<button class="tab '+(nodeSubsection===key?'active':'')+'" data-node-subtab="'+key+'">'+label+'</button>').join("")+'</div>';
   const nodes=d.nodes||[],drives=d.drives||[],pools=d.pools||[],sets=d.erasure_sets||[];
   const driveCountsComplete=nodes.length>0&&nodes.every(n=>n.drives_online!=null&&n.drives_offline!=null);
   const drivesOnline=driveCountsComplete?nodes.reduce((sum,n)=>sum+n.drives_online,0):null;
@@ -438,12 +438,13 @@ async function showClusterTopology(id, section="infra-overview"){
   const avgMem=averageAvailableMetric("avg_memory_used_pct");
   const avgLoad=averageAvailableMetric("avg_load1");
   const nodeHealthBody=table("Node availability","Node Exporter and MinIO scrape status are shown independently.",["NODE","NODE EXPORTER","MINIO TARGET","CPU (LATEST)","MEMORY (LATEST)","LOAD 1M","DRIVES UP","DRIVES DOWN"],nodeRows);
-  const nodePerformanceBody=perfToolbar+perfCoverage+missingIntervalPanel+reliabilityPanel+'<div class="metric-grid">'+metric("AVG CPU",avgCpu==null?"—":fmt(avgCpu,1)+"%","Across nodes · selected window","◒")+metric("AVG MEMORY",avgMem==null?"—":fmt(avgMem,1)+"%","Across nodes · selected window","▤")+metric("AVG LOAD",avgLoad==null?"—":fmt(avgLoad,2),"1-minute load · selected window","⌁")+'</div><div class="health-infra-trend-grid">'+perfTrendPanel("Average CPU utilization","Average across nodes at each configured collection interval","infra-cpu-trend")+perfTrendPanel("Average memory utilization","Weighted memory utilization across nodes at each configured collection interval","infra-memory-trend")+perfTrendPanel("Average load","Average 1-minute load across nodes","infra-load-trend")+'</div>'+table("Node performance","Per-node averages for the selected time window.",["NODE","AVG CPU","AVG MEMORY","AVG LOAD 1M","SAMPLES","NODE EXPORTER AVAILABILITY"],perfRows);
-  const nodeReportsBody=perfToolbar+perfCoverage+table("Node performance report","Average, minimum and peak values for each node over the selected window.",["NODE","CPU AVG / MIN / PEAK","MEMORY AVG / MIN / PEAK","LOAD AVG / PEAK","SAMPLES","EXPORTER AVAILABILITY"],perfNodes.map(n=>'<tr><td><span class="cell-strong">'+esc(n.node_name)+'</span></td><td>'+fmt(n.avg_cpu_pct,1)+'% / '+fmt(n.min_cpu_pct,1)+'% / '+fmt(n.max_cpu_pct,1)+'%</td><td>'+fmt(n.avg_memory_used_pct,1)+'% / '+fmt(n.min_memory_used_pct,1)+'% / '+fmt(n.max_memory_used_pct,1)+'%</td><td>'+fmt(n.avg_load1,2)+' / '+fmt(n.max_load1,2)+'</td><td>'+fmt(n.sample_count,0)+'</td><td>'+fmt(n.node_exporter_availability_pct,1)+'%</td></tr>'));
+  const nodePerformanceBody=perfToolbar+'<div class="metric-grid">'+metric("AVG CPU",avgCpu==null?"—":fmt(avgCpu,1)+"%","Across nodes · selected window","◒")+metric("AVG MEMORY",avgMem==null?"—":fmt(avgMem,1)+"%","Across nodes · selected window","▤")+metric("AVG LOAD",avgLoad==null?"—":fmt(avgLoad,2),"1-minute load · selected window","⌁")+'</div><div class="health-infra-trend-grid">'+perfTrendPanel("Average CPU utilization","Average across nodes at each configured collection interval","infra-cpu-trend")+perfTrendPanel("Average memory utilization","Weighted memory utilization across nodes at each configured collection interval","infra-memory-trend")+perfTrendPanel("Average load","Average 1-minute load across nodes","infra-load-trend")+'</div>'+table("Node performance","Per-node averages for the selected time window.",["NODE","AVG CPU","AVG MEMORY","AVG LOAD 1M","SAMPLES","NODE EXPORTER AVAILABILITY"],perfRows);
+  const nodeCollectionBody=perfToolbar+perfCoverage+missingIntervalPanel+reliabilityPanel;
+  const nodeReportsBody=perfToolbar+table("Node performance report","Average, minimum and peak values for each node over the selected window.",["NODE","CPU AVG / MIN / PEAK","MEMORY AVG / MIN / PEAK","LOAD AVG / PEAK","SAMPLES","EXPORTER AVAILABILITY"],perfNodes.map(n=>'<tr><td><span class="cell-strong">'+esc(n.node_name)+'</span></td><td>'+fmt(n.avg_cpu_pct,1)+'% / '+fmt(n.min_cpu_pct,1)+'% / '+fmt(n.max_cpu_pct,1)+'%</td><td>'+fmt(n.avg_memory_used_pct,1)+'% / '+fmt(n.min_memory_used_pct,1)+'% / '+fmt(n.max_memory_used_pct,1)+'%</td><td>'+fmt(n.avg_load1,2)+' / '+fmt(n.max_load1,2)+'</td><td>'+fmt(n.sample_count,0)+'</td><td>'+fmt(n.node_exporter_availability_pct,1)+'%</td></tr>'));
   if(section==="nodes") body=nodeSubTabsHtml+(nodeSubsection==="health"?trendControls+'<div class="health-infra-trend-grid">'+
     trendPanel("Node Exporter availability","Percentage of nodes reporting successfully","infra-node-availability")+
     trendPanel("MinIO scrape availability","Percentage of MinIO node targets reporting","infra-minio-availability")+
-    '</div>'+nodeHealthBody:nodeSubsection==="performance"?nodePerformanceBody:nodeReportsBody);
+    '</div>'+nodeHealthBody:nodeSubsection==="performance"?nodePerformanceBody:nodeSubsection==="collection"?nodeCollectionBody:nodeReportsBody);
   if(section==="drives") body=trendControls+'<div class="health-infra-trend-grid">'+
     trendPanel("Drive availability","Online and offline drive counts across the cluster","infra-drive-availability")+
     trendPanel("Drive error counters","Cumulative availability, I/O and timeout errors reported by drives","infra-drive-errors")+
@@ -469,7 +470,7 @@ async function showClusterTopology(id, section="infra-overview"){
     chart("infra-load-trend",perfLabels,[{label:"Average load 1m",data:perfSamples.map(x=>x.avg_load1),color:"#d99a35"}],"line",0,"");
 
   }
-  if(reliabilityTrend.length&&section==="nodes"&&nodeSubsection==="performance"){
+  if(reliabilityTrend.length&&section==="nodes"&&nodeSubsection==="collection"){
     const reliabilityLabels=reliabilityTrend.map(x=>snapshotTimestampLabel(x.bucket_start_ts));
     chart("infra-collection-reliability",reliabilityLabels,[
       {label:"Successful",data:reliabilityTrend.map(x=>x.success_intervals),color:"#16a085"},
