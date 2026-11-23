@@ -181,3 +181,24 @@ The stale documentation proposals #21 and #22 were not merged. Replacement docum
 
 ### Current engineering boundary
 PRs #40 and #41 are prepared for review only. Their CI is not verified, and GitHub initially reported `mergeable=false` at PR creation; re-check mergeability and exact PR heads before any further action. PR #39 remains open and unmerged. The VM deployment state remains not verified. The user has not authorized merging or deployment.
+
+
+## 12. Merge authorization and quality-gate check (23 November 2026, 20:44 IST)
+
+The user responded "go ahead" after the three documentation PRs were presented as ready for review and explicit merge approval. This is treated as explicit authorization to merge PRs #39, #40 and #41, subject to the Charter's mandatory quality gates.
+
+### Fresh GitHub state
+- PR #39: open, mergeable; head `30ede0fb0d1cdd2eecff0115e61507a82cd6fe92`; base `feature/auth-foundation`.
+- PR #40: open, mergeable; head `07c27d8bb23467aefd5afa9a0422f8043b471561`; base `feature/auth-foundation`.
+- PR #41: open, mergeable; head `e97dc1a8aff4e8d4035771dbb8428c5f13bbc7b7`; base `feature/auth-foundation`.
+- The three PR heads and complete patches were re-fetched. Their branch comparisons remain respectively 8/0, 2/0 and 3/0 ahead/behind.
+
+### Blocking quality gate
+- The repository's `.github/workflows/tests.yml` defines pull-request tests for base branches `main` and `feature/**`; all three PRs target `feature/auth-foundation`.
+- For each exact PR head, the GitHub workflow-run lookup returned no PR-triggered workflow runs.
+- The combined commit-status lookup returned no statuses for PR #40 and PR #41; the current #39 head likewise has no recorded CI evidence in this review.
+- No alternate manual workflow-dispatch action is available through the connected GitHub interface.
+- No tests were run locally in this environment. Documentation-only changes reduce code risk but do not waive the Charter's explicit CI verification requirement.
+
+### Result
+User authorization to merge is recorded, but **no PR has been merged** because the mandatory CI evidence is absent. Do not merge until CI is visible and successful on the exact current head SHAs (or the user explicitly changes the Charter's quality-gate requirement). No deployment authorization has been given.
