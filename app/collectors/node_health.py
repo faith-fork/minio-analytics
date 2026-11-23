@@ -44,5 +44,5 @@ def collect_node_health(locations:list[LocationConfig],snapshot_ts:datetime|None
                         (run_id,cluster.id,failed_snapshot_text,failed_collected_text))
                 except Exception:
                     logger.exception("Unable to persist failed node-health outcome for %s",cluster.id)
-                results.append({"cluster_id":cluster.id,"error":str(exc),"status":"failed"})
+                results.append({"cluster_id":cluster.id,"run_id":run_id,"error":str(exc),"status":"failed"})
     return results
