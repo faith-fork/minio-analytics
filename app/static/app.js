@@ -70,7 +70,47 @@ function exportTableCsv(button){
   const filename=title.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"minio-report";
   link.href=url;link.download=filename+"-"+new Date().toISOString().slice(0,10)+".csv";document.body.append(link);link.click();link.remove();URL.revokeObjectURL(url);
 }
-function chart(id,labels,sets,type="line",yMin=null,ySuffix=""){if(!window.Chart)return;const canvas=$("#"+id);if(!canvas)return;const instance=new Chart(canvas,{type,data:{labels,datasets:sets.map(s=>({label:s.label,data:s.data,borderColor:s.color,backgroundColor:s.color+"18",borderWidth:2,borderDash:s.dash?[7,5]:[],pointRadius:labels.length>45?1.5:3,pointHoverRadius:5,tension:s.raw?0:.25,fill:false}))},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{position:"bottom",labels:{usePointStyle:true,boxWidth:7,font:{size:10}}},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+": "+(ctx.parsed.y==null?"—":new Intl.NumberFormat("en-IN",{maximumFractionDigits:3}).format(ctx.parsed.y)+ySuffix)}}},scales:{x:{grid:{display:false},ticks:{autoSkip:true,maxTicksLimit:11,maxRotation:45,minRotation:0,font:{size:9},color:"#94a0af"}},y:{...(yMin===null?{}:{min:yMin}),grid:{color:"#edf1f5"},ticks:{font:{size:9},color:"#94a0af",callback:value=>new Intl.NumberFormat("en-IN",{maximumFractionDigits:3}).format(value)+ySuffix}}}}});state.charts.push(instance);}
+function ensureChartControls(instance){
+  const canvas=instance?.canvas;
+  const panelEl=canvas?.closest(".panel");
+  const header=panelEl?.querySelector(".panel-header");
+  if(!canvas||!panelEl||!header)return;
+  let actions=header.querySelector(".panel-header-actions");
+  if(!actions){
+    actions=document.createElement("div");
+    actions.className="panel-header-actions";
+    header.append(actions);
+  }
+  if(!actions.querySelector('[data-chart-id="'+CSS.escape(canvas.id)+'"][data-chart-zoom]')){
+    const controls=document.createElement("div");
+    controls.className="chart-zoom-controls";
+    controls.setAttribute("role","group");
+    controls.setAttribute("aria-label","Chart zoom controls");
+    [["in","+","Zoom in"],["out","−","Zoom out"],["reset","Reset","Reset zoom"]].forEach(([action,label,title])=>{
+      const button=document.createElement("button");
+      button.type="button";
+      button.dataset.chartZoom=action;
+      button.dataset.chartId=canvas.id;
+      button.title=title;
+      button.setAttribute("aria-label",title);
+      button.textContent=label;
+      controls.append(button);
+    });
+    actions.prepend(controls);
+  }
+  if(!actions.querySelector('[data-expand-chart="'+CSS.escape(canvas.id)+'"]')){
+    const expand=document.createElement("button");
+    expand.type="button";
+    expand.className="chart-expand-button";
+    expand.dataset.expandChart=canvas.id;
+    expand.title="Expand chart";
+    expand.setAttribute("aria-label","Expand chart");
+    expand.textContent="⛶";
+    actions.append(expand);
+  }
+  panelEl.classList.add("chart-panel");
+}
+function chart(id,labels,sets,type="line",yMin=null,ySuffix=""){if(!window.Chart)return;const canvas=$("#"+id);if(!canvas)return;const instance=new Chart(canvas,{type,data:{labels,datasets:sets.map(s=>({label:s.label,data:s.data,borderColor:s.color,backgroundColor:s.color+"18",borderWidth:2,borderDash:s.dash?[7,5]:[],pointRadius:labels.length>45?1.5:3,pointHoverRadius:5,tension:s.raw?0:.25,fill:false}))},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{position:"bottom",labels:{usePointStyle:true,boxWidth:7,font:{size:10}}},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+": "+(ctx.parsed.y==null?"—":new Intl.NumberFormat("en-IN",{maximumFractionDigits:3}).format(ctx.parsed.y)+ySuffix)}}},scales:{x:{grid:{display:false},ticks:{autoSkip:true,maxTicksLimit:11,maxRotation:45,minRotation:0,font:{size:9},color:"#94a0af"}},y:{...(yMin===null?{}:{min:yMin}),grid:{color:"#edf1f5"},ticks:{font:{size:9},color:"#94a0af",callback:value=>new Intl.NumberFormat("en-IN",{maximumFractionDigits:3}).format(value)+ySuffix}}}}});state.charts.push(instance);ensureChartControls(instance);}
 function clearCharts(){state.charts.forEach(c=>c.destroy());state.charts=[];}
 function openExpandedChart(chartId,button){
   const instance=state.charts.find(item=>item.canvas?.id===chartId);
@@ -124,6 +164,7 @@ function drawObjectSizeHistogram(data){
   const rows=[...data.distribution].sort((a,b)=>a.object_count-b.object_count);
   const instance=new Chart(canvas,{type:"bar",data:{labels:rows.map(x=>histogramRangeLabel(x.range)),datasets:[{label:"Objects",data:rows.map(x=>x.object_count),backgroundColor:"#13a58b",borderRadius:4,barThickness:"flex",maxBarThickness:24}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{afterLabel:ctx=>{const x=rows[ctx.dataIndex];return x.percentage==null?"":x.percentage.toFixed(2)+"% of objects";}}}},scales:{x:{beginAtZero:true,grid:{color:"#edf1f5"},ticks:{font:{size:10},callback:v=>new Intl.NumberFormat("en-IN",{notation:"compact"}).format(v)}},y:{grid:{display:false},ticks:{font:{size:10},color:"#64748b"}}}}});
   state.charts.push(instance);
+  ensureChartControls(instance);
 }
 function setView(view){state.view=view;$$(".nav-link").forEach(b=>b.classList.toggle("active",b.dataset.view===(["bucket-usage-report","raw-capacity-report"].includes(view)?"capacity-report":view)));$("#page-breadcrumb").textContent=(["capacity-report","bucket-usage-report","raw-capacity-report"].includes(view)?"REPORTS":view.replaceAll("-"," ")).toUpperCase();render().catch(e=>toast(e.message,true));}
 async function loadOverview(){state.overview=await api("/api/analytics/overview");state.clusters=(await api("/api/analytics/clusters")).items;}
