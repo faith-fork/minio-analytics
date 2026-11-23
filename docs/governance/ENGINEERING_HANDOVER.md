@@ -223,9 +223,9 @@ The integration branch was compared against the final PR #41 merge commit and re
 
 ### Post-merge CI
 - PR #39 merge commit run [45209586859](https://github.com/faith-fork/minio-analytics/actions/runs/45209586859): both Python 3.12 tests and frontend syntax validation passed.
-- PR #40 merge commit run [45209660296](https://github.com/faith-fork/minio-analytics/actions/runs/45209660296): frontend syntax validation passed; Python 3.12 regression job was still running at the time of this handover update.
-- PR #41 merge commit run [45209696955](https://github.com/faith-fork/minio-analytics/actions/runs/45209696955): frontend syntax validation passed; Python 3.12 regression job was still running at the time of this handover update.
-- Re-check the two in-progress Python jobs and record their final conclusions before treating post-merge CI as fully complete.
+- PR #40 merge commit run [45209660296](https://github.com/faith-fork/minio-analytics/actions/runs/45209660296): both Python 3.12 regression tests and frontend syntax validation passed.
+- PR #41 merge commit run [45209696955](https://github.com/faith-fork/minio-analytics/actions/runs/45209696955): both Python 3.12 regression tests and frontend syntax validation passed.
+- All six post-merge jobs across the three merge commits completed successfully.
 
 ### Release boundary
 - Scope merged: governance documentation, telemetry-source ADR/README documentation, Phase 0 audit, data model and API inventory/backlog.
