@@ -232,3 +232,41 @@ The integration branch was compared against the final PR #41 merge commit and re
 - No application code, schema migration, or runtime configuration was changed by these three PRs.
 - No VM deployment was performed or authorized. Current deployed branch/SHA, service state and runtime behaviour remain **Not verified**.
 - Superseded PRs #21 and #22 remain open; no close action was taken.
+
+
+## 14. Prometheus outbound security increment — 23 November 2026
+
+### Baseline and branch
+- Verified integration branch: `feature/auth-foundation`, HEAD `7edb9223b94df42a6c7b7c951d1d1dd80d6f4923`.
+- Feature branch: `feature/prometheus-egress-security`.
+- PR #42: https://github.com/faith-fork/minio-analytics/pull/42
+- Current PR head: `d554bbf583bbbb97de05b42d9cf5f307e3d3c8d5`.
+- Compare: 9 commits ahead, 0 behind; merge base is the verified integration HEAD.
+
+### Scope implemented for review
+- Added endpoint validation for RFC1918 IPv4, IPv6 ULA and globally routable addresses; prohibited ranges and unsafe DNS answers are rejected.
+- Pins the actual TCP socket to a validated literal IP, while retaining the configured hostname for HTTP Host and HTTPS SNI/certificate verification.
+- Rejects redirects and uses no environment-derived proxy configuration.
+- Adds a 4 MiB decoded response limit and bounded timeout; TLS verification remains enabled by default.
+- Adds address-policy and client-transport regression tests, including direct socket-target assertions.
+- Declares urllib3 as an explicit dependency.
+- No schema changes, no credential storage, no UI changes and no VM deployment.
+
+### Remaining security items
+The transport connects to a validated literal IP and does not perform a second DNS lookup, closing the DNS validation/connection TOCTOU gap for this request path. Redirects are rejected. Prometheus authentication and secret lifecycle remain a separate unresolved security item. Host/network egress controls remain recommended defence in depth.
+
+### Validation and release boundary
+- Full PR diff fetched and reviewed; changed files are `app/collectors/prometheus.py`, new `app/collectors/prometheus_security.py`, and new `tests/test_prometheus_security.py`.
+- GitHub Actions run [45228980426](https://github.com/faith-fork/minio-analytics/actions/runs/45228980426) on exact PR head `d554bbf583bbbb97de05b42d9cf5f307e3d3c8d5`: Python 3.12 regression tests **passed (128 passed, 1 warning)**; frontend syntax validation **passed**.
+- The earlier run [45228712037](https://github.com/faith-fork/minio-analytics/actions/runs/45228712037) exposed a multicast-address policy test failure; this was corrected by explicitly rejecting multicast/reserved/special addresses. Do not treat the earlier failed run as final evidence.
+- PR is open and GitHub reports mergeable after refresh.
+- No merge authorization or deployment authorization has been given.
+- Runtime connectivity against private customer Prometheus endpoints remains unverified.
+
+### Next actions
+1. Re-run and verify CI on the final PR head after this handover update; inspect the exact head's run and jobs.
+2. Validate private customer-network connectivity and HTTPS certificate/SNI behaviour in the lab before release.
+3. Design Prometheus authentication and secret lifecycle separately; never place credentials in endpoint URLs or ordinary configuration rows.
+4. Do not merge or deploy until CI, review, lab validation and explicit user approvals are satisfied.
+
+This section supersedes older handover snapshots above where their branch HEAD, open-PR list, next actions or merge/deployment boundary differ. The older sections are retained as historical checkpoints.
