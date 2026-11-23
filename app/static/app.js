@@ -395,8 +395,8 @@ async function showClusterTopology(id, section="infra-overview"){
     if(nodeSubsection==="performance"){
     const seriesParams=new URLSearchParams();
     if(state.performanceStart&&state.performanceEnd){
-      seriesParams.set("start_ts",new Date(state.performanceStart).toISOString());
-      seriesParams.set("end_ts",new Date(state.performanceEnd).toISOString());
+      seriesParams.set("start_ts",new Date(state.performanceStart+":00+05:30").toISOString());
+      seriesParams.set("end_ts",new Date(state.performanceEnd+":00+05:30").toISOString());
     }else seriesParams.set("hours",String(state.performanceRangeHours));
     (state.performanceSelectedNodes||[]).forEach(name=>seriesParams.append("node_names",name));
     var performanceSeriesData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/nodes/performance-series?"+seriesParams.toString());
@@ -743,7 +743,7 @@ document.addEventListener("click",async e=>{
   const performanceCustom=e.target.closest("[data-performance-custom]");if(performanceCustom){state.performanceStart=state.performanceStart||new Date(Date.now()-state.performanceRangeHours*3600000-Date.now()*0).toLocaleString("sv-SE",{timeZone:"Asia/Kolkata"}).replace(" ","T").slice(0,16);state.performanceEnd=state.performanceEnd||new Date().toLocaleString("sv-SE",{timeZone:"Asia/Kolkata"}).replace(" ","T").slice(0,16);showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   const performanceMetric=e.target.closest("[data-performance-metric]");if(performanceMetric){state.performanceMetric=performanceMetric.dataset.performanceMetric;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   const action=e.target.closest("[data-action]")?.dataset.action;
-  if(action==="apply-performance-range"){const from=$("#performance-start")?.value,to=$("#performance-end")?.value;if(!from||!to||new Date(to)<=new Date(from)){toast("Choose a valid custom start and end time.",true);return;}state.performanceStart=from;state.performanceEnd=to;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
+  if(action==="apply-performance-range"){const from=$("#performance-start")?.value,to=$("#performance-end")?.value;if(!from||!to||new Date(to+":00+05:30")<=new Date(from+":00+05:30")){toast("Choose a valid custom start and end time.",true);return;}state.performanceStart=from;state.performanceEnd=to;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   if(action==="select-all-performance-nodes"){state.performanceSelectedNodes=null;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   if(action==="clear-performance-nodes"){state.performanceSelectedNodes=[];$("[data-performance-node]",$("#content")).forEach(el=>el.checked=false);return;}
   if(action==="open-tenant-snapshots"){const c=state.snapshotContext;showTenantSnapshots(c.id,c.attribution,c.days,c.startDate,c.endDate).catch(err=>toast(err.message,true));return;}
