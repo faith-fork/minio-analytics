@@ -463,3 +463,28 @@ def test_performance_series_rejects_range_beyond_configured_retention(viewer_cli
     )
     assert response.status_code == 422
     assert "retention" in response.json()["detail"]
+
+
+def test_performance_series_allows_ranges_longer_than_72_hours_within_retention(viewer_client):
+    now = datetime.now(timezone.utc)
+    start = (now - timedelta(days=4)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    end = now.isoformat(timespec="seconds").replace("+00:00", "Z")
+    with transaction() as connection:
+        connection.execute(
+            "UPDATE app_settings SET setting_value='5' WHERE setting_key='telemetry_retention_days'"
+        )
+    response = viewer_client.get(
+        "/api/analytics/clusters/cluster-1/nodes/performance-series",
+        params={"start_ts": start, "end_ts": end},
+    )
+    assert response.status_code == 200
+    assert response.json()["retention_days"] == 5
+    assert response.json()["hours"] == 96.0
+
+
+def test_performance_series_accepts_72_hour_preset(viewer_client):
+    response = viewer_client.get(
+        "/api/analytics/clusters/cluster-1/nodes/performance-series?hours=72"
+    )
+    assert response.status_code == 200
+    assert response.json()["hours"] == 72.0
