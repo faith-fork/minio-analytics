@@ -897,7 +897,7 @@ def collection_health(
                     **_dict(nodes),
                     **_dict(drives),
                 },
-                "status": "partial" if family_errors else "success",
+                "status": run["status"],
             })
 
     items = []
