@@ -1154,14 +1154,15 @@ def node_performance(
             (cluster_id, start_text, end_text),
         ).fetchall()
         samples = connection.execute(
-            """SELECT r.snapshot_ts,COUNT(m.node_name) AS node_samples,
+            """SELECT r.snapshot_ts,r.status AS collection_status,
+                      COUNT(m.node_name) AS node_samples,
                       AVG(m.cpu_utilization_pct) AS avg_cpu_pct,
                       CASE WHEN SUM(m.memory_total_bytes)>0
                            THEN SUM(m.memory_used_bytes)*100.0/SUM(m.memory_total_bytes) END AS avg_memory_used_pct,
                       AVG(m.load1) AS avg_load1
                FROM node_health_runs r LEFT JOIN node_health_metrics m ON m.run_id=r.run_id
                WHERE r.cluster_id=? AND r.snapshot_ts>=? AND r.snapshot_ts<?
-               GROUP BY r.run_id,r.snapshot_ts ORDER BY r.snapshot_ts""",
+               GROUP BY r.run_id,r.snapshot_ts,r.status ORDER BY r.snapshot_ts""",
             (cluster_id, start_text, end_text),
         ).fetchall()
     expected = max(1, int(hours * 60 / interval_minutes))
@@ -1169,6 +1170,9 @@ def node_performance(
     interval_seconds = interval_minutes * 60
     covered_slots: set[int] = set()
     timestamps: list[datetime] = []
+    slot_run_statuses: dict[int, list[str]] = {}
+    run_status_counts = {"success": 0, "partial": 0, "failed": 0}
+    status_priority = {"success": 0, "partial": 1, "failed": 2}
     for sample in samples:
         try:
             stamp = datetime.fromisoformat(sample["snapshot_ts"].replace("Z", "+00:00"))
@@ -1178,9 +1182,14 @@ def node_performance(
         except (TypeError, ValueError):
             continue
         timestamps.append(stamp)
+        run_status = sample["collection_status"]
+        if run_status not in status_priority:
+            run_status = "success"
+        run_status_counts[run_status] += 1
         slot = int((stamp - start).total_seconds() // interval_seconds)
         if 0 <= slot < expected:
             covered_slots.add(slot)
+            slot_run_statuses.setdefault(slot, []).append(run_status)
 
     gaps_minutes = [
         (later - earlier).total_seconds() / 60
@@ -1217,16 +1226,42 @@ def node_performance(
 
     covered_intervals = len(covered_slots)
     coverage_pct = covered_intervals / expected * 100.0
+    interval_status_counts = {"success": 0, "partial": 0, "failed": 0, "missing": 0}
+    interval_statuses = []
     missing_windows = []
+    reliability_trend = [
+        {
+            "bucket_start_ts": (start + timedelta(hours=index)).isoformat(timespec="seconds").replace("+00:00", "Z"),
+            "success_intervals": 0,
+            "partial_intervals": 0,
+            "failed_intervals": 0,
+            "missing_intervals": 0,
+        }
+        for index in range(hours)
+    ]
     for slot in range(expected):
-        if slot in covered_slots:
-            continue
         window_start = start + timedelta(seconds=slot * interval_seconds)
         window_end = min(window_start + timedelta(seconds=interval_seconds), now)
-        missing_windows.append({
+        run_statuses = slot_run_statuses.get(slot, [])
+        if run_statuses:
+            status = max(run_statuses, key=lambda value: status_priority[value])
+        else:
+            status = "missing"
+        interval_status_counts[status] += 1
+        interval_statuses.append({
             "start_ts": window_start.isoformat(timespec="seconds").replace("+00:00", "Z"),
             "end_ts": window_end.isoformat(timespec="seconds").replace("+00:00", "Z"),
+            "status": status,
+            "run_count": len(run_statuses),
         })
+        if status == "missing":
+            missing_windows.append({
+                "start_ts": window_start.isoformat(timespec="seconds").replace("+00:00", "Z"),
+                "end_ts": window_end.isoformat(timespec="seconds").replace("+00:00", "Z"),
+            })
+        bucket_index = min(hours - 1, int((window_start - start).total_seconds() // 3600))
+        reliability_trend[bucket_index][status + "_intervals"] += 1
+
     missing_windows_limit = 100
     missing_windows_truncated = max(0, len(missing_windows) - missing_windows_limit)
     missing_windows = missing_windows[-missing_windows_limit:]
@@ -1243,6 +1278,11 @@ def node_performance(
         "missing_intervals": max(0, expected - covered_intervals),
         "missing_interval_windows": missing_windows,
         "missing_interval_windows_truncated": missing_windows_truncated,
+        "interval_status_counts": interval_status_counts,
+        "run_status_counts": run_status_counts,
+        "successful_interval_pct": interval_status_counts["success"] / expected * 100.0,
+        "interval_statuses": interval_statuses,
+        "reliability_trend": reliability_trend,
         "excess_runs": max(0, run_count - expected),
         "interval_coverage_pct": coverage_pct,
         "coverage_pct": coverage_pct,
