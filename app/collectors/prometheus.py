@@ -55,6 +55,7 @@ class PrometheusClient:
         if at is not None:
             params["time"] = at
 
+        response = None
         try:
             response = self.session.get(
                 f"{self.base_url}/api/v1/query",
@@ -65,7 +66,6 @@ class PrometheusClient:
                 stream=True,
             )
             if response.is_redirect or response.is_permanent_redirect:
-                response.close()
                 raise PrometheusError("Prometheus endpoint redirects are not permitted")
             response.raise_for_status()
             chunks: list[bytes] = []
@@ -85,10 +85,12 @@ class PrometheusClient:
         except (ValueError, TypeError) as exc:
             raise PrometheusError("Prometheus returned invalid JSON") from exc
         finally:
-            if "response" in locals():
+            if response is not None:
                 response.close()
 
-        if not isinstance(payload, dict) or payload.get("status") != "success":
+        if not isinstance(payload, dict):
+            raise PrometheusError("Prometheus returned an invalid API response")
+        if payload.get("status") != "success":
             detail = payload.get("error") or payload.get("errorType") or "unknown API error"
             raise PrometheusError(f"Prometheus query failed: {detail}")
 
