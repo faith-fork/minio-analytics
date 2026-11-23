@@ -1,6 +1,6 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
-const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:[] };
+const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:null };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
 const bytes = n => n == null ? "—" : (n/1024**4).toFixed(2)+" TiB";
 const tibValue = n => n == null ? "—" : (n/1024**4).toFixed(2);
@@ -397,7 +397,7 @@ async function showClusterTopology(id, section="infra-overview"){
       seriesParams.set("start_ts",new Date(state.performanceStart).toISOString());
       seriesParams.set("end_ts",new Date(state.performanceEnd).toISOString());
     }else seriesParams.set("hours",String(state.performanceRangeHours));
-    state.performanceSelectedNodes.forEach(name=>seriesParams.append("node_names",name));
+    (state.performanceSelectedNodes||[]).forEach(name=>seriesParams.append("node_names",name));
     var performanceSeriesData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/nodes/performance-series?"+seriesParams.toString());
   }
   const trendControls=trendData?'<section class="panel health-trends-panel"><div class="panel-header"><div><h3>Historical infrastructure trends</h3><p>Persisted high-frequency telemetry · '+fmt(trendData.sample_count||0,0)+' samples</p></div></div><div class="health-trend-filters"><label>FROM DATE<input id="infra-trend-start" type="date" value="'+esc(trendFilter.startDate)+'"></label><label>TO DATE<input id="infra-trend-end" type="date" value="'+esc(trendFilter.endDate)+'"></label><button class="primary-small" data-action="apply-infra-trends">Apply</button><button class="subtle-button" data-action="reset-infra-trends">Last 30 days</button></div></section>':'';
@@ -436,7 +436,7 @@ async function showClusterTopology(id, section="infra-overview"){
     metric("MISSING INTERVALS",fmt(intervalStatusCounts.missing,0),"No collection attempt recorded","—")+
     '</div>'+panel("Collection reliability trend","Hourly count of expected intervals by recorded outcome. Missing means no run was recorded; it is not classified as a failure.",'<div class="chart-wrap health-trend-chart"><canvas id="infra-collection-reliability"></canvas></div>'):"";
   const ps=performanceSeriesData||{};
-  const selectedNames=state.performanceSelectedNodes.length?state.performanceSelectedNodes:(ps.available_nodes||[]);
+  const selectedNames=state.performanceSelectedNodes===null?(ps.available_nodes||[]):state.performanceSelectedNodes;
   const metricTabs=[["cpu","CPU"],["memory","Memory"],["load","Load"],["filesystem_utilization","Disk / Filesystem Utilization"]];
   const perfRange='<div class="toolbar node-performance-range"><span class="cell-muted">TIME RANGE</span>'+[2,6,12,24,48,72].map(h=>'<button class="secondary-button '+(!state.performanceStart&&state.performanceRangeHours===h?'active':'')+'" data-performance-hours="'+h+'">'+h+'h</button>').join("")+'<button class="secondary-button '+(state.performanceStart?'active':'')+'" data-performance-custom>Custom</button></div>';
   const customRange='<div class="toolbar"><label>FROM <input id="performance-start" type="datetime-local" value="'+esc(state.performanceStart)+'"></label><label>TO <input id="performance-end" type="datetime-local" value="'+esc(state.performanceEnd)+'"></label><button class="primary-small" data-action="apply-performance-range">Apply custom range</button><span class="cell-muted">IST · limited by telemetry retention</span></div>';
@@ -741,7 +741,7 @@ document.addEventListener("click",async e=>{
   const performanceMetric=e.target.closest("[data-performance-metric]");if(performanceMetric){state.performanceMetric=performanceMetric.dataset.performanceMetric;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   const action=e.target.closest("[data-action]")?.dataset.action;
   if(action==="apply-performance-range"){const from=$("#performance-start")?.value,to=$("#performance-end")?.value;if(!from||!to||new Date(to)<=new Date(from)){toast("Choose a valid custom start and end time.",true);return;}state.performanceStart=from;state.performanceEnd=to;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
-  if(action==="select-all-performance-nodes"){state.performanceSelectedNodes=[];showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
+  if(action==="select-all-performance-nodes"){state.performanceSelectedNodes=null;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   if(action==="clear-performance-nodes"){state.performanceSelectedNodes=[];$("[data-performance-node]",$("#content")).forEach(el=>el.checked=false);return;}
   if(action==="open-tenant-snapshots"){const c=state.snapshotContext;showTenantSnapshots(c.id,c.attribution,c.days,c.startDate,c.endDate).catch(err=>toast(err.message,true));return;}
   if(action==="open-bucket-snapshots"){const c=state.snapshotContext;showBucketSnapshots(c.id,c.days,c.startDate,c.endDate).catch(err=>toast(err.message,true));return;}
