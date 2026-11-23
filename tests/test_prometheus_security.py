@@ -6,6 +6,7 @@ import pytest
 
 from app.collectors.prometheus_security import (
     PrometheusEndpointError,
+    resolve_prometheus_endpoint,
     validate_prometheus_endpoint,
 )
 
@@ -16,11 +17,13 @@ from app.collectors.prometheus_security import (
     "http://169.254.1.10:9090",
     "http://169.254.169.254:80",
     "http://100.100.100.200:80",
+    "http://fd00:ec2::254:80",
     "http://0.0.0.0:9090",
     "http://224.0.0.1:9090",
     "http://[::1]:9090",
     "http://[fe80::1]:9090",
     "http://[::]:9090",
+    "http://[::ffff:127.0.0.1]:9090",
 ])
 def test_rejects_loopback_link_local_metadata_and_special_ranges(url):
     with pytest.raises(PrometheusEndpointError):
@@ -47,19 +50,21 @@ def test_rejects_hostname_when_any_dns_answer_is_prohibited():
         ]
 
     with pytest.raises(PrometheusEndpointError, match="prohibited"):
-        validate_prometheus_endpoint("http://prometheus.internal:9090", resolver=resolver)
+        resolve_prometheus_endpoint("http://prometheus.internal:9090", resolver=resolver)
 
 
-def test_allows_hostname_when_all_dns_answers_are_customer_private():
+def test_pins_every_resolved_customer_address_without_resolving_again():
     def resolver(host, port, type):
         return [
             (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.1.2.3", port)),
             (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.168.1.2", port)),
         ]
 
-    assert validate_prometheus_endpoint(
-        "http://prometheus.internal:9090", resolver=resolver
-    ) == ("prometheus.internal", 9090)
+    host, port, addresses, scheme = resolve_prometheus_endpoint(
+        "https://prometheus.internal:9090", resolver=resolver
+    )
+    assert (host, port, scheme) == ("prometheus.internal", 9090, "https")
+    assert addresses == ("10.1.2.3", "192.168.1.2")
 
 
 @pytest.mark.parametrize("url", [

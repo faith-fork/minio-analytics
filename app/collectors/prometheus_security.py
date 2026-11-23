@@ -9,9 +9,6 @@ class PrometheusEndpointError(ValueError):
     """Raised when a Prometheus endpoint violates outbound network policy."""
 
 
-# RFC1918 customer networks and IPv6 Unique Local Addresses are intentionally
-# supported. Other non-global ranges (loopback, link-local, CGNAT, multicast,
-# reserved, unspecified, documentation and benchmarking ranges) are denied.
 _PRIVATE_V4 = tuple(ipaddress.ip_network(value) for value in (
     "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
 ))
@@ -19,13 +16,19 @@ _PRIVATE_V6 = ipaddress.ip_network("fc00::/7")
 _BLOCKED_METADATA = {
     ipaddress.ip_address("169.254.169.254"),
     ipaddress.ip_address("100.100.100.200"),
+    ipaddress.ip_address("fd00:ec2::254"),
 }
 
 
-def _address_allowed(value: str) -> bool:
+def _normalized_address(value: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
     address = ipaddress.ip_address(value.split("%", 1)[0])
     if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
-        address = address.ipv4_mapped
+        return address.ipv4_mapped
+    return address
+
+
+def _address_allowed(value: str) -> bool:
+    address = _normalized_address(value)
     if address in _BLOCKED_METADATA:
         return False
     if address.is_global:
@@ -35,14 +38,13 @@ def _address_allowed(value: str) -> bool:
     return address in _PRIVATE_V6
 
 
-def validate_prometheus_endpoint(base_url: str, *, resolver=None) -> tuple[str, int]:
-    """Validate a Prometheus URL and every address currently returned by DNS.
+def resolve_prometheus_endpoint(base_url: str, *, resolver=None) -> tuple[str, int, tuple[str, ...], str]:
+    """Validate endpoint syntax and return the exact IPs to which transport must connect.
 
-    Private customer-network IPv4 and IPv6 ULA destinations are allowed.
-    DNS is checked immediately before each request. This preflight check does
-    not pin the subsequent TCP connection to the validated address; deployments
-    requiring protection against an actively rebinding DNS server must additionally
-    enforce outbound network policy at the host/network boundary.
+    RFC1918 IPv4 and IPv6 ULA customer networks are allowed. Every A/AAAA
+    answer must satisfy policy. The returned address set must be used by the
+    transport directly; resolving the hostname again would reintroduce DNS
+    rebinding between validation and connection.
     """
     try:
         parsed = urlsplit(base_url)
@@ -72,14 +74,22 @@ def validate_prometheus_endpoint(base_url: str, *, resolver=None) -> tuple[str, 
             records = lookup(host, port, type=socket.SOCK_STREAM)
         except OSError as exc:
             raise PrometheusEndpointError("Prometheus hostname could not be resolved") from exc
-        addresses = {record[4][0] for record in records}
+        addresses = {_normalized_address(record[4][0]) for record in records}
     else:
-        addresses = {str(literal)}
+        addresses = {_normalized_address(str(literal))}
 
     if not addresses:
         raise PrometheusEndpointError("Prometheus hostname resolved to no addresses")
-    if not all(_address_allowed(address) for address in addresses):
+    if not all(_address_allowed(str(address)) for address in addresses):
         raise PrometheusEndpointError(
             "Prometheus endpoint resolves to a prohibited network address"
         )
+    return host, port, tuple(sorted(str(address) for address in addresses)), parsed.scheme
+
+
+def validate_prometheus_endpoint(base_url: str, *, resolver=None) -> tuple[str, int]:
+    """Compatibility helper returning the validated hostname and port."""
+    host, port, _addresses, _scheme = resolve_prometheus_endpoint(
+        base_url, resolver=resolver
+    )
     return host, port
