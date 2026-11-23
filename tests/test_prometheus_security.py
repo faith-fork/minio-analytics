@@ -76,3 +76,42 @@ def test_pins_every_resolved_customer_address_without_resolving_again():
 def test_rejects_unsupported_or_credential_bearing_urls(url):
     with pytest.raises(PrometheusEndpointError):
         validate_prometheus_endpoint(url)
+
+
+
+@pytest.mark.parametrize("url", [
+    "http://100.64.0.1:9090",
+    "http://100.100.10.20:9090",
+    "http://100.127.255.254:9090",
+])
+def test_allows_explicit_literal_endpoints_in_shared_address_space(url):
+    # RFC 6598 is used by some private enterprise networks. The exception is
+    # deliberately limited to an operator-configured literal endpoint.
+    validate_prometheus_endpoint(url)
+
+
+@pytest.mark.parametrize("url", [
+    "http://100.63.255.255:9090",
+    "http://100.128.0.1:9090",
+])
+def test_rejects_addresses_outside_shared_address_space_boundaries(url):
+    with pytest.raises(PrometheusEndpointError, match="prohibited"):
+        validate_prometheus_endpoint(url)
+
+
+def test_rejects_dns_hostname_resolving_to_shared_address_space():
+    def resolver(host, port, type):
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("100.100.10.20", port)),
+        ]
+
+    with pytest.raises(PrometheusEndpointError, match="prohibited"):
+        resolve_prometheus_endpoint(
+            "http://prometheus.internal:9090",
+            resolver=resolver,
+        )
+
+
+def test_metadata_address_remains_blocked_inside_shared_address_space():
+    with pytest.raises(PrometheusEndpointError, match="prohibited"):
+        validate_prometheus_endpoint("http://100.100.100.200:80")
