@@ -13,6 +13,26 @@ def get_connection() -> sqlite3.Connection:
     c=sqlite3.connect(path,timeout=30); c.row_factory=sqlite3.Row
     c.execute("PRAGMA foreign_keys=ON"); c.execute("PRAGMA journal_mode=WAL"); c.execute("PRAGMA busy_timeout=30000")
     return c
+def _execute_sql_script(c: sqlite3.Connection, script: str) -> None:
+    """Execute SQL statements without implicitly committing the active transaction.
+
+    sqlite3.complete_statement() handles semicolons inside quoted strings and
+    multi-line SQL statements, while each complete statement remains inside
+    the caller's transaction.
+    """
+    pending = ""
+    for line in script.splitlines(keepends=True):
+        pending += line
+        if sqlite3.complete_statement(pending):
+            statement = pending.strip()
+            if statement:
+                c.execute(statement)
+            pending = ""
+
+    if pending.strip():
+        raise sqlite3.OperationalError("Incomplete SQL statement in schema/migration script")
+
+
 def _apply_migrations(c: sqlite3.Connection) -> None:
     cols={r["name"] for r in c.execute("PRAGMA table_info(bucket_daily_metrics)")}
     for n,d in {"object_size_distribution_json":"TEXT NOT NULL DEFAULT '{}'","version_count_distribution_json":"TEXT NOT NULL DEFAULT '{}'"} .items():
@@ -27,7 +47,7 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
     cols={r["name"] for r in c.execute("PRAGMA table_info(users)")}
     if "is_master_admin" not in cols:
         c.execute("ALTER TABLE users ADD COLUMN is_master_admin INTEGER NOT NULL DEFAULT 0 CHECK(is_master_admin IN (0,1))")
-    c.executescript("""
+    _execute_sql_script(c, """
     CREATE TABLE IF NOT EXISTS app_settings(setting_key TEXT PRIMARY KEY,setting_value TEXT NOT NULL,updated_at TEXT NOT NULL DEFAULT(strftime('%Y-%m-%dT%H:%M:%fZ','now')),updated_by TEXT);
     CREATE TABLE IF NOT EXISTS settings_audit(id INTEGER PRIMARY KEY AUTOINCREMENT,setting_key TEXT NOT NULL,old_value TEXT,new_value TEXT NOT NULL,changed_at TEXT NOT NULL DEFAULT(strftime('%Y-%m-%dT%H:%M:%fZ','now')),changed_by TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS scheduler_state(job_key TEXT PRIMARY KEY,last_started_at TEXT,last_completed_at TEXT,last_status TEXT,last_error TEXT);
@@ -70,7 +90,7 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
                VALUES('node_interval_minutes',?,?,?)""",
             (f"{legacy_hours} hours (legacy)", migrated_minutes, "system-migration-v10"),
         )
-    c.executescript("""
+    _execute_sql_script(c, """
     CREATE TABLE IF NOT EXISTS prometheus_connections (
         connection_id TEXT PRIMARY KEY,
         location_id TEXT NOT NULL REFERENCES locations(id) ON UPDATE CASCADE ON DELETE RESTRICT,
@@ -99,7 +119,7 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
     """)
     c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (7)")
     c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (8)")
-    c.executescript("""
+    _execute_sql_script(c, """
     CREATE TABLE IF NOT EXISTS user_preferences (
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         preference_key TEXT NOT NULL,
@@ -131,9 +151,11 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
 def initialize_database() -> None:
     c=get_connection()
     try:
-        c.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        c.execute("BEGIN IMMEDIATE")
+        _execute_sql_script(c, SCHEMA_PATH.read_text(encoding="utf-8"))
         c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (1)")
-        _apply_migrations(c); c.commit()
+        _apply_migrations(c)
+        c.commit()
     except Exception:c.rollback(); raise
     finally:c.close()
 @contextmanager
