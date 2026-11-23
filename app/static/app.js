@@ -467,6 +467,9 @@ async function showClusterTopology(id, section="infra-overview"){
     chart("infra-cpu-trend",perfLabels,[{label:"Average CPU",data:perfSamples.map(x=>x.avg_cpu_pct),color:"#4776c7"}],"line",0,"%");
     chart("infra-memory-trend",perfLabels,[{label:"Average memory",data:perfSamples.map(x=>x.avg_memory_used_pct),color:"#16a085"}],"line",0,"%");
     chart("infra-load-trend",perfLabels,[{label:"Average load 1m",data:perfSamples.map(x=>x.avg_load1),color:"#d99a35"}],"line",0,"");
+
+  }
+  if(reliabilityTrend.length&&section==="nodes"&&nodeSubsection==="performance"){
     const reliabilityLabels=reliabilityTrend.map(x=>snapshotTimestampLabel(x.bucket_start_ts));
     chart("infra-collection-reliability",reliabilityLabels,[
       {label:"Successful",data:reliabilityTrend.map(x=>x.success_intervals),color:"#16a085"},
