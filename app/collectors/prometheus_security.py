@@ -13,6 +13,9 @@ _PRIVATE_V4 = tuple(ipaddress.ip_network(value) for value in (
     "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
 ))
 _PRIVATE_V6 = ipaddress.ip_network("fc00::/7")
+# RFC 6598 Shared Address Space used by some private enterprise networks.
+# Accepted only for explicitly configured literal IPv4 endpoints, never DNS answers.
+_SHARED_V4 = ipaddress.ip_network("100.64.0.0/10")
 _BLOCKED_METADATA = {
     ipaddress.ip_address("169.254.169.254"),
     ipaddress.ip_address("100.100.100.200"),
@@ -71,6 +74,7 @@ def resolve_prometheus_endpoint(base_url: str, *, resolver=None) -> tuple[str, i
     if "%" in host:
         raise PrometheusEndpointError("Scoped IPv6 addresses are not supported")
 
+    literal_endpoint = False
     try:
         literal = ipaddress.ip_address(host)
     except ValueError:
@@ -81,11 +85,21 @@ def resolve_prometheus_endpoint(base_url: str, *, resolver=None) -> tuple[str, i
             raise PrometheusEndpointError("Prometheus hostname could not be resolved") from exc
         addresses = {_normalized_address(record[4][0]) for record in records}
     else:
+        literal_endpoint = True
         addresses = {_normalized_address(str(literal))}
 
     if not addresses:
         raise PrometheusEndpointError("Prometheus hostname resolved to no addresses")
-    if not all(_address_allowed(str(address)) for address in addresses):
+    if not all(
+        _address_allowed(str(address))
+        or (
+            literal_endpoint
+            and isinstance(address, ipaddress.IPv4Address)
+            and address in _SHARED_V4
+            and address not in _BLOCKED_METADATA
+        )
+        for address in addresses
+    ):
         raise PrometheusEndpointError(
             "Prometheus endpoint resolves to a prohibited network address"
         )
