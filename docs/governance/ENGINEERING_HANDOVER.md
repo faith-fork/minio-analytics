@@ -202,3 +202,33 @@ The user responded "go ahead" after the three documentation PRs were presented a
 
 ### Result
 User authorization to merge is recorded, but **no PR has been merged** because the mandatory CI evidence is absent. Do not merge until CI is visible and successful on the exact current head SHAs (or the user explicitly changes the Charter's quality-gate requirement). No deployment authorization has been given.
+
+
+## 13. Documentation PR merge completion (23 November 2026)
+
+The user's explicit approval to merge PRs #39, #40 and #41 was executed after the required CI evidence was located and verified on each exact PR head.
+
+### Pre-merge CI on exact PR heads
+- PR #39 head `5dfee7932e7cb207aec58b05729a0c7df6abb6b8`: GitHub Actions run [45203065035](https://github.com/faith-fork/minio-analytics/actions/runs/45203065035) — Python 3.12 regression tests and frontend syntax validation both passed.
+- PR #40 head `07c27d8bb23467aefd5afa9a0422f8043b471561`: run [45189686798](https://github.com/faith-fork/minio-analytics/actions/runs/45189686798) — both jobs passed.
+- PR #41 head `e97dc1a8aff4e8d4035771dbb8428c5f13bbc7b7`: run [45189693916](https://github.com/faith-fork/minio-analytics/actions/runs/45189693916) — both jobs passed.
+
+### Merges completed
+All three PRs are confirmed closed and merged into `feature/auth-foundation`:
+- PR #39 — merge commit `d662a6a430a2f93f591f333f4f18a225ea45746f`.
+- PR #40 — merge commit `7ce4c4fd88602876f59a9555f1f574a52a2a5d23`.
+- PR #41 — merge commit `bf1f3f03631c083a8fa350224cb892a660eab1f7`.
+
+The integration branch was compared against the final PR #41 merge commit and returned `identical` (0 ahead, 0 behind). Therefore the verified integration HEAD at this checkpoint is `bf1f3f03631c083a8fa350224cb892a660eab1f7`.
+
+### Post-merge CI
+- PR #39 merge commit run [45209586859](https://github.com/faith-fork/minio-analytics/actions/runs/45209586859): both Python 3.12 tests and frontend syntax validation passed.
+- PR #40 merge commit run [45209660296](https://github.com/faith-fork/minio-analytics/actions/runs/45209660296): frontend syntax validation passed; Python 3.12 regression job was still running at the time of this handover update.
+- PR #41 merge commit run [45209696955](https://github.com/faith-fork/minio-analytics/actions/runs/45209696955): frontend syntax validation passed; Python 3.12 regression job was still running at the time of this handover update.
+- Re-check the two in-progress Python jobs and record their final conclusions before treating post-merge CI as fully complete.
+
+### Release boundary
+- Scope merged: governance documentation, telemetry-source ADR/README documentation, Phase 0 audit, data model and API inventory/backlog.
+- No application code, schema migration, or runtime configuration was changed by these three PRs.
+- No VM deployment was performed or authorized. Current deployed branch/SHA, service state and runtime behaviour remain **Not verified**.
+- Superseded PRs #21 and #22 remain open; no close action was taken.
