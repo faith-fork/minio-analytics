@@ -17,6 +17,7 @@ _BLOCKED_METADATA = {
     ipaddress.ip_address("169.254.169.254"),
     ipaddress.ip_address("100.100.100.200"),
     ipaddress.ip_address("fd00:ec2::254"),
+    ipaddress.ip_address("168.63.129.16"),
 }
 
 
@@ -30,6 +31,10 @@ def _normalized_address(value: str) -> ipaddress.IPv4Address | ipaddress.IPv6Add
 def _address_allowed(value: str) -> bool:
     address = _normalized_address(value)
     if address in _BLOCKED_METADATA:
+        return False
+    if address.is_loopback or address.is_link_local or address.is_multicast:
+        return False
+    if address.is_unspecified or address.is_reserved:
         return False
     if address.is_global:
         return True
