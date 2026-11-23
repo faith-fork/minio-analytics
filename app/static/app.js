@@ -884,7 +884,7 @@ $("#content").addEventListener("change",async e=>{
     const button=$("[data-action='bulk-assign']");if(button)button.disabled=!state.selectedBuckets.length;
   }
 });
-$("#content").addEventListener("change",e=>{if(e.target.matches("[data-performance-node]")){const checked=$("[data-performance-node]:checked",$("#content")).map(el=>el.value);state.performanceSelectedNodes=checked;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));}});
+$("#content").addEventListener("change",e=>{if(e.target.matches("[data-performance-node]")){const checked=$$("[data-performance-node]:checked",$("#content")).map(el=>el.value);state.performanceSelectedNodes=checked;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));}});
 $("#content").addEventListener("input",e=>{
   if(e.target.id==="bucket-filter"){const q=e.target.value.toLowerCase();$("tbody tr",$("#content")).forEach(row=>row.classList.toggle("hidden",!row.textContent.toLowerCase().includes(q)));return;}
   if(e.target.matches("[data-bucket-filter-search]")){
