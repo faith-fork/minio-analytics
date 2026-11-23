@@ -110,20 +110,24 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
     """)
     c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (9)")
     c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (10)")
-    run_cols = {r["name"] for r in c.execute("PRAGMA table_info(node_health_runs)")}
-    if "status" not in run_cols:
+    migration_v11 = c.execute(
+        "SELECT 1 FROM schema_version WHERE version=11"
+    ).fetchone()
+    if not migration_v11:
+        run_cols = {r["name"] for r in c.execute("PRAGMA table_info(node_health_runs)")}
+        if "status" not in run_cols:
+            c.execute(
+                "ALTER TABLE node_health_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'success' "
+                "CHECK(status IN ('success','partial','failed'))"
+            )
+        if "error_text" not in run_cols:
+            c.execute("ALTER TABLE node_health_runs ADD COLUMN error_text TEXT")
+        # Preserve historical partial outcomes from the pre-v11 family-error record.
         c.execute(
-            "ALTER TABLE node_health_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'success' "
-            "CHECK(status IN ('success','partial','failed'))"
+            """UPDATE node_health_runs SET status='partial'
+               WHERE status='success' AND family_errors_json NOT IN ('{}', '')"""
         )
-    if "error_text" not in run_cols:
-        c.execute("ALTER TABLE node_health_runs ADD COLUMN error_text TEXT")
-    # Preserve historical partial outcomes from the pre-v11 family-error record.
-    c.execute(
-        """UPDATE node_health_runs SET status='partial'
-           WHERE status='success' AND family_errors_json NOT IN ('{}', '')"""
-    )
-    c.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (11)")
+        c.execute("INSERT INTO schema_version(version) VALUES (11)")
 def initialize_database() -> None:
     c=get_connection()
     try:
