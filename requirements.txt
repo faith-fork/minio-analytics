@@ -1,1 +1,8 @@
-fastapi\nuvicorn[standard]\nrequests\nurllib3>=2.0,<3\nPyYAML\npython-dotenv\npydantic-settings\nitsdangerous\n
+fastapi
+uvicorn[standard]
+requests
+urllib3>=2.0,<3
+PyYAML
+python-dotenv
+pydantic-settings
+itsdangerous
