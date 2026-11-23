@@ -12,6 +12,16 @@ A lightweight analytics dashboard for multi-location, multi-cluster MinIO enviro
 - Present fleet, cluster topology/health, tenant, bucket, and collection-health analytics.
 - Keep Prometheus queries out of the interactive dashboard path; the UI reads historical data from SQLite.
 
+## Telemetry source architecture
+
+MINIO Analytics consumes metrics through a configured customer monitoring-platform API. **Prometheus is the only supported provider in the initial implementation.** Customers remain responsible for configuring and operating Prometheus scrape targets for MinIO and infrastructure exporters; Analytics does not configure those targets or poll MinIO metrics endpoints directly.
+
+Telemetry collection is scheduled and rate-controlled by Analytics. The application persists its own historical data, and dashboards use Analytics-owned history rather than querying customer Prometheus live by default. Collection cadence and enabled metric categories must be configurable, and not every metric family should be collected at high frequency.
+
+The telemetry source is configurable per cluster at the architecture boundary. VictoriaMetrics and secure customer-side push ingestion are future capabilities, not current implementation scope. Do not expose unimplemented providers as selectable options.
+
+See [ADR-001: Telemetry Sources and Collection Architecture](docs/architecture/decisions/ADR-001-telemetry-source-and-collection.md) for the accepted decisions, constraints, security requirements, and Phase 0 audit checklist.
+
 ## Initial technology choices
 
 - Python 3.12.9 (lab baseline; system Python is not modified)
