@@ -244,6 +244,13 @@ def test_node_performance_coverage_reports_missing_expected_intervals(
     assert payload["sample_count"] == 1
     assert payload["covered_intervals"] == 1
     assert payload["missing_intervals"] == 1
+    assert len(payload["missing_interval_windows"]) == 1
+    missing_window = payload["missing_interval_windows"][0]
+    missing_start = datetime.fromisoformat(missing_window["start_ts"].replace("Z", "+00:00"))
+    missing_end = datetime.fromisoformat(missing_window["end_ts"].replace("Z", "+00:00"))
+    assert missing_end > missing_start
+    assert (missing_end - missing_start).total_seconds() <= 60 * 60
+    assert payload["missing_interval_windows_truncated"] == 0
     assert payload["collection_run_coverage_pct"] == 50
     assert payload["interval_coverage_pct"] == 50
     assert payload["cadence_status"] == "insufficient_history"

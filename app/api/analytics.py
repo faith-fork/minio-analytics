@@ -1217,6 +1217,19 @@ def node_performance(
 
     covered_intervals = len(covered_slots)
     coverage_pct = covered_intervals / expected * 100.0
+    missing_windows = []
+    for slot in range(expected):
+        if slot in covered_slots:
+            continue
+        window_start = start + timedelta(seconds=slot * interval_seconds)
+        window_end = min(window_start + timedelta(seconds=interval_seconds), now)
+        missing_windows.append({
+            "start_ts": window_start.isoformat(timespec="seconds").replace("+00:00", "Z"),
+            "end_ts": window_end.isoformat(timespec="seconds").replace("+00:00", "Z"),
+        })
+    missing_windows_limit = 100
+    missing_windows_truncated = max(0, len(missing_windows) - missing_windows_limit)
+    missing_windows = missing_windows[-missing_windows_limit:]
     return {
         "cluster": dict(cluster),
         "hours": hours,
@@ -1228,6 +1241,8 @@ def node_performance(
         "sample_count": run_count,
         "covered_intervals": covered_intervals,
         "missing_intervals": max(0, expected - covered_intervals),
+        "missing_interval_windows": missing_windows,
+        "missing_interval_windows_truncated": missing_windows_truncated,
         "excess_runs": max(0, run_count - expected),
         "interval_coverage_pct": coverage_pct,
         "coverage_pct": coverage_pct,
