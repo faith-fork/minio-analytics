@@ -1244,7 +1244,8 @@ def node_performance(
         window_end = min(window_start + timedelta(seconds=interval_seconds), now)
         run_statuses = slot_run_statuses.get(slot, [])
         if run_statuses:
-            status = max(run_statuses, key=lambda value: status_priority[value])
+            # The latest recorded attempt determines the interval outcome.
+            status = run_statuses[-1]
         else:
             status = "missing"
         interval_status_counts[status] += 1
