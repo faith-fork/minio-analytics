@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
 import requests
+
+from app.collectors.prometheus_security import validate_prometheus_endpoint
 
 
 class PrometheusError(RuntimeError):
@@ -18,11 +21,9 @@ class MetricSample:
 
 
 class PrometheusClient:
-    """Small Prometheus HTTP API client.
+    """Small Prometheus HTTP API client with outbound endpoint validation."""
 
-    This client deliberately returns labelled samples rather than reducing vectors
-    to a scalar, so bucket and cluster labels remain available to callers.
-    """
+    MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 
     def __init__(
         self,
@@ -35,12 +36,20 @@ class PrometheusClient:
         self.timeout_seconds = timeout_seconds
         self.verify_tls = verify_tls
         self.session = session or requests.Session()
+        # Do not silently route customer Prometheus traffic through proxy
+        # environment variables. The configured endpoint is the destination.
+        self.session.trust_env = False
 
     def query(self, promql: str, at: str | float | None = None) -> list[MetricSample]:
         if not self.base_url:
             raise ValueError("Prometheus base URL is required")
         if not promql.strip():
             raise ValueError("PromQL query must not be empty")
+
+        try:
+            validate_prometheus_endpoint(self.base_url)
+        except ValueError as exc:
+            raise PrometheusError(str(exc)) from exc
 
         params: dict[str, Any] = {"query": promql}
         if at is not None:
@@ -52,22 +61,40 @@ class PrometheusClient:
                 params=params,
                 timeout=self.timeout_seconds,
                 verify=self.verify_tls,
+                allow_redirects=False,
+                stream=True,
             )
+            if response.is_redirect or response.is_permanent_redirect:
+                response.close()
+                raise PrometheusError("Prometheus endpoint redirects are not permitted")
             response.raise_for_status()
+            chunks: list[bytes] = []
+            total = 0
+            for chunk in response.iter_content(chunk_size=65536):
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > self.MAX_RESPONSE_BYTES:
+                    raise PrometheusError("Prometheus response exceeded the 4 MiB limit")
+                chunks.append(chunk)
+            payload = json.loads(b"".join(chunks))
+        except PrometheusError:
+            raise
         except requests.RequestException as exc:
-            raise PrometheusError(f"Prometheus request failed: {exc}") from exc
-
-        try:
-            payload = response.json()
-        except ValueError as exc:
+            raise PrometheusError("Prometheus request failed") from exc
+        except (ValueError, TypeError) as exc:
             raise PrometheusError("Prometheus returned invalid JSON") from exc
+        finally:
+            if "response" in locals():
+                response.close()
 
-        if payload.get("status") != "success":
+        if not isinstance(payload, dict) or payload.get("status") != "success":
             detail = payload.get("error") or payload.get("errorType") or "unknown API error"
             raise PrometheusError(f"Prometheus query failed: {detail}")
 
-        result = payload.get("data", {}).get("result", [])
-        result_type = payload.get("data", {}).get("resultType")
+        data = payload.get("data") or {}
+        result = data.get("result", [])
+        result_type = data.get("resultType")
 
         if result_type == "scalar":
             timestamp, value = result
@@ -89,7 +116,6 @@ class PrometheusClient:
                 )
             except (KeyError, TypeError, ValueError) as exc:
                 raise PrometheusError("Prometheus returned a malformed vector sample") from exc
-
         return samples
 
     def close(self) -> None:
