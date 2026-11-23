@@ -17,7 +17,7 @@ from app.collectors.prometheus_security import (
     "http://169.254.1.10:9090",
     "http://169.254.169.254:80",
     "http://100.100.100.200:80",
-    "http://fd00:ec2::254:80",
+    "http://[fd00:ec2::254]:80",
     "http://0.0.0.0:9090",
     "http://224.0.0.1:9090",
     "http://[::1]:9090",
