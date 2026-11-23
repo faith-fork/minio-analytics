@@ -11,8 +11,10 @@ This directory contains the project's controlled engineering records.
 
 The following architecture documents are already proposed in separate open pull requests. Review and integrate those PRs rather than creating duplicate copies:
 
-- [ADR-001: Telemetry Sources and Collection Architecture — PR #21](https://github.com/faith-fork/minio-analytics/pull/21)
-- [Phase 0 Architecture Audit, Data Model and API Backlog — PR #22](https://github.com/faith-fork/minio-analytics/pull/22)
+- [ADR-001: Telemetry Sources and Collection Architecture — refreshed PR #40](https://github.com/faith-fork/minio-analytics/pull/40)
+- [Phase 0 Architecture Audit, Data Model and API Backlog — refreshed PR #41](https://github.com/faith-fork/minio-analytics/pull/41)
+
+Older proposals PR #21 and PR #22 remain open but stale; the refreshed PRs above are based on the current integration baseline.
 
 ## Source-of-truth rules
 
