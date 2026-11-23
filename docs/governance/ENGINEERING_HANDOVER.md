@@ -240,35 +240,33 @@ The integration branch was compared against the final PR #41 merge commit and re
 - Verified integration branch: `feature/auth-foundation`, HEAD `7edb9223b94df42a6c7b7c951d1d1dd80d6f4923`.
 - Feature branch: `feature/prometheus-egress-security`.
 - PR #42: https://github.com/faith-fork/minio-analytics/pull/42
-- Current PR head: `77dfa9e831e541d92b8000f1323471a51e7c5d53`.
-- Compare: 2 commits ahead, 0 behind; merge base is the verified integration HEAD.
+- Current PR head: `3ecc7b59419279fe32370ee1481aef2883c5d1c4`.
+- Compare: 6 commits ahead, 0 behind; merge base is the verified integration HEAD.
 
 ### Scope implemented for review
-- Added Prometheus endpoint address policy validation immediately before each HTTP API request.
-- Permits RFC1918 IPv4 and IPv6 ULA customer networks, and globally routable addresses.
-- Rejects loopback, link-local, metadata-service, unspecified, multicast, reserved and other non-global/non-private addresses.
-- Rejects DNS hostnames if any returned address violates policy.
-- Disables environment-derived proxies and automatic HTTP redirects.
-- Adds a 4 MiB response body limit; retains the existing request timeout and TLS verification default.
-- Adds IPv4, IPv6, DNS multi-answer and URL-validation tests.
+- Added endpoint validation for RFC1918 IPv4, IPv6 ULA and globally routable addresses; prohibited ranges and unsafe DNS answers are rejected.
+- Pins the actual TCP socket to a validated literal IP, while retaining the configured hostname for HTTP Host and HTTPS SNI/certificate verification.
+- Rejects redirects and uses no environment-derived proxy configuration.
+- Adds a 4 MiB decoded response limit and bounded timeout; TLS verification remains enabled by default.
+- Adds address-policy and client-transport regression tests, including direct socket-target assertions.
+- Declares urllib3 as an explicit dependency.
 - No schema changes, no credential storage, no UI changes and no VM deployment.
 
-### Explicit security limitation
-DNS is resolved and checked immediately before the HTTP request, but the subsequent TCP connection is not pinned to the validated address. This leaves a DNS rebinding time-of-check/time-of-use gap. PR #42 explicitly documents this and must not be described as complete DNS-rebinding protection. Host/network egress controls remain necessary until transport-level address pinning is separately implemented and tested. Prometheus authentication and secret lifecycle also remain a separate unresolved security item.
+### Remaining security items
+The transport connects to a validated literal IP and does not perform a second DNS lookup, closing the DNS validation/connection TOCTOU gap for this request path. Redirects are rejected. Prometheus authentication and secret lifecycle remain a separate unresolved security item. Host/network egress controls remain recommended defence in depth.
 
 ### Validation and release boundary
 - Full PR diff fetched and reviewed; changed files are `app/collectors/prometheus.py`, new `app/collectors/prometheus_security.py`, and new `tests/test_prometheus_security.py`.
-- GitHub initially returned no workflow runs or combined statuses for the exact PR head at review time. CI is **not verified**.
-- Local test execution was not possible in this environment; repository network access is unavailable. Do not claim tests passed.
+- GitHub Actions run `45228712037` was created for the exact current PR head and was **queued** at the last check; final CI outcome is pending.
+- Local test execution was not performed in this environment. Do not claim tests passed.
 - PR is open and GitHub reports mergeable after refresh.
 - No merge authorization or deployment authorization has been given.
 - Runtime connectivity against private customer Prometheus endpoints remains unverified.
 
 ### Next actions
-1. Obtain CI evidence on the exact current PR head and review any failures.
-2. Add client-level regression tests for redirect rejection, response-size enforcement, timeout/TLS arguments and no proxy inheritance.
-3. Design and implement transport-level DNS address pinning with correct HTTP Host and TLS SNI semantics, or retain and document the explicit residual risk.
-4. Design Prometheus authentication and secret lifecycle separately; never place credentials in endpoint URLs or ordinary configuration rows.
-5. Do not merge or deploy until the security boundary, tests and user approvals are satisfied.
+1. Verify the final result of workflow run `45228712037` on exact PR head `3ecc7b59419279fe32370ee1481aef2883c5d1c4`; inspect logs and fix any failures.
+2. Validate private customer-network connectivity and HTTPS certificate/SNI behaviour in the lab before release.
+3. Design Prometheus authentication and secret lifecycle separately; never place credentials in endpoint URLs or ordinary configuration rows.
+4. Do not merge or deploy until CI, review, lab validation and explicit user approvals are satisfied.
 
 This section supersedes older handover snapshots above where their branch HEAD, open-PR list, next actions or merge/deployment boundary differ. The older sections are retained as historical checkpoints.
