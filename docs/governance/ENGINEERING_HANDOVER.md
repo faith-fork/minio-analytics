@@ -143,3 +143,41 @@ This checkpoint is being committed through a dedicated documentation branch and 
 4. Confirm the user's next product objective before application implementation.
 5. Establish the actual VM deployment baseline only if the next objective requires deployment or runtime comparison.
 6. For the next application change, create a focused feature branch from the verified integration baseline, inspect the complete diff, run tests, verify CI on the exact head SHA, and prepare a precise deployment/validation plan only after the release gates are met.
+
+
+## 11. Refreshed architecture documentation proposals (23 November 2026)
+
+The stale documentation proposals #21 and #22 were not merged. Replacement documentation branches were created directly from the verified integration baseline `feature/auth-foundation` at `850d6394e61948a11f40e80c0ce4b7cc427466ba`.
+
+### PR #40 — Telemetry source architecture refresh
+- URL: https://github.com/faith-fork/minio-analytics/pull/40
+- Branch: `docs/telemetry-architecture-refresh`
+- Head: `07c27d8bb23467aefd5afa9a0422f8043b471561`
+- Base: `feature/auth-foundation` at `850d6394e61948a11f40e80c0ce4b7cc427466ba`
+- Compare: 2 commits ahead, 0 behind; merge base equals the integration baseline.
+- Files: current integration README addition and ADR-001.
+- Review: complete GitHub patch fetched. README change adds the telemetry architecture section without reverting other README content. ADR retains Prometheus-only initial provider, Analytics-owned history, no direct MinIO polling, selective/rate-controlled collection, and deferred VictoriaMetrics/push ingestion.
+- CI: no PR workflow runs returned for this exact head; combined status returned no statuses. CI is not verified.
+- Application tests/runtime validation: not run; documentation-only.
+- State: open, unmerged; no merge or deployment approval.
+
+### PR #41 — Phase 0 audit, data model and API inventory refresh
+- URL: https://github.com/faith-fork/minio-analytics/pull/41
+- Branch: `docs/phase-0-audit-refresh`
+- Head: `e97dc1a8aff4e8d4035771dbb8428c5f13bbc7b7`
+- Base: `feature/auth-foundation` at `850d6394e61948a11f40e80c0ce4b7cc427466ba`
+- Compare: 3 commits ahead, 0 behind; merge base equals the integration baseline.
+- Files: Phase 0 audit, data model, API inventory/backlog.
+- Corrections: PR #38's atomic migration transaction fix is recorded as remediated while residual migration governance remains; target ERD now explicitly links clusters and telemetry sources through `cluster_telemetry_bindings`; API inventory includes both node performance and performance-series routes.
+- CI: no PR workflow runs returned for this exact head; combined status returned no statuses. CI is not verified.
+- Application tests/runtime validation: not run; documentation-only.
+- Audit limitations: static source review only; no VM, live Prometheus, load or penetration validation.
+- State: open, unmerged; no merge or deployment approval.
+
+### Superseded proposals
+- PR #21 remains open and stale (head `498157fc90e55671bcc999a9b5f2f7539c931b4d`, previously 2 ahead / 75 behind); it contains the doubled-backslash README defect. Replacement proposal: PR #40.
+- PR #22 remains open and stale (head `466f200f436dcc90df98acf24ae7eea948a3734a`, previously 3 ahead / 75 behind); it contains outdated migration and API inventory claims and inconsistent target ERD relationships. Replacement proposal: PR #41.
+- The old PRs have not been closed automatically. No merge or close action has been taken.
+
+### Current engineering boundary
+PRs #40 and #41 are prepared for review only. Their CI is not verified, and GitHub initially reported `mergeable=false` at PR creation; re-check mergeability and exact PR heads before any further action. PR #39 remains open and unmerged. The VM deployment state remains not verified. The user has not authorized merging or deployment.
