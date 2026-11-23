@@ -136,3 +136,30 @@ def test_prohibited_endpoint_is_rejected_before_transport_creation(monkeypatch):
     with pytest.raises(PrometheusError, match="prohibited"):
         PrometheusClient("http://127.0.0.1:9090").query("up")
     assert FakePool.instances == []
+
+
+@pytest.mark.parametrize("connection_class", [
+    module._PinnedHTTPConnection,
+    module._PinnedHTTPSConnection,
+])
+def test_connection_socket_uses_pinned_ip_not_configured_hostname(monkeypatch, connection_class):
+    captured = {}
+
+    class FakeSocket:
+        pass
+
+    def fake_create_connection(address, timeout, source_address, socket_options):
+        captured["address"] = address
+        captured["timeout"] = timeout
+        return FakeSocket()
+
+    monkeypatch.setattr(module, "create_connection", fake_create_connection)
+    connection = connection_class(
+        host="prometheus.customer.internal",
+        port=9090,
+        pinned_ip="10.2.3.4",
+        timeout=4,
+    )
+
+    assert isinstance(connection._new_conn(), FakeSocket)
+    assert captured["address"] == ("10.2.3.4", 9090)
