@@ -376,3 +376,90 @@ def test_node_health_outcome_migration_backfills_legacy_partial_runs(viewer_clie
             "SELECT status FROM node_health_runs WHERE run_id='legacy-partial'"
         ).fetchone()
     assert row["status"] == "partial"
+
+
+def test_performance_series_returns_raw_per_node_samples_and_filesystem_utilization(viewer_client):
+    stamp = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(
+        timespec="seconds"
+    ).replace("+00:00", "Z")
+    with transaction() as connection:
+        connection.execute(
+            """INSERT INTO node_health_runs
+               (run_id,cluster_id,snapshot_ts,collected_at,node_count,drive_count)
+               VALUES('series-run','cluster-1',?,?,2,1)""",
+            (stamp, stamp),
+        )
+        for node, cpu, used in (("node-1", 25.0, 50.0), ("node-2", 75.0, 150.0)):
+            connection.execute(
+                """INSERT INTO node_health_metrics
+                   (run_id,cluster_id,node_name,cpu_utilization_pct,
+                    memory_total_bytes,memory_used_bytes,load1)
+                   VALUES('series-run','cluster-1',?,?,?,?,?)""",
+                (node, cpu, 200.0, used, cpu / 10),
+            )
+        connection.execute(
+            """INSERT INTO drive_health_metrics
+               (run_id,cluster_id,node_name,server,drive_path,mountpoint,
+                filesystem_used_pct,total_bytes,used_bytes)
+               VALUES('series-run','cluster-1','node-1','node-1:9000',
+                      '/dev/sdb','/data',67.5,1000,700)"""
+        )
+
+    response = viewer_client.get(
+        "/api/analytics/clusters/cluster-1/nodes/performance-series?hours=2"
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["available_nodes"] == ["node-1", "node-2"]
+    assert payload["sample_count"] == 2
+    assert [row["node_name"] for row in payload["series"]] == ["node-1", "node-2"]
+    assert payload["series"][0]["cpu_utilization_pct"] == 25.0
+    assert payload["series"][0]["memory_used_pct"] == 25.0
+    assert payload["statistics"]["node-1"]["cpu"]["average"] == 25.0
+    assert payload["drive_series"][0]["filesystem_used_pct"] == 67.5
+    assert payload["supported_metrics"] == [
+        "cpu", "memory", "load", "filesystem_utilization"
+    ]
+
+
+def test_performance_series_supports_node_filter_and_custom_range(viewer_client):
+    now = datetime.now(timezone.utc)
+    stamp = (now - timedelta(minutes=1)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    start = (now - timedelta(hours=1)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    end = now.isoformat(timespec="seconds").replace("+00:00", "Z")
+    with transaction() as connection:
+        connection.execute(
+            """INSERT INTO node_health_runs
+               (run_id,cluster_id,snapshot_ts,collected_at,node_count,drive_count)
+               VALUES('filtered-series-run','cluster-1',?,?,2,0)""",
+            (stamp, stamp),
+        )
+        for node in ("node-1", "node-2"):
+            connection.execute(
+                """INSERT INTO node_health_metrics
+                   (run_id,cluster_id,node_name,cpu_utilization_pct)
+                   VALUES('filtered-series-run','cluster-1',?,50)""",
+                (node,),
+            )
+
+    response = viewer_client.get(
+        "/api/analytics/clusters/cluster-1/nodes/performance-series",
+        params=[("start_ts", start), ("end_ts", end), ("node_names", "node-2")],
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selected_nodes"] == ["node-2"]
+    assert [row["node_name"] for row in payload["series"]] == ["node-2"]
+    assert payload["hours"] == 1.0
+
+
+def test_performance_series_rejects_range_beyond_configured_retention(viewer_client):
+    now = datetime.now(timezone.utc)
+    start = (now - timedelta(days=4)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    end = now.isoformat(timespec="seconds").replace("+00:00", "Z")
+    response = viewer_client.get(
+        "/api/analytics/clusters/cluster-1/nodes/performance-series",
+        params={"start_ts": start, "end_ts": end},
+    )
+    assert response.status_code == 422
+    assert "retention" in response.json()["detail"]
