@@ -271,7 +271,7 @@
 .page-heading-snapshot{display:block;margin-top:3px;color:var(--muted);font-size:11px}
 
 .node-subtabs{margin:14px 0 18px;padding-bottom:8px}.node-performance-range{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0}.node-performance-range .secondary-button.active{background:var(--teal-soft);border-color:var(--teal);color:#087d6b;font-weight:700}
-.node-performance-range{width:100%;justify-content:space-between}.node-performance-range-options{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.node-performance-filter{margin-left:auto;flex:0 0 auto}.node-performance-filter summary{white-space:nowrap}
+.node-performance-range{width:100%;justify-content:flex-start}.node-performance-range-options{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.node-performance-filter{margin-left:auto;flex:0 0 auto}.node-performance-filter summary{white-space:nowrap}
 
 
 /* Shared Grafana-style zoom controls for every dashboard chart */
