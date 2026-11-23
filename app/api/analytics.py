@@ -1346,6 +1346,10 @@ def node_performance_series(
             "SELECT setting_value FROM app_settings WHERE setting_key='telemetry_retention_days'"
         ).fetchone()
         retention_days = max(1, int(retention_row["setting_value"])) if retention_row else 3
+        interval_row = connection.execute(
+            "SELECT setting_value FROM app_settings WHERE setting_key='node_interval_minutes'"
+        ).fetchone()
+        interval_minutes = max(1, int(interval_row["setting_value"])) if interval_row else 5
         if (end - start) > timedelta(days=retention_days):
             raise HTTPException(status_code=422, detail=f"Selected range exceeds configured telemetry retention of {retention_days} days")
         node_sql = """
@@ -1408,7 +1412,7 @@ def node_performance_series(
         "end_ts": end_text,
         "hours": round((end - start).total_seconds() / 3600, 2),
         "retention_days": retention_days,
-        "interval_minutes": 5,
+        "interval_minutes": interval_minutes,
         "available_nodes": [row["node_name"] for row in all_nodes],
         "selected_nodes": node_names,
         "series": series,
