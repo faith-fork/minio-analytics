@@ -110,10 +110,36 @@ This checkpoint is being committed through a dedicated documentation branch and 
 6. Preserve existing validated application functionality and follow the Charter's regression and release gates.
 7. No merge or deployment is authorized by this handover.
 
-## 9. Next engineering actions
+## 9. Review of architecture documentation PRs (23 November 2026)
 
-1. Complete review and approval workflow for this documentation-only PR; do not merge without explicit user approval.
-2. Re-verify open PRs #21 and #22, their diffs, ancestry and CI; avoid duplicate documentation.
-3. Confirm the user's next product objective before application implementation.
-4. Establish the actual VM deployment baseline only if the next objective requires deployment or runtime comparison.
-5. For the next application change, create a focused feature branch from the verified integration baseline, inspect the complete diff, run tests, verify CI on the exact head SHA, and prepare a precise deployment/validation plan only after the release gates are met.
+### PR #21 — Telemetry source architecture
+
+- **Status:** Open; mergeable according to GitHub at review time.
+- **Head:** `498157fc90e55671bcc999a9b5f2f7539c931b4d`.
+- **Ancestry:** 2 commits ahead and 75 behind `feature/auth-foundation`; diverged from merge base `be367d20965899b37c8127df7ef62fd0a5a3a7b4`.
+- **CI:** GitHub Actions Tests run 44925049436 completed successfully on that PR head.
+- **Review:** ADR-001 is directionally aligned with the Charter: customer-managed Prometheus as the initial provider, Analytics-owned history, no direct MinIO polling, selective/rate-controlled collection, and deferral of VictoriaMetrics and push ingestion.
+- **Required correction:** README manual collection example has doubled trailing backslashes on the first two continued lines compared with the current integration branch.
+- **Action:** Review findings posted in the PR conversation. Refresh the branch against the current integration branch and re-review the full README diff before merge.
+
+### PR #22 — Phase 0 audit, data model and API backlog
+
+- **Status:** Open; mergeable according to GitHub at review time.
+- **Head:** `466f200f436dcc90df98acf24ae7eea948a3734a`.
+- **Ancestry:** 3 commits ahead and 75 behind `feature/auth-foundation`; diverged from merge base `be367d20965899b37c8127df7ef62fd0a5a3a7b4`.
+- **CI:** GitHub Actions Tests run 44971389842 completed successfully on that PR head.
+- **Review:** The evolutionary approach, preservation requirements, Prometheus security priorities, discovery/approval lifecycle, and explicit non-goals are useful.
+- **Required corrections:** The audit still treats the `executescript()` SQLite migration transaction issue as an outstanding P0 risk, although merged PR #38 addressed that issue on the current integration branch. The API inventory's node-performance route needs verification against current source and should include the current `/nodes/performance-series` route.
+- **Model consistency:** The proposed ERD should represent the `cluster_telemetry_bindings` relationship explicitly; the current diagram instead draws clusters directly to telemetry sources while the text proposes a separate binding entity and leaves source-sharing as an open question.
+- **Action:** Review findings posted in the PR conversation. Refresh the audit, data model and API inventory against current integration source before merge.
+
+**Important:** The successful CI runs above apply to the recorded PR head SHAs only. They do not establish that the PRs are current with the integration branch or that their documentation is accurate against current source. Neither PR was merged during this review.
+
+## 10. Next engineering actions
+
+1. Complete review and approval workflow for PR #39; do not merge without explicit user approval.
+2. Refresh PRs #21 and #22 against the current integration branch, address the review notes, and verify their complete diffs and CI on the refreshed heads.
+3. Obtain explicit user approval before merging any of PRs #21, #22 or #39.
+4. Confirm the user's next product objective before application implementation.
+5. Establish the actual VM deployment baseline only if the next objective requires deployment or runtime comparison.
+6. For the next application change, create a focused feature branch from the verified integration baseline, inspect the complete diff, run tests, verify CI on the exact head SHA, and prepare a precise deployment/validation plan only after the release gates are met.
