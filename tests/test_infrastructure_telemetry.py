@@ -355,3 +355,24 @@ def test_node_health_run_outcome_schema_is_versioned(viewer_client):
 
     assert {"status", "error_text"}.issubset(columns)
     assert version is not None
+
+
+
+def test_node_health_outcome_migration_backfills_legacy_partial_runs(viewer_client):
+    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    with transaction() as connection:
+        connection.execute(
+            """INSERT INTO node_health_runs
+               (run_id,cluster_id,snapshot_ts,collected_at,family_errors_json,status)
+               VALUES('legacy-partial','cluster-1',?,?, '{"cpu":"timeout"}', 'success')""",
+            (stamp, stamp),
+        )
+        connection.execute("DELETE FROM schema_version WHERE version=11")
+
+    initialize_database()
+
+    with transaction() as connection:
+        row = connection.execute(
+            "SELECT status FROM node_health_runs WHERE run_id='legacy-partial'"
+        ).fetchone()
+    assert row["status"] == "partial"
