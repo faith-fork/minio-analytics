@@ -38,7 +38,7 @@
     setActiveNav();
     const host = root();
     if (!host) return;
-    host.innerHTML = '<div class="page-heading"><div><h1>Prometheus connections</h1><p>Manage customer-network endpoints and their MinIO cluster bindings.</p></div><button class="secondary-button" id="pc-reload">↻ Refresh</button></div><section class="panel"><div class="panel-header"><div><h2>Configured endpoints</h2><p>Endpoint secrets are not stored or displayed by this screen.</p></div><button class="primary-button" id="pc-new">Add connection</button></div><div id="pc-list" class="table-scroll"><div class="loading-state">Loading connections…</div></div></section><section class="panel hidden" id="pc-editor"><div class="panel-header"><div><h2 id="pc-editor-title">Add Prometheus connection</h2><p>Test the endpoint and discover MinIO identity labels before saving.</p></div></div><form id="pc-form" class="settings-form"><div class="form-grid"><label>Location ID<input name="location_id" required maxlength="128" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" placeholder="site1"></label><label>Location name<input name="location_name" required maxlength="255" placeholder="Primary DC"></label><label>Connection ID<input name="connection_id" required maxlength="128" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" placeholder="prometheus-site1"></label><label>Protocol<select name="protocol"><option value="http">HTTP</option><option value="https">HTTPS</option></select></label><label>Prometheus host / IP<input name="hostname" required maxlength="253" placeholder="prometheus.example.net or 100.64.1.10"></label><label>Port<input name="port" type="number" min="1" max="65535" value="9090" required></label></div><p class="form-hint">HTTPS certificate-chain and hostname verification is always enforced.</p><div class="form-actions"><button type="button" class="secondary-button" id="pc-test">Test & discover clusters</button><button type="button" class="secondary-button" id="pc-cancel">Cancel</button></div><div id="pc-test-result" class="form-hint" aria-live="polite"></div><div id="pc-discovered"></div><div class="form-actions"><button type="submit" class="primary-button" id="pc-save" disabled>Save connection</button></div></form></section>';
+    host.innerHTML = '<div class="page-heading"><div><h1>Prometheus connections</h1><p>Manage customer-network endpoints and their MinIO cluster bindings.</p></div><button class="secondary-button" id="pc-reload">↻ Refresh</button></div><section class="panel"><div class="panel-header"><div><h2>Configured endpoints</h2><p>Endpoint secrets are not stored or displayed by this screen.</p></div><button class="primary-button" id="pc-new">Add connection</button></div><div id="pc-list" class="table-scroll"><div class="loading-state">Loading connections…</div></div></section><div id="pc-cluster-modal"></div><section class="panel hidden" id="pc-editor"><div class="panel-header"><div><h2 id="pc-editor-title">Add Prometheus connection</h2><p>Test the endpoint and discover MinIO identity labels before saving.</p></div></div><form id="pc-form" class="settings-form"><div class="form-grid"><label>Location ID<input name="location_id" required maxlength="128" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" placeholder="site1"></label><label>Location name<input name="location_name" required maxlength="255" placeholder="Primary DC"></label><label>Connection ID<input name="connection_id" required maxlength="128" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" placeholder="prometheus-site1"></label><label>Protocol<select name="protocol"><option value="http">HTTP</option><option value="https">HTTPS</option></select></label><label>Prometheus host / IP<input name="hostname" required maxlength="253" placeholder="prometheus.example.net or 100.64.1.10"></label><label>Port<input name="port" type="number" min="1" max="65535" value="9090" required></label></div><p class="form-hint">HTTPS certificate-chain and hostname verification is always enforced.</p><div class="form-actions"><button type="button" class="secondary-button" id="pc-test">Test & discover clusters</button><button type="button" class="secondary-button" id="pc-cancel">Cancel</button></div><div id="pc-test-result" class="form-hint" aria-live="polite"></div><div id="pc-discovered"></div><div class="form-actions"><button type="submit" class="primary-button" id="pc-save" disabled>Save connection</button></div></form></section>';
     document.getElementById("pc-reload").addEventListener("click", loadList);
     document.getElementById("pc-new").addEventListener("click", () => openEditor());
     document.getElementById("pc-cancel").addEventListener("click", () => document.getElementById("pc-editor").classList.add("hidden"));
@@ -58,8 +58,9 @@
         return;
       }
       target.innerHTML = '<table><thead><tr><th>LOCATION</th><th>ENDPOINT</th><th>CLUSTERS</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>' +
-        data.items.map((item) => '<tr><td><strong>' + esc(item.location_name) + '</strong><small>' + esc(item.location_id) + '</small></td><td>' + esc(item.protocol) + '://' + esc(item.hostname) + ':' + esc(item.port) + '</td><td>' + item.clusters.map((cluster) => esc(cluster.cluster_name) + ' <small>(' + esc(cluster.cluster_id) + ')</small>').join("<br>") + '</td><td><span class="status-pill ' + (item.enabled ? "success" : "muted") + '">' + (item.enabled ? "Enabled" : "Disabled") + '</span></td><td><button class="secondary-button pc-toggle" data-id="' + esc(item.connection_id) + '" data-enabled="' + (!item.enabled) + '">' + (item.enabled ? "Disable" : "Enable") + '</button></td></tr>').join("") +
+        data.items.map((item) => '<tr><td><strong>' + esc(item.location_name) + '</strong><small>' + esc(item.location_id) + '</small></td><td>' + esc(item.protocol) + ':\/\/' + esc(item.hostname) + ':' + esc(item.port) + '</td><td>' + item.clusters.map((cluster) => esc(cluster.cluster_name) + ' <small>(' + esc(cluster.cluster_id) + ')</small>').join("<br>") + '</td><td><span class="status-pill ' + (item.enabled ? "success" : "muted") + '">' + (item.enabled ? "Enabled" : "Disabled") + '</span></td><td><button class="secondary-button pc-add-clusters" data-id="' + esc(item.connection_id) + '" ' + (item.enabled ? "" : "disabled") + '>Add clusters</button> <button class="secondary-button pc-toggle" data-id="' + esc(item.connection_id) + '" data-enabled="' + (!item.enabled) + '">' + (item.enabled ? "Disable" : "Enable") + '</button></td></tr>').join("") +
         '</tbody></table>';
+      target.querySelectorAll(".pc-add-clusters").forEach((button) => button.addEventListener("click", () => openAddClusters(button.dataset.id)));
       target.querySelectorAll(".pc-toggle").forEach((button) => button.addEventListener("click", async () => {
         try {
           await api("/api/master-admin/prometheus-connections/" + encodeURIComponent(button.dataset.id) + "/enabled?enabled=" + button.dataset.enabled, { method: "PATCH" });
@@ -69,6 +70,65 @@
       }));
     } catch (error) {
       target.innerHTML = '<div class="empty-state"><strong>Unable to load connections</strong><p>' + esc(error.message) + '</p></div>';
+    }
+  }
+
+
+  async function openAddClusters(connectionId) {
+    const host = document.getElementById("pc-cluster-modal");
+    if (!host) return;
+    host.innerHTML = '<section class="panel"><div class="loading-state">Discovering clusters from Prometheus…</div></section>';
+    host.scrollIntoView({ behavior: "smooth", block: "start" });
+    try {
+      const data = await api("/api/master-admin/prometheus-connections/" + encodeURIComponent(connectionId) + "/clusters/discover", { method: "POST" });
+      const rows = data.clusters.map((item, index) => {
+        const blocked = item.already_configured || item.bound_elsewhere;
+        const detail = item.already_configured
+          ? "Already configured · " + item.existing_cluster_id
+          : item.bound_elsewhere
+            ? "Already bound to another connection · " + item.existing_cluster_id
+            : "New cluster · explicitly approved when you click Add selected clusters";
+        const generatedId = "cluster-" + slug(data.location_id).slice(0, 35) + "-" + slug(item.label_value).slice(0, 80);
+        return '<div class="discovery-list"><label class="checkbox-row"><input type="checkbox" class="pc-add-select" data-index="' + index + '" ' + (blocked ? "disabled" : "checked") + '><span><strong>' + esc(item.label_value) + '</strong><small>' + esc(detail) + ' · Identity: ' + esc(item.label_name) + '</small></span></label>' +
+          (blocked ? "" : '<div class="form-grid"><label>Cluster ID<input class="pc-add-id" data-index="' + index + '" maxlength="128" value="' + esc(generatedId) + '" required></label><label>Display name<input class="pc-add-name" data-index="' + index + '" maxlength="255" value="' + esc(item.label_value) + '" required></label></div>') +
+          '</div>';
+      }).join("");
+      host.innerHTML = '<section class="panel"><div class="panel-header"><div><h2>Add clusters</h2><p>Review newly discovered identities. Nothing is added until you confirm below.</p></div><button class="secondary-button" id="pc-add-close">Close</button></div>' +
+        (rows || '<div class="empty-state">No MinIO clusters were discovered.</div>') +
+        '<div class="form-actions"><button class="primary-button" id="pc-add-confirm" ' + (data.new_cluster_count ? "" : "disabled") + '>Add selected clusters</button></div><p class="form-hint">Existing cluster IDs, names, bindings and history are preserved. New selections are explicitly approved and enabled for collection.</p></section>';
+      document.getElementById("pc-add-close").addEventListener("click", () => { host.innerHTML = ""; });
+      document.getElementById("pc-add-confirm").addEventListener("click", async () => {
+        const selected = [...host.querySelectorAll(".pc-add-select:checked")];
+        if (!selected.length) { toast("Select at least one new cluster", "error"); return; }
+        const clusters = selected.map((checkbox) => {
+          const index = checkbox.dataset.index;
+          const item = data.clusters[Number(index)];
+          return {
+            cluster_id: host.querySelector('.pc-add-id[data-index="' + index + '"]').value.trim(),
+            cluster_name: host.querySelector('.pc-add-name[data-index="' + index + '"]').value.trim(),
+            identity_label_name: item.label_name,
+            identity_label_value: item.label_value
+          };
+        });
+        const button = document.getElementById("pc-add-confirm");
+        button.disabled = true;
+        button.textContent = "Adding clusters…";
+        try {
+          const result = await api("/api/master-admin/prometheus-connections/" + encodeURIComponent(connectionId) + "/clusters", {
+            method: "POST", body: JSON.stringify({ clusters })
+          });
+          toast(result.approved_cluster_count + " cluster(s) approved and added");
+          host.innerHTML = "";
+          await loadList();
+        } catch (error) {
+          toast(error.message, "error");
+          button.disabled = false;
+          button.textContent = "Add selected clusters";
+        }
+      });
+    } catch (error) {
+      host.innerHTML = '<section class="panel"><div class="empty-state"><strong>Cluster discovery failed</strong><p>' + esc(error.message) + '</p><button class="secondary-button" id="pc-add-close">Close</button></div></section>';
+      document.getElementById("pc-add-close").addEventListener("click", () => { host.innerHTML = ""; });
     }
   }
 
