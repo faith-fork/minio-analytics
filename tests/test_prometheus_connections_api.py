@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from app.main import app
+
 
 def connection_payload() -> dict:
     return {
@@ -23,9 +25,10 @@ def connection_payload() -> dict:
 
 
 def test_prometheus_connection_management_requires_master_admin(
-    client: TestClient, viewer_client: TestClient
+    viewer_client: TestClient,
 ) -> None:
-    assert client.get("/api/master-admin/prometheus-connections").status_code == 401
+    with TestClient(app, base_url="https://testserver") as anonymous_client:
+        assert anonymous_client.get("/api/master-admin/prometheus-connections").status_code == 401
     assert viewer_client.get("/api/master-admin/prometheus-connections").status_code == 403
 
 
