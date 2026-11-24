@@ -417,3 +417,21 @@ The user confirmed that Prometheus endpoints may be configured as reachable IP a
 The Charter designates `feature/auth-foundation` as the integration branch. PR #52 is intentionally based on `feature/prometheus-authentication` because it depends on the newer PR #51 integration containing the Prometheus connection and backfill experiences being reorganized. Do not retarget or merge it to the older integration branch without first reconciling the prerequisite feature stack and verifying the complete ancestry.
 
 This section records the PR #52 checkpoint only. It does not supersede the Charter's merge, deployment or runtime-acceptance gates.
+
+
+## 20. General Configuration and Historical Backfill UI refinement — 24 November 2026
+
+### Approved design direction
+- Balanced enterprise dashboard layout for both General Configuration and Historical Backfill.
+- General Configuration: two-column collection settings and telemetry footprint, compact backup management and history, contextual explanations, and password confirmation at save time.
+- Historical Backfill: distinct job-creation and execution-monitoring sections, cluster selection, date presets, visible range constraints, summary counters, progress cards, outcome counts and grouped job actions.
+
+### Implementation checkpoint
+- Feature branch: feature/configuration-ui-refinement
+- Base: current deployed feature/prometheus-authentication head 37065f982040062064a2fb843c4b262f4c83bc19, including merged Master Configuration navigation regression fix PR #53.
+- Scope: frontend presentation and focused regression tests only.
+- Existing API routes, authorization, settings validation, scheduler behaviour, retention policy, backup integrity verification, backfill lifecycle, 60-day limit and stored history are preserved.
+- No schema migration, API contract change, dependency change or VM modification is included.
+- Automated tests, exact-head CI, complete patch review and browser validation remain pending.
+
+No merge or deployment is authorized by this checkpoint.

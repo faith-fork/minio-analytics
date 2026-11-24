@@ -348,30 +348,25 @@ async function renderClusters(){
 }
 
 async function renderMasterAdmin(){
-  const [d, backups] = await Promise.all([
-    api("/api/master-admin/settings"),
-    api("/api/master-admin/backups")
-  ]);
-  const s=d.settings,u=d.telemetry_usage||{};
-  const backupRows=backups.items.map(b=>`<tr><td><span class="cell-strong">${esc(b.filename)}</span></td><td>${timestampLabel(b.created_at)}</td><td>${fmt(b.size_bytes/1024/1024,2)} MiB</td><td>${pill("success")} Verified</td><td><a class="table-link" href="${esc(b.download_url)}">Download ↓</a></td></tr>`);
-  const telemetryPanel='<section class="panel" style="max-width:100%;margin-bottom:16px"><div class="panel-header"><div><h3>Infrastructure telemetry footprint</h3><p>Current high-frequency sample counts and SQLite storage footprint.</p></div><span class="panel-tag">RETENTION MONITORING</span></div><div class="metric-grid">'+metric("COLLECTION RUNS",fmt(u.collection_runs,0),"Stored node-health snapshots","◷")+metric("NODE SAMPLES",fmt(u.node_samples,0),"Per-node records","⌁")+metric("DRIVE SAMPLES",fmt(u.drive_samples,0),"Per-drive records","▤")+metric("DATABASE SIZE",fmt((u.database_size_bytes||0)/1024/1024,2)+" MiB","Entire analytics database","▣")+"</div><p class=\"cell-muted\">Database size includes reports and configuration data, not only infrastructure telemetry. SQLite reuses freed pages, so the file may not shrink after cleanup. WAL currently uses "+fmt((u.wal_size_bytes||0)/1024/1024,2)+" MiB. Last retention cleanup: "+(u.last_cleanup_at?timestampLabel(u.last_cleanup_at):"Not yet run")+" · "+(u.last_cleanup_status||"Pending")+(u.last_cleanup_error?" · "+esc(u.last_cleanup_error):"")+".</p></section>";
-  const host=$("#master-config-panel")||$("#content");
-  host.innerHTML=pageHead("General Configuration","Configure collector cadence, telemetry retention and verified database backups.")+
-    `<section class="panel" style="max-width:760px;margin-bottom:16px"><div class="panel-header"><div><h3>Collector schedule</h3><p>All times use Asia/Kolkata (IST).</p></div><span class="panel-tag">LIVE SETTINGS</span></div>
-    <form id="master-settings-form" class="form-grid" style="display:grid;gap:14px;max-width:520px">
-      <label>Node, drive health and filesystem interval (minutes)<input class="form-control" type="number" name="node_interval_minutes" min="1" max="60" step="1" value="${s.node_interval_minutes}" required></label>
-      <p class="cell-muted">Default: every 5 minutes. Valid range: 1–60 minutes. Daily capacity, bucket and storage-topology collection remains separate.</p>
-      <label>Detailed infrastructure telemetry retention (days)<input class="form-control" type="number" name="telemetry_retention_days" min="1" max="90" step="1" value="${s.telemetry_retention_days}" required></label>
-      <p class="cell-muted">Default: 3 days. Applies to high-frequency node and drive samples across all configured clusters. Expired samples are removed automatically once per day. Reducing retention deletes older samples at the next cleanup; increasing it cannot restore deleted data.</p>
-      <label>Daily capacity, bucket and pool collection time (IST)<input class="form-control" type="time" name="daily_collection_time" value="${esc(s.daily_collection_time)}" required></label>
-      <label>Confirm your Master Admin password<input class="form-control" type="password" name="current_password" autocomplete="current-password" required></label>
-      <div><button class="primary-button" type="submit">Save collector settings</button></div>
-    </form><p class="cell-muted" style="margin-top:14px">The scheduler checks settings every 60 seconds. Retention cleanup runs daily. Daily reports and storage-topology history are not affected. Scheduled database backups continue at their configured time.</p></section>`+
-    telemetryPanel+
-    `<section class="panel" style="max-width:100%"><div class="panel-header"><div><h3>Database backups</h3><p>Creates a consistent SQLite online backup and verifies it with PRAGMA integrity_check. The dashboard remains available.</p></div><button class="primary-small" data-action="create-backup">Create backup now</button></div><p class="cell-muted" style="margin:0 0 14px">Manual backups use the same backup directory as scheduled backups. Scheduled retention remains 14 days.</p></section>`+
-    table("Backup history",backups.count+" backup file(s)",["FILE","CREATED AT","SIZE","INTEGRITY",""],backupRows,"No database backups found.");
+  const [d,backups]=await Promise.all([api("/api/master-admin/settings"),api("/api/master-admin/backups")]);
+  const s=d.settings,u=d.telemetry_usage||{},host=$("#master-config-panel")||$("#content");
+  const rows=backups.items.map(b=>'<tr><td><span class="cell-strong">'+esc(b.filename)+'</span></td><td>'+timestampLabel(b.created_at)+'</td><td>'+fmt(b.size_bytes/1024/1024,2)+' MiB</td><td>'+pill("success")+' Verified</td><td><a class="table-link" href="'+esc(b.download_url)+'">Download ↓</a></td></tr>').join("");
+  const cleanup=u.last_cleanup_status||"Pending";
+  host.innerHTML=pageHead("General Configuration","Manage collection schedules, telemetry retention and database protection.")+
+  '<section class="config-section"><div class="config-section-heading"><div><span class="config-kicker">01 / COLLECTION POLICY</span><h2>Collection settings</h2><p>Control high-frequency infrastructure collection and daily snapshot timing.</p></div><span class="panel-tag">LIVE SETTINGS</span></div>'+
+  '<div class="config-settings-grid"><form id="master-settings-form" class="panel config-settings-form"><div class="config-field-grid">'+
+  '<label class="config-field"><span>Node, drive and filesystem interval</span><span class="config-input-wrap"><input class="form-control" type="number" name="node_interval_minutes" min="1" max="60" step="1" value="'+s.node_interval_minutes+'" required><small>minutes</small></span><small class="config-help">Default 5 minutes · Valid range 1–60</small></label>'+
+  '<label class="config-field"><span>Detailed telemetry retention</span><span class="config-input-wrap"><input class="form-control" type="number" name="telemetry_retention_days" min="1" max="90" step="1" value="'+s.telemetry_retention_days+'" required><small>days</small></span><small class="config-help">Default 3 days · Valid range 1–90</small></label>'+
+  '<label class="config-field config-field-wide"><span>Daily capacity, bucket and pool collection time</span><span class="config-input-wrap"><input class="form-control" type="time" name="daily_collection_time" value="'+esc(s.daily_collection_time)+'" required><small>IST</small></span><small class="config-help">Daily historical snapshots use Asia/Kolkata time. This is separate from high-frequency node and drive collection.</small></label>'+
+  '</div><div class="config-form-footer"><div><strong>Changes take effect automatically</strong><p>The scheduler checks settings every 60 seconds. Retention cleanup runs daily. Reducing retention removes expired samples at the next cleanup; deleted samples cannot be restored by increasing retention.</p></div><button class="primary-button" type="submit">Review &amp; save settings</button></div></form>'+
+  '<aside class="panel config-footprint"><div class="panel-header"><div><h3>Infrastructure telemetry</h3><p>Current high-frequency data footprint</p></div><span class="panel-tag">RETENTION</span></div><div class="config-stat-list">'+
+  '<div><span>Collection runs</span><strong>'+fmt(u.collection_runs,0)+'</strong></div><div><span>Node samples</span><strong>'+fmt(u.node_samples,0)+'</strong></div><div><span>Drive samples</span><strong>'+fmt(u.drive_samples,0)+'</strong></div><div><span>Database size</span><strong>'+fmt((u.database_size_bytes||0)/1024/1024,2)+' MiB</strong></div></div>'+
+  '<div class="config-cleanup-note"><span class="config-status-dot '+(cleanup==="success"?"is-good":cleanup==="failed"?"is-bad":"")+'"></span><div><strong>Last retention cleanup · '+esc(cleanup)+'</strong><p>'+(u.last_cleanup_at?timestampLabel(u.last_cleanup_at):"Not yet run")+(u.last_cleanup_error?" · "+esc(u.last_cleanup_error):"")+'</p></div></div>'+
+  '<p class="config-footnote">Database size includes configuration and report data. SQLite may reuse freed pages without shrinking the database file. WAL size: '+fmt((u.wal_size_bytes||0)/1024/1024,2)+' MiB.</p></aside></div></section>'+
+  '<section class="config-section"><div class="config-section-heading"><div><span class="config-kicker">02 / DATA PROTECTION</span><h2>Database backups</h2><p>Create and download verified application database backups.</p></div><button class="primary-small" data-action="create-backup">Create backup now</button></div>'+
+  '<div class="panel config-backup-panel"><div class="config-backup-summary"><div class="config-backup-icon">▣</div><div><strong>'+backups.count+' backup file(s)</strong><p>Manual backups use the scheduled backup directory. Scheduled retention remains 14 days.</p></div><span class="config-verified-tag">Integrity check enabled</span></div>'+
+  '<div class="table-scroll"><table class="config-backup-table"><thead><tr><th>BACKUP FILE</th><th>CREATED</th><th>SIZE</th><th>INTEGRITY</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="5" class="empty-state">No database backups found.</td></tr>')+'</tbody></table></div><p class="config-footnote">Backups use SQLite online backup and are verified with PRAGMA integrity_check. The dashboard remains available during backup creation.</p></div></section>';
 }
-
 function rangeControl(days,kind,id,attribution="current") {
   const options=[[7,"Last 7 days"],[30,"Last 30 days"],[60,"Last 60 days"],[90,"Last 90 days"],[180,"Last 6 months"],[365,"Last 12 months"]];
   return '<div class="toolbar trend-controls"><label for="trend-range" class="cell-muted">Trend period</label><select id="trend-range" class="form-control" data-trend-kind="'+kind+'" data-trend-id="'+esc(id)+'" data-trend-attribution="'+attribution+'">'+options.map(([value,label])=>'<option value="'+value+'" '+(Number(days)===value?'selected':'')+'>'+label+'</option>').join('')+'<option value="custom">Custom range</option></select><label class="trend-date-label" for="trend-start">From</label><input type="date" id="trend-start" class="form-control" aria-label="Start date"><label class="trend-date-label" for="trend-end">To</label><input type="date" id="trend-end" class="form-control" aria-label="End date"><button class="secondary-button" data-action="apply-trend-dates" data-trend-kind="'+kind+'" data-trend-id="'+esc(id)+'" data-trend-attribution="'+attribution+'">Apply</button></div>';
@@ -894,12 +889,18 @@ $("#logout-button").addEventListener("click",async()=>{try{await api("/api/auth/
 $("#refresh-button").addEventListener("click",()=>render().catch(e=>toast(e.message,true)));
 $("#content").addEventListener("submit",async e=>{
   if(e.target.id!=="master-settings-form")return;
-  e.preventDefault();const f=new FormData(e.target);
-  try{
-    await api("/api/master-admin/settings",{method:"PUT",body:JSON.stringify({node_interval_minutes:Number(f.get("node_interval_minutes")),telemetry_retention_days:Number(f.get("telemetry_retention_days")),daily_collection_time:f.get("daily_collection_time"),current_password:f.get("current_password")})});
-    toast("Collector cadence and telemetry retention settings saved.");
-    await renderMasterAdmin();
-  }catch(err){toast(err.message,true);}
+  e.preventDefault();const form=e.target;if(!form.reportValidity())return;
+  const values={node_interval_minutes:Number(form.elements.node_interval_minutes.value),telemetry_retention_days:Number(form.elements.telemetry_retention_days.value),daily_collection_time:form.elements.daily_collection_time.value};
+  $("#modal-root").innerHTML='<div class="modal-backdrop config-confirm-backdrop"><section class="modal config-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="config-confirm-title"><div class="modal-header"><div><h2 id="config-confirm-title">Confirm configuration changes</h2><p>Enter your Master Admin password to save these settings.</p></div><button type="button" class="modal-close" data-action="close-modal" aria-label="Close">×</button></div><form id="master-settings-confirm-form"><label class="config-field"><span>Master Admin password</span><input class="form-control" type="password" name="current_password" autocomplete="current-password" required autofocus></label><p class="form-error" id="config-confirm-error" role="alert"></p><div class="form-actions"><button type="button" class="secondary-button" data-action="close-modal">Cancel</button><button class="primary-small" type="submit">Confirm &amp; save</button></div></form></section></div>';
+  const confirmForm=$("#master-settings-confirm-form");
+  confirmForm.addEventListener("submit",async event=>{
+    event.preventDefault();const button=confirmForm.querySelector("button[type=submit]");button.disabled=true;button.textContent="Saving…";
+    try{
+      await api("/api/master-admin/settings",{method:"PUT",body:JSON.stringify({...values,current_password:new FormData(confirmForm).get("current_password")})});
+      $("#modal-root").innerHTML="";toast("Collection settings saved successfully.");await renderMasterAdmin();
+    }catch(err){$("#config-confirm-error").textContent=err.message;button.disabled=false;button.textContent="Confirm & save";}
+  });
+  confirmForm.querySelector("input[name=current_password]").focus();
 });
 $("#content").addEventListener("submit",async e=>{
   if(e.target.id!=="capacity-factors-form")return;
