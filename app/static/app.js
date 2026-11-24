@@ -835,6 +835,7 @@ document.addEventListener("click",async e=>{
     if(mode==="graph"){const instance=state.charts.find(item=>item.canvas?.id==="object-size-histogram");if(instance)instance.resize();}
     return;
   }
+  const generalConfigTab=e.target.closest("[data-general-config-tab]");if(generalConfigTab){state.masterGeneralTab=generalConfigTab.dataset.generalConfigTab;state.backupOffset=0;renderMasterAdmin().catch(err=>toast(err.message,true));return;}
   const masterConfigTab=e.target.closest("[data-master-config-tab]");if(masterConfigTab){setMasterConfigTab(masterConfigTab.dataset.masterConfigTab);return;}
   const reportView=e.target.closest("[data-report-view]");if(reportView){setView(reportView.dataset.reportView);return;}
   const view=e.target.closest("[data-view]");if(view){e.preventDefault();setView(view.dataset.view);return;}
@@ -905,6 +906,9 @@ document.addEventListener("click",async e=>{
     const run=kind==="cluster"||kind==="cluster-snapshots"?(kind==="cluster-snapshots"?showClusterSnapshots(id,90,start,end):showCluster(id,90,start,end)):kind==="tenant"||kind==="tenant-snapshots"?(kind==="tenant-snapshots"?showTenantSnapshots(Number(id),mode,90,start,end):showTenant(Number(id),mode,90,start,end)):kind==="bucket-snapshots"?showBucketSnapshots(Number(id),90,start,end):showBucket(Number(id),90,start,end);
     run.catch(err=>toast(err.message,true));
   }
+  if(action==="backup-page-prev"){state.backupOffset=Math.max(0,state.backupOffset-state.backupPageSize);renderMasterAdmin().catch(err=>toast(err.message,true));return;}
+  if(action==="backup-page-next"){state.backupOffset+=state.backupPageSize;renderMasterAdmin().catch(err=>toast(err.message,true));return;}
+  if(action==="review-backup-cleanup"){reviewBackupCleanup();return;}
   if(action==="create-backup"){
     const button=e.target.closest("[data-action='create-backup']");
     if(button){button.disabled=true;button.textContent="Creating backup…";}
@@ -951,6 +955,7 @@ $("#content").addEventListener("submit",async e=>{
   }catch(err){toast(err.message,true);if(button){button.disabled=false;button.textContent="Save & recalculate";}}
 });
 $("#content").addEventListener("change",async e=>{
+  if(e.target.id==="backup-page-size"){state.backupPageSize=Number(e.target.value)||10;state.backupOffset=0;renderMasterAdmin().catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-bucket-filter-option]")){
     const key=e.target.dataset.bucketFilterOption,value=e.target.value,selected=new Set(state.bucketUsageFilterDraft[key]||[]);
     if(e.target.checked)selected.add(value);else selected.delete(value);
