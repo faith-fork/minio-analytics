@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from app.database.database import initialize_database, transaction
@@ -15,6 +15,13 @@ def run_one_backfill_day() -> dict[str, Any] | None:
     """Process at most one calendar day. The SQLite cursor is the durable checkpoint."""
     initialize_database()
     with transaction() as c:
+        # The scheduler's exclusive file lock guarantees a prior worker process
+        # is no longer running. Re-queue an interrupted day; persistence is idempotent.
+        c.execute(
+            """UPDATE backfill_jobs SET status='queued', updated_at=?
+               WHERE status='running'""",
+            (datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),),
+        )
         row = c.execute(
             """SELECT * FROM backfill_jobs WHERE status='queued'
                ORDER BY created_at LIMIT 1"""
@@ -25,7 +32,8 @@ def run_one_backfill_day() -> dict[str, Any] | None:
         c.execute(
             """UPDATE backfill_jobs SET status='running', started_at=COALESCE(started_at, ?),
                updated_at=? WHERE job_id=? AND status='queued'""",
-            (job["created_at"], job["created_at"], job["job_id"]),
+            (datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+             datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"), job["job_id"]),
         )
 
     day = date.fromisoformat(job["next_date"])
@@ -76,7 +84,7 @@ def run_one_backfill_day() -> dict[str, Any] | None:
             (next_day.isoformat(), completed, int(status == "success"),
              int(status == "partial"), int(status == "failed"),
              "completed" if finished else "queued", error_text,
-             __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+             datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
              int(finished), job["job_id"]),
         )
     return {"job_id": job["job_id"], "date": day.isoformat(), "day_status": status,
