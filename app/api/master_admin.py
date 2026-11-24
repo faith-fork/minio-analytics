@@ -83,8 +83,7 @@ def _append_backup_audit(record: dict) -> None:
     BACKUP_AUDIT_DIR.mkdir(parents=True, exist_ok=True)
     if BACKUP_AUDIT_DIR.is_symlink() or BACKUP_AUDIT_FILE.is_symlink():
         raise RuntimeError("Backup audit path must not contain symbolic links")
-    payload = (json.dumps(record, sort_keys=True, separators=(",", ":")) + "
-").encode("utf-8")
+    payload = (json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
     flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(BACKUP_AUDIT_FILE, flags, 0o600)
     try:
