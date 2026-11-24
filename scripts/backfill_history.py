@@ -3,9 +3,15 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sys
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from app.collectors.bucket_collector import collect_bucket_snapshots
 from app.collectors.cluster_collector import collect_cluster_snapshot
