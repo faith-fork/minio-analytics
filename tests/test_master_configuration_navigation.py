@@ -7,7 +7,6 @@ ROOT = Path(__file__).resolve().parents[1]
 INDEX = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
 APP = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
 CSS = (ROOT / "app/static/app.css").read_text(encoding="utf-8")
-BACKFILL = (ROOT / "app/static/backfill-jobs.js").read_text(encoding="utf-8")
 PROMETHEUS = (ROOT / "app/static/prometheus-connections.js").read_text(encoding="utf-8")
 BACKFILL = (ROOT / "app/static/backfill-jobs.js").read_text(encoding="utf-8")
 
@@ -59,10 +58,6 @@ class TestMasterConfigurationNavigation(unittest.TestCase):
         self.assertIn('/api/master-admin/backups', APP)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestConfigurationUiRefinement(unittest.TestCase):
     def test_general_configuration_uses_balanced_settings_and_footprint_layout(self):
         self.assertIn('class="config-settings-grid"', APP)
@@ -93,3 +88,5 @@ class TestConfigurationUiRefinement(unittest.TestCase):
         self.assertIn('.bf-job-list{grid-template-columns:1fr}', CSS)
 
 
+if __name__ == "__main__":
+    unittest.main()
