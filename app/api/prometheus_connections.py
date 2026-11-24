@@ -22,6 +22,13 @@ class DiscoveredClusterBinding(BaseModel):
     identity_label_value: str = Field(min_length=1, max_length=255)
 
 
+class PrometheusEndpointTestInput(BaseModel):
+    protocol: Literal["http", "https"] = "http"
+    hostname: str = Field(min_length=1, max_length=253)
+    port: int = Field(default=9090, ge=1, le=65535)
+    verify_tls: bool = True
+
+
 class PrometheusConnectionInput(BaseModel):
     connection_id: str = Field(min_length=1, max_length=128)
     location_id: str = Field(min_length=1, max_length=128)
@@ -91,7 +98,7 @@ def list_connections(_: dict = Depends(require_master_admin)) -> dict:
 
 
 @router.post("/test")
-def test_connection(payload: PrometheusConnectionInput, _: dict = Depends(require_master_admin)) -> dict:
+def test_connection(payload: PrometheusEndpointTestInput, _: dict = Depends(require_master_admin)) -> dict:
     try:
         endpoint = build_prometheus_url(payload.protocol, payload.hostname, payload.port)
         return discover_minio_clusters(endpoint, verify_tls=payload.verify_tls)
@@ -138,17 +145,6 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
                 (payload.connection_id, payload.location_id, payload.protocol,
                  payload.hostname, payload.port, int(payload.verify_tls), int(payload.enabled)),
             )
-            selected = {cluster.cluster_id for cluster in payload.clusters}
-            existing_bindings = connection.execute(
-                "SELECT cluster_id FROM cluster_prometheus_bindings WHERE connection_id=?",
-                (payload.connection_id,),
-            ).fetchall()
-            for row in existing_bindings:
-                if row["cluster_id"] not in selected:
-                    connection.execute(
-                        "DELETE FROM cluster_prometheus_bindings WHERE cluster_id=?",
-                        (row["cluster_id"],),
-                    )
             for cluster in payload.clusters:
                 current = connection.execute(
                     "SELECT location_id FROM clusters WHERE id=?", (cluster.cluster_id,)
