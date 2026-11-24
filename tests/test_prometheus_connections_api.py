@@ -461,3 +461,52 @@ def test_general_connection_save_preserves_existing_authentication(
     assert row["auth_type"] == "basic"
     assert row["auth_secret_encrypted"]
 
+def test_authentication_update_rejects_stale_connection_configuration(
+    admin_client: TestClient, monkeypatch
+) -> None:
+    from cryptography.fernet import Fernet
+    from app.api import prometheus_connections as api
+    from app.database.database import transaction
+
+    monkeypatch.setenv(
+        "MINIO_ANALYTICS_CREDENTIALS_KEY",
+        Fernet.generate_key().decode("ascii"),
+    )
+    observed = []
+
+    def fake_discovery(endpoint, *, verify_tls=True, auth_header=None):
+        observed.append(auth_header)
+        # Simulate another administrator changing the endpoint while the
+        # authentication request is being validated.
+        if len(observed) == 2:
+            with transaction() as connection:
+                connection.execute(
+                    "UPDATE prometheus_connections SET hostname='replacement.internal' "
+                    "WHERE connection_id='prometheus-lab'"
+                )
+        return {
+            "clusters": [{"label_name": "cluster", "label_value": "lab-two"}],
+            "cluster_count": 1,
+        }
+
+    monkeypatch.setattr(api, "discover_minio_clusters", fake_discovery)
+    created = admin_client.post(
+        "/api/master-admin/prometheus-connections", json=connection_payload()
+    )
+    assert created.status_code == 201, created.text
+
+    update = admin_client.patch(
+        "/api/master-admin/prometheus-connections/prometheus-lab/authentication",
+        json={"auth_type": "bearer", "token": "racing-token"},
+    )
+    assert update.status_code == 409, update.text
+
+    with transaction() as connection:
+        row = connection.execute(
+            "SELECT hostname, auth_type, auth_secret_encrypted FROM prometheus_connections "
+            "WHERE connection_id='prometheus-lab'"
+        ).fetchone()
+    assert row["hostname"] == "replacement.internal"
+    assert row["auth_type"] == "none"
+    assert row["auth_secret_encrypted"] is None
+
