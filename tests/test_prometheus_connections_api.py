@@ -490,8 +490,10 @@ def test_authentication_update_rejects_stale_connection_configuration(
         }
 
     monkeypatch.setattr(api, "discover_minio_clusters", fake_discovery)
+    initial_payload = connection_payload()
+    initial_payload["protocol"] = "https"
     created = admin_client.post(
-        "/api/master-admin/prometheus-connections", json=connection_payload()
+        "/api/master-admin/prometheus-connections", json=initial_payload
     )
     assert created.status_code == 201, created.text
 
