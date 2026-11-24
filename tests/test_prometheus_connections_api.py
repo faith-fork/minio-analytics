@@ -514,3 +514,44 @@ def test_authentication_update_rejects_stale_connection_configuration(
     assert row["auth_type"] == "none"
     assert row["auth_secret_encrypted"] is None
 
+
+
+def test_cluster_discovery_reports_decryption_failure_without_server_error(
+    admin_client: TestClient, monkeypatch
+) -> None:
+    from cryptography.fernet import Fernet
+    from app.api import prometheus_connections as api
+
+    monkeypatch.setenv(
+        "MINIO_ANALYTICS_CREDENTIALS_KEY",
+        Fernet.generate_key().decode("ascii"),
+    )
+
+    def fake_discovery(endpoint, *, verify_tls=True, auth_header=None):
+        return {
+            "clusters": [{"label_name": "cluster", "label_value": "lab-two"}],
+            "cluster_count": 1,
+        }
+
+    monkeypatch.setattr(api, "discover_minio_clusters", fake_discovery)
+    payload = connection_payload()
+    payload.update({
+        "protocol": "https",
+        "auth_type": "bearer",
+        "token": "sensitive-token",
+    })
+    created = admin_client.post(
+        "/api/master-admin/prometheus-connections", json=payload
+    )
+    assert created.status_code == 201, created.text
+
+    monkeypatch.setenv(
+        "MINIO_ANALYTICS_CREDENTIALS_KEY",
+        Fernet.generate_key().decode("ascii"),
+    )
+    response = admin_client.post(
+        "/api/master-admin/prometheus-connections/prometheus-lab/clusters/discover"
+    )
+    assert response.status_code == 502
+    assert "cannot be decrypted" in response.json()["detail"]
+    assert "sensitive-token" not in response.text
