@@ -81,3 +81,31 @@ def test_collect_day_reports_partial_when_prometheus_has_no_historical_samples(m
     result = backfill._collect_day(location, cluster, date(2026, 11, 24), 1, True)
     assert result["status"] == "failed"
     assert result["errors"]
+
+
+
+def test_database_configuration_dry_run_does_not_initialize_or_write_sqlite(client, monkeypatch):
+    from app.database import prometheus_config
+    from app.database.database import transaction
+
+    with transaction() as connection:
+        connection.execute(
+            """INSERT INTO prometheus_connections
+               (connection_id, location_id, protocol, hostname, port, enabled)
+               VALUES ('prom-loc1', 'LOC1', 'http', '10.20.30.40', 9090, 1)"""
+        )
+        connection.execute(
+            """INSERT INTO cluster_prometheus_bindings
+               (cluster_id, connection_id, identity_label_name, identity_label_value)
+               VALUES ('cluster-1', 'prom-loc1', 'cluster', 'cluster-1')"""
+        )
+
+    def fail_if_initialized():
+        raise AssertionError("read-only configuration loading must not initialize or migrate SQLite")
+
+    monkeypatch.setattr(prometheus_config, "initialize_database", fail_if_initialized)
+    locations = prometheus_config.load_database_locations(read_only=True)
+
+    assert len(locations) == 1
+    assert locations[0].id == "LOC1"
+    assert locations[0].clusters[0].id == "cluster-1"
