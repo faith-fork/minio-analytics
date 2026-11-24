@@ -181,6 +181,7 @@ async function render(){
   else if(state.view==="health") await renderHealth();
   else if(state.view==="users" && state.user.role==="admin") await renderUsers();
   else if(state.view==="master-admin" && state.user.is_master_admin) await renderMasterAdmin();
+  else if(state.view==="backfill-jobs" && state.user.is_master_admin) await window.renderBackfillJobs();
 }
 async function renderOverview(){
   await loadOverview();const o=state.overview,c=o.capacity_bytes,n=o.nodes;
