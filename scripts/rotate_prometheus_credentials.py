@@ -37,13 +37,18 @@ def main() -> int:
     try:
         with transaction() as connection:
             rows = connection.execute(
-                """SELECT connection_id, auth_secret_encrypted
+                """SELECT connection_id, auth_type, auth_secret_encrypted
                    FROM prometheus_connections
-                   WHERE auth_type != 'none' AND auth_secret_encrypted IS NOT NULL
+                   WHERE auth_type != 'none'
                    ORDER BY connection_id"""
             ).fetchall()
             rotated = []
             for row in rows:
+                if not row["auth_secret_encrypted"]:
+                    raise RuntimeError(
+                        "At least one authenticated connection has no encrypted credential; "
+                        "no credentials were changed."
+                    )
                 try:
                     plaintext = old_fernet.decrypt(row["auth_secret_encrypted"].encode("ascii"))
                 except (InvalidToken, ValueError, UnicodeEncodeError) as exc:
