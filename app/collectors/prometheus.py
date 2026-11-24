@@ -72,10 +72,12 @@ class PrometheusClient:
         timeout_seconds: float = 15.0,
         verify_tls: bool = True,
         session: Any | None = None,
+        auth_header: str | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self.verify_tls = verify_tls
+        self.auth_header = auth_header
         # Retained for call-site compatibility. Requests sessions are not used:
         # the pinned urllib3 transport deliberately has no proxy/environment path.
         self._legacy_session = session
@@ -124,6 +126,7 @@ class PrometheusClient:
                 "GET",
                 "/api/v1/query",
                 fields=params,
+                headers=({"Authorization": self.auth_header} if self.auth_header else None),
                 timeout=Timeout(total=self.timeout_seconds),
                 retries=False,
                 redirect=False,
