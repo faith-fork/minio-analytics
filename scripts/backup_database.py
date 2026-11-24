@@ -155,7 +155,7 @@ def _append_retention_audit(record: dict, backup_dir: Path) -> None:
     audit_dir.mkdir(parents=True, exist_ok=True)
     if audit_dir.is_symlink() or audit_file.is_symlink():
         raise RuntimeError("Backup audit path must not contain symbolic links")
-    payload = (json.dumps(record, sort_keys=True, separators=(",", ":")) + "\\n").encode("utf-8")
+    payload = (json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
     flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(audit_file, flags, 0o600)
     try:
