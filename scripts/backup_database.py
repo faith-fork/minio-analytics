@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 import sqlite3
@@ -107,6 +108,20 @@ def inspect_backup_retention(
         item for item in verified
         if item["modified_at"] < cutoff and item["filename"] not in preserved_names
     ]
+    preview_token = hashlib.sha256(
+        json.dumps(
+            [
+                {
+                    "filename": item["filename"],
+                    "size_bytes": item["size_bytes"],
+                    "modified_at": item["modified_at"],
+                }
+                for item in candidates
+            ],
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
     preserved = [
         item for item in verified
         if item["filename"] in preserved_names or item["modified_at"] >= cutoff
@@ -119,6 +134,7 @@ def inspect_backup_retention(
         "unverified_count": len(unverified),
         "eligible_count": len(candidates),
         "eligible_size_bytes": sum(item["size_bytes"] for item in candidates),
+        "preview_token": preview_token,
         "candidates": [{k: v for k, v in item.items() if k != "modified_at"} for item in candidates],
         "preserved": [{k: v for k, v in item.items() if k != "modified_at"} for item in preserved],
         "unverified": [{k: v for k, v in item.items() if k != "modified_at"} for item in unverified],
