@@ -158,7 +158,7 @@ def _prepare_auth(protocol: str, auth_type: str, username: str | None,
     try:
         encrypted = encrypt_credentials(auth_type, credentials)
         return encrypted, build_authorization_header(auth_type, encrypted)
-    except RuntimeError as exc:
+    except PrometheusCredentialError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
@@ -407,21 +407,39 @@ def update_connection_authentication(
         raise HTTPException(status_code=502, detail=f"Prometheus authentication test failed: {exc}") from exc
 
     old_config = {
+        "protocol": current["protocol"],
+        "hostname": current["hostname"],
+        "port": current["port"],
         "auth_type": current["auth_type"],
         "credentials_configured": bool(current["auth_secret_encrypted"]),
     }
     new_config = {
+        "protocol": current["protocol"],
+        "hostname": current["hostname"],
+        "port": current["port"],
         "auth_type": payload.auth_type,
         "credentials_configured": bool(encrypted),
     }
     with transaction() as connection:
-        connection.execute(
+        # Compare-and-swap protects against an endpoint or credential update
+        # racing with the external Prometheus authentication test above.
+        updated = connection.execute(
             """UPDATE prometheus_connections
                SET auth_type=?, auth_secret_encrypted=?,
                    updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
-               WHERE connection_id=?""",
-            (payload.auth_type, encrypted, connection_id),
+               WHERE connection_id=? AND protocol=? AND hostname=? AND port=?
+                 AND auth_type=? AND auth_secret_encrypted IS ?""",
+            (
+                payload.auth_type, encrypted, connection_id,
+                current["protocol"], current["hostname"], current["port"],
+                current["auth_type"], current["auth_secret_encrypted"],
+            ),
         )
+        if updated.rowcount != 1:
+            raise HTTPException(
+                status_code=409,
+                detail="Prometheus connection changed during authentication validation; retry the update",
+            )
         connection.execute(
             """INSERT INTO settings_audit(setting_key, old_value, new_value, changed_by)
                VALUES(?,?,?,?)""",
