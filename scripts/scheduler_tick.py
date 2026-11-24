@@ -9,6 +9,7 @@ from app.collectors.orchestrator import collect_all
 from app.database.prometheus_config import load_database_locations
 from app.config.loader import load_locations
 from app.database.database import initialize_database,transaction
+from app.services.backfill_worker import run_one_backfill_day
 
 IST=ZoneInfo("Asia/Kolkata")
 LOCK=Path("/run/lock/minio-analytics-scheduler.lock")
@@ -100,6 +101,9 @@ def main():
         now=datetime.now(timezone.utc)
         if _due_retention(now):
             _run("telemetry_retention",lambda:_cleanup_expired_telemetry(retention_days),now)
+        backfill_result = run_one_backfill_day()
+        if backfill_result:
+            LOG.info("Historical backfill worker: %s", backfill_result)
         locations=_load_locations()
         if _due_node(now,interval):
             _run("node_health",lambda:collect_node_health(locations,now),now)
