@@ -90,8 +90,10 @@ def test_allows_literal_endpoints_in_shared_address_space(url):
 
 
 @pytest.mark.parametrize("url", [
+    "http://100.0.0.1:9090",
     "http://100.63.255.255:9090",
     "http://100.128.0.1:9090",
+    "http://100.255.255.254:9090",
 ])
 def test_rejects_addresses_outside_shared_address_space_boundaries(url):
     with pytest.raises(PrometheusEndpointError, match="prohibited"):
