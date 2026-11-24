@@ -197,7 +197,15 @@
     editor.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function updateAuthFields() {\n    const form = document.getElementById("pc-form");\n    const type = form?.elements.auth_type?.value || "none";\n    document.getElementById("pc-auth-user-wrap")?.classList.toggle("hidden", type !== "basic");\n    document.getElementById("pc-auth-pass-wrap")?.classList.toggle("hidden", type !== "basic");\n    document.getElementById("pc-auth-token-wrap")?.classList.toggle("hidden", type !== "bearer");\n  }\n\n  function endpointPayload() {
+  function updateAuthFields() {
+    const form = document.getElementById("pc-form");
+    const type = form?.elements.auth_type?.value || "none";
+    document.getElementById("pc-auth-user-wrap")?.classList.toggle("hidden", type !== "basic");
+    document.getElementById("pc-auth-pass-wrap")?.classList.toggle("hidden", type !== "basic");
+    document.getElementById("pc-auth-token-wrap")?.classList.toggle("hidden", type !== "bearer");
+  }
+
+  function endpointPayload() {
     const form = document.getElementById("pc-form");
     return {
       protocol: form.elements.protocol.value,
