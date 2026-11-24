@@ -127,3 +127,37 @@ def test_retry_rewinds_to_first_failed_day_and_preserves_earlier_days(client):
             (job_id,),
         ).fetchall()
     assert [row["snapshot_date"] for row in rows] == ["2026-01-01"]
+
+
+
+def test_backfill_schema_v12_migration_preserves_existing_bucket_history(client):
+    from app.database.database import initialize_database
+
+    with transaction() as connection:
+        before = connection.execute(
+            "SELECT COUNT(*) AS n FROM bucket_daily_metrics WHERE cluster_id='cluster-1'"
+        ).fetchone()["n"]
+        assert before == 3
+        connection.execute("DROP TABLE backfill_job_days")
+        connection.execute("DROP TABLE backfill_jobs")
+        connection.execute("DELETE FROM schema_version WHERE version=12")
+
+    initialize_database()
+
+    with transaction() as connection:
+        after = connection.execute(
+            "SELECT COUNT(*) AS n FROM bucket_daily_metrics WHERE cluster_id='cluster-1'"
+        ).fetchone()["n"]
+        version = connection.execute(
+            "SELECT 1 FROM schema_version WHERE version=12"
+        ).fetchone()
+        jobs_table = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='backfill_jobs'"
+        ).fetchone()
+        days_table = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='backfill_job_days'"
+        ).fetchone()
+    assert after == before
+    assert version is not None
+    assert jobs_table is not None
+    assert days_table is not None
