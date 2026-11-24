@@ -162,6 +162,36 @@ def test_cleanup_preview_and_password_confirmed_cleanup_are_audited(
     assert all(entry["actor"] == "admin-test" for entry in audit)
 
 
+def test_cleanup_rejects_inventory_changes_after_preview(admin_client, monkeypatch, tmp_path):
+    backup_dir, _ = configure_backup_paths(monkeypatch, tmp_path)
+    make_old_backups(backup_dir, 7)
+    preview = admin_client.post(
+        "/api/master-admin/backups/cleanup/preview",
+        json={"retention_days": 14, "minimum_keep": 5},
+    )
+    assert preview.status_code == 200
+    assert len(preview.json()["preview_token"]) == 64
+
+    added = backup_dir / "minio_analytics_added_after_preview.db"
+    make_sqlite_backup(added)
+    old_time = time.time() - 30 * 86400
+    os.utime(added, (old_time, old_time))
+
+    response = admin_client.post(
+        "/api/master-admin/backups/cleanup",
+        json={
+            "retention_days": 14,
+            "minimum_keep": 5,
+            "current_password": PASSWORD,
+            "preview_token": preview.json()["preview_token"],
+        },
+    )
+
+    assert response.status_code == 409
+    assert added.exists()
+    assert len(list(backup_dir.glob("minio_analytics_*.db"))) == 8
+
+
 def test_cleanup_does_not_follow_symlinks_or_delete_unmanaged_files(tmp_path):
     backup_dir = tmp_path / "backups"
     make_old_backups(backup_dir, 7)
