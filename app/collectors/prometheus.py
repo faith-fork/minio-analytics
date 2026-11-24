@@ -107,8 +107,10 @@ class PrometheusClient:
                     host=host,
                     port=port,
                     pinned_ip=pinned_ip,
-                    cert_reqs=ssl.CERT_REQUIRED if self.verify_tls else ssl.CERT_NONE,
-                    assert_hostname=host if self.verify_tls else False,
+                    # HTTPS is always verified. Keep verify_tls in the constructor for
+                    # call-site compatibility, but never permit insecure TLS.
+                    cert_reqs=ssl.CERT_REQUIRED,
+                    assert_hostname=host,
                     server_hostname=host,
                     maxsize=1,
                     block=True,

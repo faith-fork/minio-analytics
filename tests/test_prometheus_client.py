@@ -85,7 +85,7 @@ def test_https_query_keeps_hostname_for_sni_and_certificate_validation(monkeypat
     assert kwargs["cert_reqs"] == module.ssl.CERT_REQUIRED
 
 
-def test_tls_verification_can_only_be_disabled_explicitly(monkeypatch):
+def test_https_verification_cannot_be_disabled(monkeypatch):
     monkeypatch.setattr(module, "resolve_prometheus_endpoint",
         lambda url: ("10.2.3.4", 9443, ("10.2.3.4",), "https"))
     monkeypatch.setattr(module, "_PinnedHTTPSConnectionPool", FakePool)
@@ -93,8 +93,8 @@ def test_tls_verification_can_only_be_disabled_explicitly(monkeypatch):
     PrometheusClient("https://10.2.3.4:9443", verify_tls=False).query("up")
 
     kwargs = FakePool.instances[0].kwargs
-    assert kwargs["cert_reqs"] == module.ssl.CERT_NONE
-    assert kwargs["assert_hostname"] is False
+    assert kwargs["cert_reqs"] == module.ssl.CERT_REQUIRED
+    assert kwargs["assert_hostname"] == "10.2.3.4"
 
 
 def test_redirect_is_rejected_and_response_closed(monkeypatch):

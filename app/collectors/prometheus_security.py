@@ -13,6 +13,12 @@ _PRIVATE_V4 = tuple(ipaddress.ip_network(value) for value in (
     "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
 ))
 _PRIVATE_V6 = ipaddress.ip_network("fc00::/7")
+# RFC 6598 Shared Address Space is used by some enterprise/customer networks.
+_SHARED_V4 = ipaddress.ip_network("100.64.0.0/10")
+# Treat the rest of 100.0.0.0/8 conservatively as non-public. Some Python
+# ipaddress versions classify addresses outside RFC 6598 in this block as
+# global; they must not become an accidental bypass of the shared-range rule.
+_IPV4_100_BLOCK = ipaddress.ip_network("100.0.0.0/8")
 _BLOCKED_METADATA = {
     ipaddress.ip_address("169.254.169.254"),
     ipaddress.ip_address("100.100.100.200"),
@@ -29,6 +35,7 @@ def _normalized_address(value: str) -> ipaddress.IPv4Address | ipaddress.IPv6Add
 
 
 def _address_allowed(value: str) -> bool:
+    """Allow customer/private and globally routable targets, deny special targets."""
     address = _normalized_address(value)
     if address in _BLOCKED_METADATA:
         return False
@@ -36,20 +43,27 @@ def _address_allowed(value: str) -> bool:
         return False
     if address.is_unspecified or address.is_reserved:
         return False
+    if isinstance(address, ipaddress.IPv4Address):
+        # Only RFC 6598 within 100.0.0.0/8 is accepted for customer networks.
+        # Do this before is_global: its classification has varied by Python
+        # version for addresses surrounding the shared-address block.
+        if address in _IPV4_100_BLOCK:
+            return address in _SHARED_V4
+        if address.is_global:
+            return True
+        return any(address in network for network in _PRIVATE_V4)
     if address.is_global:
         return True
-    if isinstance(address, ipaddress.IPv4Address):
-        return any(address in network for network in _PRIVATE_V4)
     return address in _PRIVATE_V6
 
 
 def resolve_prometheus_endpoint(base_url: str, *, resolver=None) -> tuple[str, int, tuple[str, ...], str]:
-    """Validate endpoint syntax and return the exact IPs to which transport must connect.
+    """Validate a Prometheus endpoint and return the exact addresses to connect to.
 
-    RFC1918 IPv4 and IPv6 ULA customer networks are allowed. Every A/AAAA
-    answer must satisfy policy. The returned address set must be used by the
-    transport directly; resolving the hostname again would reintroduce DNS
-    rebinding between validation and connection.
+    Hostnames use the operating system resolver (DNS and local hosts sources,
+    according to system resolver configuration). Every A/AAAA result must be
+    allowed; mixed safe/unsafe answer sets are rejected. The returned IPs must
+    be used directly by the transport to prevent a second DNS lookup/rebinding.
     """
     try:
         parsed = urlsplit(base_url)
@@ -74,6 +88,8 @@ def resolve_prometheus_endpoint(base_url: str, *, resolver=None) -> tuple[str, i
     try:
         literal = ipaddress.ip_address(host)
     except ValueError:
+        # getaddrinfo follows the host's configured NSS resolver path, including
+        # /etc/hosts where configured, as well as DNS.
         lookup = resolver or socket.getaddrinfo
         try:
             records = lookup(host, port, type=socket.SOCK_STREAM)
