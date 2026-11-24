@@ -148,6 +148,48 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
                WHERE status='success' AND family_errors_json NOT IN ('{}', '')"""
         )
         c.execute("INSERT INTO schema_version(version) VALUES (11)")
+
+    migration_v12 = c.execute("SELECT 1 FROM schema_version WHERE version=12").fetchone()
+    if not migration_v12:
+        _execute_sql_script(c, """
+        CREATE TABLE IF NOT EXISTS backfill_jobs (
+            job_id TEXT PRIMARY KEY,
+            location_id TEXT NOT NULL REFERENCES locations(id) ON DELETE RESTRICT,
+            cluster_id TEXT NOT NULL REFERENCES clusters(id) ON DELETE RESTRICT,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            next_date TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('queued','running','paused','failed','completed','cancelled')),
+            total_days INTEGER NOT NULL CHECK(total_days BETWEEN 1 AND 60),
+            completed_days INTEGER NOT NULL DEFAULT 0,
+            successful_days INTEGER NOT NULL DEFAULT 0,
+            partial_days INTEGER NOT NULL DEFAULT 0,
+            failed_days INTEGER NOT NULL DEFAULT 0,
+            requested_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            started_at TEXT,
+            finished_at TEXT,
+            last_error TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_backfill_jobs_status_created
+            ON backfill_jobs(status, created_at);
+        CREATE INDEX IF NOT EXISTS idx_backfill_jobs_cluster_status
+            ON backfill_jobs(cluster_id, status);
+        CREATE TABLE IF NOT EXISTS backfill_job_days (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT NOT NULL REFERENCES backfill_jobs(job_id) ON DELETE CASCADE,
+            snapshot_date TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('success','partial','failed')),
+            error_text TEXT,
+            completed_at TEXT NOT NULL,
+            UNIQUE(job_id, snapshot_date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_backfill_job_days_job_date
+            ON backfill_job_days(job_id, snapshot_date);
+        """)
+        c.execute("INSERT INTO schema_version(version) VALUES (12)")
+
 def initialize_database() -> None:
     c=get_connection()
     try:
