@@ -125,7 +125,6 @@ def list_connections(_: dict = Depends(require_master_admin)) -> dict:
     return {"items": list(items.values()), "count": len(items)}
 
 
-@router.post("/test")
 def _discover_with_auth(endpoint: str, auth_header: str | None) -> dict:
     if auth_header is None:
         return discover_minio_clusters(endpoint, verify_tls=True)
@@ -164,7 +163,7 @@ def test_connection(payload: PrometheusEndpointTestInput, _: dict = Depends(requ
         _encrypted, auth_header = _prepare_auth(
             payload.protocol, payload.auth_type, payload.username, payload.password, payload.token
         )
-        return discover_minio_clusters(endpoint, verify_tls=True, auth_header=auth_header)
+        return _discover_with_auth(endpoint, auth_header)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PrometheusError as exc:
@@ -185,7 +184,7 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
     # against the exact endpoint being saved so a changed host/port or stale
     # browser result cannot create an incorrect cluster binding.
     try:
-        discovery = discover_minio_clusters(endpoint, verify_tls=True, auth_header=auth_header)
+        discovery = _discover_with_auth(endpoint, auth_header)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PrometheusError as exc:
