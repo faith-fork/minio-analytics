@@ -182,7 +182,7 @@ def main() -> int:
     )
 
     if args.source == "database":
-        locations = load_database_locations()
+        locations = load_database_locations(read_only=args.dry_run)
     else:
         locations = load_locations(args.config)
 
