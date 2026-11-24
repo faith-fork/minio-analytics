@@ -26,7 +26,7 @@ class BackfillJobInput(BaseModel):
 
 
 class JobAction(BaseModel):
-    action: str = Field(pattern="^(pause|resume|cancel)$")
+    action: str = Field(pattern="^(pause|resume|cancel|retry)$")
 
 
 @router.get("")
