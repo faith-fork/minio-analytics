@@ -131,6 +131,32 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
     if len({cluster.cluster_id for cluster in payload.clusters}) != len(payload.clusters):
         raise HTTPException(status_code=422, detail="Cluster IDs must be unique in a connection")
 
+    # Discovery results shown in the browser are advisory only. Re-discover
+    # against the exact endpoint being saved so a changed host/port or stale
+    # browser result cannot create an incorrect cluster binding.
+    try:
+        discovery = discover_minio_clusters(endpoint, verify_tls=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PrometheusError as exc:
+        raise HTTPException(status_code=502, detail=f"Prometheus endpoint validation failed: {exc}") from exc
+
+    available_identities = {
+        (item["label_name"], item["label_value"])
+        for item in discovery.get("clusters", [])
+    }
+    requested_identities = {
+        (cluster.identity_label_name, cluster.identity_label_value)
+        for cluster in payload.clusters
+    }
+    missing_identities = requested_identities - available_identities
+    if missing_identities:
+        missing = ", ".join(f"{label}={value}" for label, value in sorted(missing_identities))
+        raise HTTPException(
+            status_code=409,
+            detail=f"Selected cluster identity is not present on the endpoint being saved: {missing}",
+        )
+
     try:
         with transaction() as connection:
             existing_location = connection.execute(
