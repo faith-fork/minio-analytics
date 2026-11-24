@@ -22,6 +22,21 @@ class DiscoveredClusterBinding(BaseModel):
     identity_label_name: Literal["cluster", "site", "environment"] = "cluster"
     identity_label_value: str = Field(min_length=1, max_length=255)
 
+    @field_validator("cluster_id")
+    @classmethod
+    def validate_cluster_id(cls, value: str) -> str:
+        if not _ID.fullmatch(value):
+            raise ValueError("Use letters, numbers, dot, underscore or hyphen for cluster IDs")
+        return value
+
+    @field_validator("cluster_name", "identity_label_value")
+    @classmethod
+    def strip_cluster_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Cluster name and identity value must not be blank")
+        return value
+
 
 class PrometheusEndpointTestInput(BaseModel):
     protocol: Literal["http", "https"] = "http"
@@ -301,6 +316,8 @@ def add_connection_clusters(
     ]
     if len(set(identities)) != len(identities):
         raise HTTPException(status_code=422, detail="Selected cluster identities must be unique")
+    if len({item.cluster_id for item in payload.clusters}) != len(payload.clusters):
+        raise HTTPException(status_code=422, detail="Selected cluster IDs must be unique")
     for item in payload.clusters:
         if (item.identity_label_name, item.identity_label_value) not in available:
             raise HTTPException(
