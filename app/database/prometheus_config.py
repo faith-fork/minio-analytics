@@ -71,6 +71,16 @@ def import_location_configuration(
                     hostname = excluded.hostname,
                     port = excluded.port,
                     verify_tls = excluded.verify_tls,
+                    auth_type = CASE
+                        WHEN prometheus_connections.protocol != excluded.protocol
+                          OR prometheus_connections.hostname != excluded.hostname
+                          OR prometheus_connections.port != excluded.port
+                        THEN 'none' ELSE prometheus_connections.auth_type END,
+                    auth_secret_encrypted = CASE
+                        WHEN prometheus_connections.protocol != excluded.protocol
+                          OR prometheus_connections.hostname != excluded.hostname
+                          OR prometheus_connections.port != excluded.port
+                        THEN NULL ELSE prometheus_connections.auth_secret_encrypted END,
                     enabled = 1,
                     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                 """,
