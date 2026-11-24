@@ -517,7 +517,7 @@ def add_connection_clusters(
     )
     try:
         auth_header = build_authorization_header(endpoint["auth_type"], endpoint["auth_secret_encrypted"])
-        discovered = discover_minio_clusters(base_url, verify_tls=True, auth_header=auth_header)
+        discovered = _discover_with_auth(base_url, auth_header)
     except (ValueError, PrometheusError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
