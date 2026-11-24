@@ -88,7 +88,7 @@ def get_job(job_id: str) -> dict[str, Any] | None:
 
 
 def transition_job(job_id: str, action: str, actor: str) -> dict[str, Any]:
-    if action not in {"pause", "resume", "cancel"}:
+    if action not in {"pause", "resume", "cancel", "retry"}:
         raise ValueError("Unsupported job action")
     initialize_database()
     with transaction() as c:
@@ -102,6 +102,28 @@ def transition_job(job_id: str, action: str, actor: str) -> dict[str, Any]:
             new_status = "queued"
         elif action == "cancel" and status in {"queued", "running", "paused", "failed"}:
             new_status = "cancelled"
+        elif action == "retry" and status == "completed" and row["failed_days"] > 0:
+            failed = c.execute(
+                "SELECT MIN(snapshot_date) AS first_failed FROM backfill_job_days WHERE job_id=? AND status='failed'",
+                (job_id,),
+            ).fetchone()["first_failed"]
+            if failed is None:
+                raise ValueError("No failed dates are available to retry")
+            c.execute("DELETE FROM backfill_job_days WHERE job_id=? AND snapshot_date>=?", (job_id, failed))
+            counts = c.execute(
+                """SELECT COUNT(*) AS completed,
+                          SUM(status='success') AS successful,
+                          SUM(status='partial') AS partial
+                   FROM backfill_job_days WHERE job_id=?""", (job_id,)
+            ).fetchone()
+            c.execute(
+                """UPDATE backfill_jobs SET next_date=?, completed_days=?,
+                   successful_days=?, partial_days=?, failed_days=0,
+                   last_error=NULL, finished_at=NULL WHERE job_id=?""",
+                (failed, counts["completed"], counts["successful"] or 0,
+                 counts["partial"] or 0, job_id),
+            )
+            new_status = "queued"
         else:
             raise ValueError(f"Cannot {action} a job in {status} state")
         c.execute(
