@@ -374,3 +374,46 @@ The user confirmed that Prometheus endpoints may be configured as reachable IP a
 - Fix commits: 6e2290518f0e93810c88586111a9a85f9cd257e8 (policy) and 4fe6a851ce3842af9658d21ad9ee6a0ab9012c7f (tests).
 - CI must rerun against the resulting exact PR head before the fix can be considered validated.
 - No merge or deployment is authorized by this checkpoint.
+
+
+## 19. Master Configuration workspace — 24 November 2026
+
+### Product decision and navigation
+- Consolidate the former Master Admin, Prometheus Connections and Historical Backfill entry points into one **Master Configuration** workspace.
+- The workspace contains three tabs: **General Configuration**, **Prometheus Configuration** and **Historical Backfill**.
+- **User Administration remains a separate sidebar item** and retains its existing admin-role visibility. It is not part of the Master Admin-only workspace.
+- Preserve existing validated workflows, role checks, APIs, connection/discovery behaviour, credential lifecycle, backfill jobs and stored history.
+
+### PR #52 — implementation under review
+- URL: https://github.com/faith-fork/minio-analytics/pull/52
+- Branch: `feature/master-configuration-workspace`
+- Base: `feature/prometheus-authentication`
+- Base SHA: `12883b12bafd3de5cc34fb7e4937bde324ad56d5` (PR #51 merge commit).
+- Current head at initial CI verification: `7c3bb432f2d39cabf33553a70e1bfb6aec56b856`.
+- Branch comparison: 6 commits ahead, 0 behind; merge base equals the PR #51 merge commit.
+- Changed files: `app/static/index.html`, `app/static/app.js`, `app/static/app.css`, `app/static/prometheus-connections.js`, `app/static/backfill-jobs.js`, and new `tests/test_master_configuration_navigation.py`.
+- Scope: frontend navigation/rendering and focused regression tests. No API contract, database schema, collector, scheduler, dependency, credential-storage or VM changes.
+- Existing view identifiers are mapped to their corresponding new tabs for compatibility.
+- Prometheus and backfill renderers are reused within the shared tab panel; General Configuration reuses the existing settings and backup implementation.
+
+### CI and review
+- GitHub Actions run [45420575644](https://github.com/faith-fork/minio-analytics/actions/runs/45420575644) on exact head `7c3bb432f2d39cabf33553a70e1bfb6aec56b856` completed successfully.
+- Python 3.12 regression suite: **194 passed, 1 non-blocking Starlette TestClient/httpx deprecation warning**.
+- Frontend JavaScript syntax validation: **passed**.
+- Complete PR patch reviewed. GitHub reported mergeable; no review submissions or inline review threads were present at the check.
+- PR remains Draft/open and unmerged. No merge approval or deployment approval is implied by this handover.
+- VM deployment and browser validation have not been performed. User owns runtime validation and acceptance.
+
+### Required next validation
+- Verify Master Configuration is visible only to Master Admin.
+- Verify the three tabs render and switch correctly.
+- Verify General Configuration save and backup history.
+- Verify Prometheus connection list, add/test, authentication and cluster discovery workflows.
+- Verify Historical Backfill job creation, progress and actions.
+- Verify User Administration remains separately visible to Admin users and retains its existing role controls.
+- Verify normal navigation, reports, cluster pages and Collection Health remain unaffected.
+
+### Integration note
+The Charter designates `feature/auth-foundation` as the integration branch. PR #52 is intentionally based on `feature/prometheus-authentication` because it depends on the newer PR #51 integration containing the Prometheus connection and backfill experiences being reorganized. Do not retarget or merge it to the older integration branch without first reconciling the prerequisite feature stack and verifying the complete ancestry.
+
+This section records the PR #52 checkpoint only. It does not supersede the Charter's merge, deployment or runtime-acceptance gates.

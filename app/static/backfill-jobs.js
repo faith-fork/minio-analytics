@@ -12,8 +12,8 @@
   const iso = d => { const x=new Date(d); return [x.getFullYear(),String(x.getMonth()+1).padStart(2,"0"),String(x.getDate()).padStart(2,"0")].join("-"); };
   const startDefault = new Date(today); startDefault.setDate(startDefault.getDate()-59);
   async function renderBackfillJobs(){
-    const host=$("#content"); if(!host)return;
-    $("#page-breadcrumb").textContent="HISTORICAL BACKFILL";
+    const host=$("#master-config-panel")||$("#content"); if(!host)return;
+    $("#page-breadcrumb").textContent="MASTER CONFIGURATION";
     host.innerHTML='<div class="page-heading"><div><h1>Historical backfill</h1><p>Backfill daily capacity, bucket and topology snapshots from Prometheus retention.</p></div><button class="secondary-button" id="bf-refresh">↻ Refresh</button></div><section class="panel"><div class="panel-header"><div><h2>Start a backfill</h2><p>Choose an enabled cluster and a date range of up to 60 calendar days. Each date is processed as a durable scheduler checkpoint.</p></div></div><form id="bf-form" class="settings-form"><div class="form-grid"><label>Cluster<select id="bf-cluster" required><option value="">Loading configured clusters…</option></select></label><label>Start date<input id="bf-start" type="date" required value="'+iso(startDefault)+'"></label><label>End date<input id="bf-end" type="date" required value="'+iso(today)+'"></label></div><div class="form-actions"><button class="primary-button" type="submit">Start backfill</button></div><p class="form-hint">Historical data availability depends on the Prometheus retention period. Missing samples are recorded as partial or failed dates; existing snapshots are updated idempotently.</p></form></section><section class="panel"><div class="panel-header"><div><h2>Backfill jobs</h2><p>Progress and date-level outcomes are retained in SQLite.</p></div></div><div id="bf-list" class="table-scroll"><div class="loading-state">Loading jobs…</div></div></section>';
     $("#bf-refresh").addEventListener("click",loadJobs);
     $("#bf-form").addEventListener("submit",createJob);

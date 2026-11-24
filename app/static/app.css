@@ -312,3 +312,13 @@
 .pc-discovery-footer button:disabled{opacity:.45;cursor:not-allowed}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media(max-width:700px){.pc-discovery-card-main{align-items:flex-start;flex-wrap:wrap}.pc-discovery-card-main>.status-pill{margin-left:34px}.pc-discovery-meta,.pc-discovery-fields{margin-left:0}.pc-discovery-fields{grid-template-columns:1fr}.pc-discovery-footer{align-items:stretch;flex-direction:column}.pc-discovery-footer button{width:100%}}
+
+
+/* Master Configuration workspace */
+.master-config-tabs{display:flex;align-items:center;gap:6px;overflow-x:auto;border-bottom:1px solid var(--line);margin:-5px 0 20px;padding:0 2px;scrollbar-width:thin}
+.master-config-tab{flex:0 0 auto;border:0;border-bottom:2px solid transparent;background:transparent;color:#78869a;padding:12px 15px 11px;font-size:12px;font-weight:600;white-space:nowrap}
+.master-config-tab:hover{color:var(--teal);background:#13a58b08}
+.master-config-tab.active{border-bottom-color:var(--teal);color:#138c78;font-weight:700}
+.master-config-tab:focus-visible{outline:2px solid var(--teal);outline-offset:-3px;border-radius:5px}
+.master-config-panel{min-width:0}
+@media(max-width:700px){.master-config-tabs{gap:0;margin:0 -2px 16px}.master-config-tab{padding:11px 12px;font-size:11px}}
