@@ -132,8 +132,19 @@ def cleanup_expired_backups(
 ) -> dict:
     with backup_management_lock(backup_dir):
         preview = inspect_backup_retention(backup_dir, retention_days, minimum_keep)
+        candidates = preview["candidates"]
+        if candidates:
+            _append_retention_audit({
+                "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "event": "automatic_backup_retention_started",
+                "actor": "system",
+                "retention_days": retention_days,
+                "minimum_keep": minimum_keep,
+                "candidate_filenames": [item["filename"] for item in candidates],
+                "candidate_size_bytes": sum(item["size_bytes"] for item in candidates),
+            }, backup_dir)
         deleted = []
-        for item in preview["candidates"]:
+        for item in candidates:
             path = backup_dir / item["filename"]
             try:
                 metadata = path.lstat()
@@ -146,6 +157,17 @@ def cleanup_expired_backups(
         preview["deleted"] = deleted
         preview["deleted_count"] = len(deleted)
         preview["deleted_size_bytes"] = sum(item["size_bytes"] for item in deleted)
+        if deleted:
+            _append_retention_audit({
+                "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "event": "automatic_backup_retention_completed",
+                "actor": "system",
+                "deleted": deleted,
+                "deleted_count": len(deleted),
+                "deleted_size_bytes": preview["deleted_size_bytes"],
+                "retention_days": retention_days,
+                "minimum_keep": minimum_keep,
+            }, backup_dir)
         return preview
 
 
