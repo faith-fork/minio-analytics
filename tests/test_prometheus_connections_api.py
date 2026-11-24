@@ -152,6 +152,59 @@ def test_save_accepts_only_cluster_identities_returned_by_current_endpoint(
 
 
 
+
+def test_save_preserves_existing_cluster_name_and_refuses_binding_reassignment(
+    admin_client: TestClient, monkeypatch
+) -> None:
+    from app.api import prometheus_connections as api
+    from app.database.database import transaction
+
+    monkeypatch.setattr(api, "discover_minio_clusters", lambda endpoint, verify_tls=True: {
+        "clusters": [{"label_name": "cluster", "label_value": "lab-two"}],
+        "cluster_count": 1,
+    })
+    first = connection_payload()
+    created = admin_client.post("/api/master-admin/prometheus-connections", json=first)
+    assert created.status_code == 201, created.text
+
+    renamed = {**first, "cluster_name": "Renamed by stale client"}
+    saved = admin_client.post("/api/master-admin/prometheus-connections", json=renamed)
+    assert saved.status_code == 201, saved.text
+
+    with transaction() as connection:
+        cluster = connection.execute(
+            "SELECT name FROM clusters WHERE id='cluster-lab-two'"
+        ).fetchone()
+        binding = connection.execute(
+            "SELECT connection_id, identity_label_name, identity_label_value "
+            "FROM cluster_prometheus_bindings WHERE cluster_id='cluster-lab-two'"
+        ).fetchone()
+    assert cluster["name"] == "MinIO Lab Two"
+    assert tuple(binding) == ("prometheus-lab", "cluster", "lab-two")
+
+    reassignment = {
+        **first,
+        "connection_id": "prometheus-lab-secondary",
+        "cluster_name": "Another name",
+    }
+    rejected = admin_client.post(
+        "/api/master-admin/prometheus-connections", json=reassignment
+    )
+    assert rejected.status_code == 409
+    assert "already bound" in rejected.json()["detail"]
+
+    with transaction() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) AS n FROM prometheus_connections "
+            "WHERE connection_id='prometheus-lab-secondary'"
+        ).fetchone()["n"]
+        binding = connection.execute(
+            "SELECT connection_id FROM cluster_prometheus_bindings "
+            "WHERE cluster_id='cluster-lab-two'"
+        ).fetchone()
+    assert count == 0
+    assert binding["connection_id"] == "prometheus-lab"
+
 def test_prometheus_connection_rejects_invalid_identifier(admin_client: TestClient) -> None:
     payload = connection_payload()
     payload["connection_id"] = "bad/id"
