@@ -186,9 +186,42 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
     if len({cluster.cluster_id for cluster in payload.clusters}) != len(payload.clusters):
         raise HTTPException(status_code=422, detail="Cluster IDs must be unique in a connection")
 
+    # Read the existing authentication state before probing. A general
+    # connection edit that omits write-only credentials must authenticate with
+    # the already-stored secret when the endpoint is unchanged.
+    with transaction() as connection:
+        existing_before = connection.execute(
+            """SELECT location_id, protocol, hostname, port, verify_tls, enabled,
+                      auth_type, auth_secret_encrypted
+               FROM prometheus_connections WHERE connection_id=?""",
+            (payload.connection_id,),
+        ).fetchone()
+
+    endpoint_changed_before = bool(existing_before) and (
+        existing_before["protocol"] != payload.protocol
+        or existing_before["hostname"] != payload.hostname
+        or existing_before["port"] != payload.port
+    )
+    preserving_existing_auth = (
+        existing_before is not None
+        and not endpoint_changed_before
+        and payload.auth_type == "none"
+        and payload.username is None
+        and payload.password is None
+        and payload.token is None
+        and existing_before["auth_type"] != "none"
+    )
+    if preserving_existing_auth:
+        try:
+            auth_header = build_authorization_header(
+                existing_before["auth_type"], existing_before["auth_secret_encrypted"]
+            )
+        except PrometheusCredentialError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
     # Discovery results shown in the browser are advisory only. Re-discover
-    # against the exact endpoint being saved so a changed host/port or stale
-    # browser result cannot create an incorrect cluster binding.
+    # against the exact endpoint and effective authentication being saved so a
+    # stale browser result cannot create an incorrect cluster binding.
     try:
         discovery = _discover_with_auth(endpoint, auth_header)
     except ValueError as exc:
@@ -230,6 +263,22 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
                    FROM prometheus_connections WHERE connection_id=?""",
                 (payload.connection_id,),
             ).fetchone()
+
+            # Do not let a slow discovery test overwrite a concurrent endpoint,
+            # authentication, or enabled-state change.
+            compared_fields = (
+                "location_id", "protocol", "hostname", "port", "verify_tls",
+                "enabled", "auth_type", "auth_secret_encrypted",
+            )
+            if (existing_before is None) != (existing is None) or (
+                existing_before is not None
+                and any(existing_before[field] != existing[field] for field in compared_fields)
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Prometheus connection changed during validation; retry the save",
+                )
+
             if existing and existing["location_id"] != payload.location_id:
                 raise HTTPException(status_code=409, detail="Connection ID belongs to another location")
             endpoint_changed = bool(existing) and (
@@ -502,7 +551,7 @@ def discover_connection_clusters(
     try:
         auth_header = build_authorization_header(endpoint["auth_type"], endpoint["auth_secret_encrypted"])
         result = _discover_with_auth(base_url, auth_header)
-    except (ValueError, PrometheusError) as exc:
+    except (ValueError, PrometheusError, PrometheusCredentialError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     bindings = {
@@ -564,7 +613,7 @@ def add_connection_clusters(
     try:
         auth_header = build_authorization_header(endpoint["auth_type"], endpoint["auth_secret_encrypted"])
         discovered = _discover_with_auth(base_url, auth_header)
-    except (ValueError, PrometheusError) as exc:
+    except (ValueError, PrometheusError, PrometheusCredentialError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     available = {
