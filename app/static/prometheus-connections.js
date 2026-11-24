@@ -203,7 +203,11 @@
       protocol: form.elements.protocol.value,
       hostname: form.elements.hostname.value.trim(),
       port: Number(form.elements.port.value),
-      verify_tls: true
+      verify_tls: true,
+      auth_type: form.elements.auth_type.value,
+      username: form.elements.username.value || null,
+      password: form.elements.password.value || null,
+      token: form.elements.token.value || null
     };
   }
 
