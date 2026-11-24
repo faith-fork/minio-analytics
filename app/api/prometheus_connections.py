@@ -189,25 +189,44 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
             )
             for cluster in payload.clusters:
                 current = connection.execute(
-                    "SELECT location_id FROM clusters WHERE id=?", (cluster.cluster_id,)
+                    "SELECT location_id, name FROM clusters WHERE id=?", (cluster.cluster_id,)
                 ).fetchone()
                 if current and current["location_id"] != payload.location_id:
                     raise HTTPException(status_code=409, detail=f"Cluster {cluster.cluster_id} belongs to another location")
-                connection.execute(
-                    """INSERT INTO clusters(id,location_id,name,enabled,labels_json)
-                       VALUES(?,?,?,1,'{}')
-                       ON CONFLICT(id) DO UPDATE SET name=excluded.name""",
-                    (cluster.cluster_id, payload.location_id, cluster.cluster_name),
-                )
+                if current is None:
+                    connection.execute(
+                        """INSERT INTO clusters(id,location_id,name,enabled,labels_json)
+                           VALUES(?,?,?,1,'{}')""",
+                        (cluster.cluster_id, payload.location_id, cluster.cluster_name),
+                    )
+
+                existing_binding = connection.execute(
+                    """SELECT connection_id, identity_label_name, identity_label_value
+                       FROM cluster_prometheus_bindings WHERE cluster_id=?""",
+                    (cluster.cluster_id,),
+                ).fetchone()
+                if existing_binding:
+                    same_binding = (
+                        existing_binding["connection_id"] == payload.connection_id
+                        and existing_binding["identity_label_name"] == cluster.identity_label_name
+                        and existing_binding["identity_label_value"] == cluster.identity_label_value
+                    )
+                    if not same_binding:
+                        raise HTTPException(
+                            status_code=409,
+                            detail=(
+                                f"Cluster {cluster.cluster_id} is already bound to "
+                                f"{existing_binding['connection_id']} with a different identity; "
+                                "existing binding was not changed"
+                            ),
+                        )
+                    # Preserve existing cluster name, binding and historical identity.
+                    continue
+
                 connection.execute(
                     """INSERT INTO cluster_prometheus_bindings
                        (cluster_id,connection_id,identity_label_name,identity_label_value)
-                       VALUES(?,?,?,?)
-                       ON CONFLICT(cluster_id) DO UPDATE SET
-                       connection_id=excluded.connection_id,
-                       identity_label_name=excluded.identity_label_name,
-                       identity_label_value=excluded.identity_label_value,
-                       updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')""",
+                       VALUES(?,?,?,?)""",
                     (cluster.cluster_id, payload.connection_id,
                      cluster.identity_label_name, cluster.identity_label_value),
                 )
