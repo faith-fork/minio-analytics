@@ -99,19 +99,73 @@ def test_rejects_addresses_outside_shared_address_space_boundaries(url):
         validate_prometheus_endpoint(url)
 
 
-def test_rejects_dns_hostname_resolving_to_shared_address_space():
+def test_allows_dns_hostname_resolving_to_shared_address_space():
     def resolver(host, port, type):
         return [
             (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("100.100.10.20", port)),
         ]
 
-    with pytest.raises(PrometheusEndpointError, match="prohibited"):
-        resolve_prometheus_endpoint(
-            "http://prometheus.internal:9090",
-            resolver=resolver,
-        )
+    host, port, addresses, scheme = resolve_prometheus_endpoint(
+        "http://prometheus.internal:19090",
+        resolver=resolver,
+    )
+    assert (host, port, scheme) == ("prometheus.internal", 19090, "http")
+    assert addresses == ("100.100.10.20",)
 
 
 def test_metadata_address_remains_blocked_inside_shared_address_space():
     with pytest.raises(PrometheusEndpointError, match="prohibited"):
         validate_prometheus_endpoint("http://100.100.100.200:80")
+
+
+@pytest.mark.parametrize("url", [
+    "http://100.64.0.1:9090",
+    "http://100.127.255.254:9090",
+    "http://10.20.30.40:19090",
+    "http://172.20.1.2:8080",
+    "http://192.168.90.4:9091",
+    "http://[fd12:3456::10]:19090",
+])
+def test_supports_customer_endpoints_on_custom_ports_and_private_subnets(url):
+    validate_prometheus_endpoint(url)
+
+
+def test_hostname_resolution_supports_private_addresses_across_subnets():
+    def resolver(host, port, type):
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.30.0.8", port)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.168.90.4", port)),
+        ]
+
+    host, port, addresses, scheme = resolve_prometheus_endpoint(
+        "http://prometheus.customer.internal:19090", resolver=resolver
+    )
+    assert (host, port, scheme) == ("prometheus.customer.internal", 19090, "http")
+    assert addresses == ("10.30.0.8", "192.168.90.4")
+
+
+def test_rejects_hostname_with_mixed_private_and_prohibited_dns_answers():
+    def resolver(host, port, type):
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.1.2.3", port)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", port)),
+        ]
+
+    with pytest.raises(PrometheusEndpointError, match="prohibited"):
+        resolve_prometheus_endpoint("http://prometheus.internal:9090", resolver=resolver)
+
+
+def test_system_resolver_is_used_for_fqdn_and_hosts_file_names(monkeypatch):
+    calls = []
+
+    def resolver(host, port, type):
+        calls.append((host, port, type))
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.40.0.5", port))]
+
+    host, port, addresses, scheme = resolve_prometheus_endpoint(
+        "http://prometheus-from-hosts:19090", resolver=resolver
+    )
+    assert calls == [("prometheus-from-hosts", 19090, socket.SOCK_STREAM)]
+    assert (host, port, addresses, scheme) == (
+        "prometheus-from-hosts", 19090, ("10.40.0.5",), "http"
+    )
