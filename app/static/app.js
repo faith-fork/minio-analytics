@@ -1,7 +1,7 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
 if(window.Chart&&window.ChartZoom){Chart.register(ChartZoom);Chart.defaults.plugins.zoom={pan:{enabled:true,mode:"x",modifierKey:"shift"},zoom:{wheel:{enabled:true,speed:0.08},drag:{enabled:true,backgroundColor:"rgba(19,165,139,.12)",borderColor:"#13a58b",borderWidth:1},pinch:{enabled:true},mode:"x"}};}
-const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:null };
+const state = { user:null, view:"overview", masterConfigTab:"general", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:null };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
 const bytes = n => n == null ? "—" : (n/1024**4).toFixed(2)+" TiB";
 const tibValue = n => n == null ? "—" : (n/1024**4).toFixed(2);
@@ -167,7 +167,31 @@ function drawObjectSizeHistogram(data){
   state.charts.push(instance);
   ensureChartControls(instance);
 }
-function setView(view){state.view=view;$$(".nav-link").forEach(b=>b.classList.toggle("active",b.dataset.view===(["bucket-usage-report","raw-capacity-report"].includes(view)?"capacity-report":view)));$("#page-breadcrumb").textContent=(["capacity-report","bucket-usage-report","raw-capacity-report"].includes(view)?"REPORTS":view.replaceAll("-"," ")).toUpperCase();render().catch(e=>toast(e.message,true));}
+function setView(view){
+  if(view==="master-admin"){view="master-config";state.masterConfigTab="general";}
+  else if(view==="prometheus-connections"){view="master-config";state.masterConfigTab="prometheus";}
+  else if(view==="backfill-jobs"){view="master-config";state.masterConfigTab="backfill";}
+  state.view=view;
+  $(".nav-link").forEach(b=>b.classList.toggle("active",b.dataset.view===(["bucket-usage-report","raw-capacity-report"].includes(view)?"capacity-report":view)));
+  $("#page-breadcrumb").textContent=(["capacity-report","bucket-usage-report","raw-capacity-report"].includes(view)?"REPORTS":view==="master-config"?"MASTER CONFIGURATION":view.replaceAll("-"," ")).toUpperCase();
+  render().catch(e=>toast(e.message,true));
+}
+async function renderMasterConfiguration(){
+  const tabs=[["general","General Configuration"],["prometheus","Prometheus Configuration"],["backfill","Historical Backfill"]];
+  const active=state.masterConfigTab;
+  $("#content").innerHTML=pageHead("Master Configuration","Manage application settings, Prometheus connections and historical collection.")+
+    '<div class="master-config-tabs" role="tablist" aria-label="Master Configuration">'+
+    tabs.map(([key,label])=>'<button type="button" role="tab" class="master-config-tab'+(active===key?' active':'')+'" data-master-config-tab="'+key+'" aria-selected="'+(active===key)+'">'+label+'</button>').join("")+
+    '</div><section id="master-config-panel" class="master-config-panel" role="tabpanel" aria-label="'+tabs.find(([key])=>key===active)[1]+'"><div class="loading-state">Loading configuration…</div></section>';
+  if(active==="general") await renderMasterAdmin();
+  else if(active==="prometheus") await window.renderPrometheusConnections();
+  else if(active==="backfill") await window.renderBackfillJobs();
+}
+function setMasterConfigTab(tab){
+  if(!["general","prometheus","backfill"].includes(tab))return;
+  state.masterConfigTab=tab;
+  renderMasterConfiguration().catch(e=>toast(e.message,true));
+}
 async function loadOverview(){state.overview=await api("/api/analytics/overview");state.clusters=(await api("/api/analytics/clusters")).items;}
 async function render(){
   clearCharts();$("#content").innerHTML='<div class="loading-state">Loading dashboard data…</div>';
@@ -180,8 +204,7 @@ async function render(){
   else if(state.view==="buckets") await renderBuckets();
   else if(state.view==="health") await renderHealth();
   else if(state.view==="users" && state.user.role==="admin") await renderUsers();
-  else if(state.view==="master-admin" && state.user.is_master_admin) await renderMasterAdmin();
-  else if(state.view==="backfill-jobs" && state.user.is_master_admin) await window.renderBackfillJobs();
+  else if(state.view==="master-config" && state.user.is_master_admin) await renderMasterConfiguration();
 }
 async function renderOverview(){
   await loadOverview();const o=state.overview,c=o.capacity_bytes,n=o.nodes;
@@ -332,7 +355,8 @@ async function renderMasterAdmin(){
   const s=d.settings,u=d.telemetry_usage||{};
   const backupRows=backups.items.map(b=>`<tr><td><span class="cell-strong">${esc(b.filename)}</span></td><td>${timestampLabel(b.created_at)}</td><td>${fmt(b.size_bytes/1024/1024,2)} MiB</td><td>${pill("success")} Verified</td><td><a class="table-link" href="${esc(b.download_url)}">Download ↓</a></td></tr>`);
   const telemetryPanel='<section class="panel" style="max-width:100%;margin-bottom:16px"><div class="panel-header"><div><h3>Infrastructure telemetry footprint</h3><p>Current high-frequency sample counts and SQLite storage footprint.</p></div><span class="panel-tag">RETENTION MONITORING</span></div><div class="metric-grid">'+metric("COLLECTION RUNS",fmt(u.collection_runs,0),"Stored node-health snapshots","◷")+metric("NODE SAMPLES",fmt(u.node_samples,0),"Per-node records","⌁")+metric("DRIVE SAMPLES",fmt(u.drive_samples,0),"Per-drive records","▤")+metric("DATABASE SIZE",fmt((u.database_size_bytes||0)/1024/1024,2)+" MiB","Entire analytics database","▣")+"</div><p class=\"cell-muted\">Database size includes reports and configuration data, not only infrastructure telemetry. SQLite reuses freed pages, so the file may not shrink after cleanup. WAL currently uses "+fmt((u.wal_size_bytes||0)/1024/1024,2)+" MiB. Last retention cleanup: "+(u.last_cleanup_at?timestampLabel(u.last_cleanup_at):"Not yet run")+" · "+(u.last_cleanup_status||"Pending")+(u.last_cleanup_error?" · "+esc(u.last_cleanup_error):"")+".</p></section>";
-  $("#content").innerHTML=pageHead("Master Admin","Configure collector cadence and manage verified database backups.")+
+  const host=$("#master-config-panel")||$("#content");
+  host.innerHTML=pageHead("General Configuration","Configure collector cadence, telemetry retention and verified database backups.")+
     `<section class="panel" style="max-width:760px;margin-bottom:16px"><div class="panel-header"><div><h3>Collector schedule</h3><p>All times use Asia/Kolkata (IST).</p></div><span class="panel-tag">LIVE SETTINGS</span></div>
     <form id="master-settings-form" class="form-grid" style="display:grid;gap:14px;max-width:520px">
       <label>Node, drive health and filesystem interval (minutes)<input class="form-control" type="number" name="node_interval_minutes" min="1" max="60" step="1" value="${s.node_interval_minutes}" required></label>
@@ -777,6 +801,7 @@ document.addEventListener("click",async e=>{
     if(mode==="graph"){const instance=state.charts.find(item=>item.canvas?.id==="object-size-histogram");if(instance)instance.resize();}
     return;
   }
+  const masterConfigTab=e.target.closest("[data-master-config-tab]");if(masterConfigTab){setMasterConfigTab(masterConfigTab.dataset.masterConfigTab);return;}
   const reportView=e.target.closest("[data-report-view]");if(reportView){setView(reportView.dataset.reportView);return;}
   const view=e.target.closest("[data-view]");if(view){e.preventDefault();setView(view.dataset.view);return;}
   const cluster=e.target.closest("[data-cluster]");if(cluster){try{await showCluster(cluster.dataset.cluster);}catch(err){toast(err.message,true);}return;}
