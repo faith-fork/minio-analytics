@@ -87,10 +87,10 @@
       const rows = data.clusters.map((item, index) => {
         const blocked = item.already_configured || item.bound_elsewhere;
         const status = item.already_configured
-          ? '<span class="status-pill success">Already configured</span>'
+          ? '<span class="status-pill">Already configured</span>'
           : item.bound_elsewhere
-            ? '<span class="status-pill muted">Bound to another connection</span>'
-            : '<span class="status-pill info">New cluster</span>';
+            ? '<span class="status-pill neutral">Bound to another connection</span>'
+            : '<span class="status-pill">New cluster</span>';
         const detail = item.already_configured
           ? "This cluster is already configured on this connection."
           : item.bound_elsewhere
