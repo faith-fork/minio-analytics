@@ -10,7 +10,7 @@
   };
   const today = new Date();
   const iso = d => { const x=new Date(d); return [x.getFullYear(),String(x.getMonth()+1).padStart(2,"0"),String(x.getDate()).padStart(2,"0")].join("-"); };
-  const startDefault = new Date(today); startDefault.setDate(startDefault.getDate()-60);
+  const startDefault = new Date(today); startDefault.setDate(startDefault.getDate()-59);
   async function renderBackfillJobs(){
     const host=$("#content"); if(!host)return;
     $("#page-breadcrumb").textContent="HISTORICAL BACKFILL";
