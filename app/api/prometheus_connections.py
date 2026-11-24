@@ -129,7 +129,7 @@ def list_connections(_: dict = Depends(require_master_admin)) -> dict:
 def _discover_with_auth(endpoint: str, auth_header: str | None) -> dict:
     if auth_header is None:
         return discover_minio_clusters(endpoint, verify_tls=True)
-    return _discover_with_auth(endpoint, auth_header)
+    return discover_minio_clusters(endpoint, verify_tls=True, auth_header=auth_header)
 
 
 def _prepare_auth(protocol: str, auth_type: str, username: str | None,
