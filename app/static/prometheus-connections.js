@@ -1,8 +1,7 @@
 (() => {
   "use strict";
 
-  const root = () => document.getElementById("content");
-  const nav = () => document.querySelector('[data-view="prometheus-connections"]');
+  const root = () => document.getElementById("master-config-panel") || document.getElementById("content");
   const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
   }[ch]));
@@ -26,10 +25,8 @@
     window.setTimeout(() => item.remove(), 3500);
   };
   const setActiveNav = () => {
-    document.querySelectorAll(".nav-link").forEach((item) => item.classList.remove("active"));
-    nav()?.classList.add("active");
     const crumb = document.getElementById("page-breadcrumb");
-    if (crumb) crumb.textContent = "PROMETHEUS CONNECTIONS";
+    if (crumb) crumb.textContent = "MASTER CONFIGURATION";
   };
   const slug = (value) => String(value).toLowerCase().trim()
     .replace(/[^a-z0-9._-]+/g, "-").replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, "").slice(0, 110);
@@ -301,11 +298,5 @@
     finally { button.disabled = false; button.textContent = "Save connection"; }
   }
 
-  document.addEventListener("click", (event) => {
-    const button = event.target.closest('[data-view="prometheus-connections"]');
-    if (!button) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    render().catch((error) => toast(error.message, "error"));
-  }, true);
+  window.renderPrometheusConnections = render;
 })();
