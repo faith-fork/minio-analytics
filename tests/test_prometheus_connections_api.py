@@ -325,3 +325,90 @@ def test_discover_and_explicitly_add_new_cluster_without_changing_existing_histo
         },
     )
     assert duplicate.status_code == 409
+
+
+def test_prometheus_authentication_requires_https(admin_client: TestClient) -> None:
+    payload = connection_payload()
+    payload.update({
+        "auth_type": "basic",
+        "username": "metrics-reader",
+        "password": "secret-value",
+    })
+    response = admin_client.post(
+        "/api/master-admin/prometheus-connections/test", json=payload
+    )
+    assert response.status_code == 422
+    assert "requires HTTPS" in response.json()["detail"]
+
+
+def test_prometheus_credentials_are_encrypted_and_never_returned(
+    admin_client: TestClient, monkeypatch
+) -> None:
+    from cryptography.fernet import Fernet
+    from app.api import prometheus_connections as api
+    from app.database.database import transaction
+
+    monkeypatch.setenv(
+        "MINIO_ANALYTICS_CREDENTIALS_KEY",
+        Fernet.generate_key().decode("ascii"),
+    )
+    observed = {}
+
+    def fake_discovery(endpoint, *, verify_tls=True, auth_header=None):
+        observed["endpoint"] = endpoint
+        observed["auth_header"] = auth_header
+        return {
+            "clusters": [{"label_name": "cluster", "label_value": "lab-two"}],
+            "cluster_count": 1,
+        }
+
+    monkeypatch.setattr(api, "discover_minio_clusters", fake_discovery)
+    payload = connection_payload()
+    payload.update({
+        "protocol": "https",
+        "auth_type": "basic",
+        "username": "metrics-reader",
+        "password": "never-return-this-secret",
+    })
+    created = admin_client.post(
+        "/api/master-admin/prometheus-connections", json=payload
+    )
+    assert created.status_code == 201, created.text
+    assert observed["endpoint"] == "https://prometheus.internal:9090"
+    assert observed["auth_header"].startswith("Basic ")
+
+    listed = admin_client.get("/api/master-admin/prometheus-connections")
+    assert listed.status_code == 200
+    item = listed.json()["items"][0]
+    assert item["auth_type"] == "basic"
+    assert item["credentials_configured"] is True
+    assert "password" not in item
+    assert "never-return-this-secret" not in listed.text
+
+    with transaction() as connection:
+        row = connection.execute(
+            "SELECT auth_type, auth_secret_encrypted FROM prometheus_connections "
+            "WHERE connection_id='prometheus-lab'"
+        ).fetchone()
+        audit = connection.execute(
+            "SELECT old_value, new_value FROM settings_audit "
+            "WHERE setting_key='prometheus_connection:prometheus-lab'"
+        ).fetchone()
+    assert row["auth_type"] == "basic"
+    assert "never-return-this-secret" not in row["auth_secret_encrypted"]
+    assert "never-return-this-secret" not in audit["new_value"]
+
+    observed.clear()
+    updated = admin_client.patch(
+        "/api/master-admin/prometheus-connections/prometheus-lab/authentication",
+        json={
+            "auth_type": "bearer",
+            "token": "new-sensitive-token",
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    assert observed["auth_header"] == "Bearer new-sensitive-token"
+    assert "new-sensitive-token" not in updated.text
+    assert "new-sensitive-token" not in admin_client.get(
+        "/api/master-admin/prometheus-connections"
+    ).text
