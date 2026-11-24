@@ -67,6 +67,8 @@ def build_authorization_header(auth_type: str, encrypted: str | None) -> str | N
     if auth_type == "basic":
         username = credentials.get("username", "")
         password = credentials.get("password", "")
+        if any(ord(char) < 32 or ord(char) == 127 for char in username + password) or ":" in username:
+            raise PrometheusCredentialError("Prometheus Basic Auth credentials contain invalid characters")
         if not username:
             raise PrometheusCredentialError("Prometheus Basic Auth username is missing")
         token = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
@@ -74,4 +76,6 @@ def build_authorization_header(auth_type: str, encrypted: str | None) -> str | N
     token = credentials.get("token", "")
     if not token:
         raise PrometheusCredentialError("Prometheus Bearer Token is missing")
+    if any(ord(char) < 33 or ord(char) > 126 for char in token):
+        raise PrometheusCredentialError("Prometheus Bearer Token contains invalid header characters")
     return f"Bearer {token}"
