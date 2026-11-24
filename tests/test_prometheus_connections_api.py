@@ -33,8 +33,14 @@ def test_prometheus_connection_management_requires_master_admin(
 
 
 def test_master_admin_can_save_list_and_disable_prometheus_connection(
-    admin_client: TestClient,
+    admin_client: TestClient, monkeypatch
 ) -> None:
+    from app.api import prometheus_connections as api
+
+    monkeypatch.setattr(api, "discover_minio_clusters", lambda endpoint, verify_tls=True: {
+        "clusters": [{"label_name": "cluster", "label_value": "lab-two"}],
+        "cluster_count": 1,
+    })
     response = admin_client.post(
         "/api/master-admin/prometheus-connections", json=connection_payload()
     )
@@ -96,6 +102,56 @@ def test_prometheus_connection_test_uses_discovery_without_persisting(
     assert admin_client.get("/api/master-admin/prometheus-connections").json()["count"] == 0
 
 
+
+def test_save_revalidates_selected_cluster_against_exact_endpoint(
+    admin_client: TestClient, monkeypatch
+) -> None:
+    from app.api import prometheus_connections as api
+
+    observed = {}
+
+    def fake_discovery(endpoint, *, verify_tls=True):
+        observed["endpoint"] = endpoint
+        observed["verify_tls"] = verify_tls
+        return {
+            "clusters": [{"label_name": "cluster", "label_value": "different-cluster"}],
+            "cluster_count": 1,
+        }
+
+    monkeypatch.setattr(api, "discover_minio_clusters", fake_discovery)
+    payload = connection_payload()
+    payload["hostname"] = "changed-prometheus.internal"
+    payload["port"] = 9191
+
+    response = admin_client.post(
+        "/api/master-admin/prometheus-connections", json=payload
+    )
+
+    assert response.status_code == 409
+    assert "not present on the endpoint being saved" in response.json()["detail"]
+    assert observed == {
+        "endpoint": "http://changed-prometheus.internal:9191",
+        "verify_tls": True,
+    }
+    assert admin_client.get("/api/master-admin/prometheus-connections").json()["count"] == 0
+
+
+def test_save_accepts_only_cluster_identities_returned_by_current_endpoint(
+    admin_client: TestClient, monkeypatch
+) -> None:
+    from app.api import prometheus_connections as api
+
+    monkeypatch.setattr(api, "discover_minio_clusters", lambda endpoint, verify_tls=True: {
+        "clusters": [{"label_name": "cluster", "label_value": "lab-two"}],
+        "cluster_count": 1,
+    })
+    response = admin_client.post(
+        "/api/master-admin/prometheus-connections", json=connection_payload()
+    )
+    assert response.status_code == 201, response.text
+
+
+
 def test_prometheus_connection_rejects_invalid_identifier(admin_client: TestClient) -> None:
     payload = connection_payload()
     payload["connection_id"] = "bad/id"
@@ -117,11 +173,6 @@ def test_discover_and_explicitly_add_new_cluster_without_changing_existing_histo
 ) -> None:
     from app.api import prometheus_connections as api
     from app.database.database import transaction
-
-    created = admin_client.post(
-        "/api/master-admin/prometheus-connections", json=connection_payload()
-    )
-    assert created.status_code == 201, created.text
 
     def fake_discovery(endpoint, *, verify_tls=True):
         assert endpoint == "http://prometheus.internal:9090"
@@ -148,6 +199,11 @@ def test_discover_and_explicitly_add_new_cluster_without_changing_existing_histo
         }
 
     monkeypatch.setattr(api, "discover_minio_clusters", fake_discovery)
+    created = admin_client.post(
+        "/api/master-admin/prometheus-connections", json=connection_payload()
+    )
+    assert created.status_code == 201, created.text
+
     discovered = admin_client.post(
         "/api/master-admin/prometheus-connections/prometheus-lab/clusters/discover"
     )
