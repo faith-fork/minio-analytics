@@ -11,7 +11,7 @@ from app.auth.dependencies import require_master_admin
 from app.collectors.prometheus_discovery import build_prometheus_url, discover_minio_clusters
 from app.collectors.prometheus import PrometheusError
 from app.database.database import initialize_database, transaction
-from app.collectors.prometheus_credentials import build_authorization_header, encrypt_credentials
+from app.collectors.prometheus_credentials import (\n    PrometheusCredentialError, build_authorization_header, encrypt_credentials,\n)
 
 router = APIRouter(prefix="/api/master-admin/prometheus-connections", tags=["master administration"])
 _ID = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
@@ -375,7 +375,7 @@ def update_connection_authentication(
     endpoint = build_prometheus_url(current["protocol"], current["hostname"], current["port"])
     try:
         _discover_with_auth(endpoint, auth_header)
-    except (ValueError, PrometheusError) as exc:
+    except (ValueError, PrometheusError, PrometheusCredentialError) as exc:
         raise HTTPException(status_code=502, detail=f"Prometheus authentication test failed: {exc}") from exc
 
     old_config = {
