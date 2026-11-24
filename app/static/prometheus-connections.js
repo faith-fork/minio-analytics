@@ -130,7 +130,7 @@
     const selected = [...document.querySelectorAll(".pc-cluster:checked")].map((checkbox) => {
       const item = clusters[Number(checkbox.dataset.index)];
       return {
-        cluster_id: "cluster-" + slug(item.label_value),
+        cluster_id: "cluster-" + slug(form.elements.location_id.value).slice(0, 35) + "-" + slug(item.label_value).slice(0, 80),
         cluster_name: item.label_value,
         identity_label_name: item.label_name,
         identity_label_value: item.label_value
