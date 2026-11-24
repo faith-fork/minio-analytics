@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -76,6 +77,6 @@ def build_authorization_header(auth_type: str, encrypted: str | None) -> str | N
     token = credentials.get("token", "")
     if not token:
         raise PrometheusCredentialError("Prometheus Bearer Token is missing")
-    if any(ord(char) < 33 or ord(char) > 126 for char in token):
-        raise PrometheusCredentialError("Prometheus Bearer Token contains invalid header characters")
+    if not re.fullmatch(r"[A-Za-z0-9._~+/-]+=*", token):
+        raise PrometheusCredentialError("Prometheus Bearer Token contains invalid token characters")
     return f"Bearer {token}"
