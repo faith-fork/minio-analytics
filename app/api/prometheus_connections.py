@@ -101,7 +101,7 @@ def list_connections(_: dict = Depends(require_master_admin)) -> dict:
 def test_connection(payload: PrometheusEndpointTestInput, _: dict = Depends(require_master_admin)) -> dict:
     try:
         endpoint = build_prometheus_url(payload.protocol, payload.hostname, payload.port)
-        return discover_minio_clusters(endpoint, verify_tls=payload.verify_tls)
+        return discover_minio_clusters(endpoint, verify_tls=True)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PrometheusError as exc:
@@ -143,7 +143,7 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
                    enabled=excluded.enabled,
                    updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')""",
                 (payload.connection_id, payload.location_id, payload.protocol,
-                 payload.hostname, payload.port, int(payload.verify_tls), int(payload.enabled)),
+                 payload.hostname, payload.port, 1, int(payload.enabled)),
             )
             for cluster in payload.clusters:
                 current = connection.execute(
