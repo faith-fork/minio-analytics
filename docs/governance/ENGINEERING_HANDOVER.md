@@ -355,3 +355,22 @@ The user confirmed that Prometheus endpoints may be configured as reachable IP a
 - No schema migration, UI, database mutation, or VM deployment is included in this PR.
 - CI and exact-head review must be verified before any merge consideration. No merge or deployment is authorized by this handover.
 - The previous Section 16's literal-only RFC6598 exception and claim that DNS-resolved RFC6598 addresses remain blocked are superseded by this section. The asserted specific cause of the original customer failure remains an inference until runtime validation confirms it.
+
+## 18. RFC 6598 boundary validation correction — 24 November 2026
+
+### CI finding
+- GitHub Actions run for PR #43 failed in the Python 3.12 regression suite: 142 passed and 2 failed.
+- Both failures showed that Python's `ipaddress.is_global` classified addresses immediately outside RFC 6598 Shared Address Space (100.64.0.0/10) as global on the runner's Python version.
+- The prior policy checked `is_global` before applying the RFC 6598 boundary, so addresses such as 100.63.255.255 and 100.128.0.1 were accepted unintentionally.
+
+### Correction committed to the PR branch
+- Introduce an explicit conservative guard for 100.0.0.0/8 before consulting `is_global`.
+- Permit only addresses within 100.64.0.0/10 from that enclosing /8; reject the remainder.
+- Retain the explicit metadata block for 100.100.100.200, even though it is inside the permitted RFC 6598 range.
+- Expand boundary regression coverage to include 100.0.0.1, 100.63.255.255, 100.128.0.1 and 100.255.255.254.
+- This correction is intentionally conservative and avoids Python-version-dependent classification around the shared-address block.
+
+### Validation and release boundary
+- Fix commits: 6e2290518f0e93810c88586111a9a85f9cd257e8 (policy) and 4fe6a851ce3842af9658d21ad9ee6a0ab9012c7f (tests).
+- CI must rerun against the resulting exact PR head before the fix can be considered validated.
+- No merge or deployment is authorized by this checkpoint.
