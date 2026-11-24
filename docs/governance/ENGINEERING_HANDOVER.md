@@ -417,3 +417,58 @@ The user confirmed that Prometheus endpoints may be configured as reachable IP a
 The Charter designates `feature/auth-foundation` as the integration branch. PR #52 is intentionally based on `feature/prometheus-authentication` because it depends on the newer PR #51 integration containing the Prometheus connection and backfill experiences being reorganized. Do not retarget or merge it to the older integration branch without first reconciling the prerequisite feature stack and verifying the complete ancestry.
 
 This section records the PR #52 checkpoint only. It does not supersede the Charter's merge, deployment or runtime-acceptance gates.
+
+
+## 20. Master Configuration release closure and runtime acceptance — 24 November 2026
+
+### Release scope and merge records
+
+The Master Configuration workspace redesign and its post-deployment navigation correction are integrated into `feature/prometheus-authentication`.
+
+| PR | Purpose | Merge commit | Result |
+|---|---|---|---|
+| [#52](https://github.com/faith-fork/minio-analytics/pull/52) | Consolidate General, Prometheus and Historical Backfill administration into one Master Configuration workspace; keep User Administration separate | `3dd6366bcbd687add68841abd5e83a6f3ca38774` | Merged |
+| [#53](https://github.com/faith-fork/minio-analytics/pull/53) | Correct the navigation active-state selector regression and add a focused regression assertion | `37065f982040062064a2fb843c4b262f4c83bc19` | Merged |
+
+The verified target branch HEAD is `37065f982040062064a2fb843c4b262f4c83bc19`. PR #53 is a direct child of the PR #52 merge commit; the target branch was verified identical to the PR #53 merge commit after merge.
+
+### CI evidence
+
+- PR #52 exact head: `cbf926572b02f8a13ccb340101fdfd306aafc4ec`; GitHub Actions run [45420838796](https://github.com/faith-fork/minio-analytics/actions/runs/45420838796): Python 3.12 regression job and frontend syntax validation both passed. The regression suite reported 194 passed and one non-blocking Starlette/httpx deprecation warning.
+- PR #53 exact head: `942ff1f1ffc88279314144d9eb66ceedefaf47b2`; GitHub Actions run [45432815569](https://github.com/faith-fork/minio-analytics/actions/runs/45432815569): Python 3.12 regression job and frontend syntax validation both passed. The regression suite reported 195 passed and one non-blocking Starlette/httpx deprecation warning.
+- PR #53 adds a regression assertion ensuring the multi-element navigation selector is used for `.nav-link` active-state updates.
+
+### Deployment evidence supplied by the user
+
+- VM: Rocky Linux 10 lab host; application path `/opt/minio-analytics`.
+- Target branch: `feature/prometheus-authentication`.
+- Target deployed SHA: `37065f982040062064a2fb843c4b262f4c83bc19`.
+- VM working tree was verified clean before deployment.
+- Deployment used a fast-forward-only pull from the target branch.
+- Only `minio-analytics-web.service` was restarted; no database migration or collector/scheduler restart was required for these frontend/navigation changes.
+- Web service reported `active (running)`; Uvicorn startup completed successfully; local HTTP GET to `http://127.0.0.1:8001/` returned HTTP 200.
+- User subsequently supplied browser screenshots and confirmed the application works. The screenshots show the Overview dashboard, Clusters page, General Configuration tab and Historical Backfill tab. User also confirmed the redesigned workspace/navigation and its tabs work as expected.
+- Runtime acceptance is recorded from user-provided VM output and browser validation; it was not independently executed by the engineering assistant.
+
+### Regression and lesson learned
+
+- Observed browser error after PR #52 deployment: `TypeError: $(...).forEach is not a function` in `setView()`, leaving the Overview page at its loading state.
+- Root cause: `$` is the single-element selector, while the navigation active-state update requires the multi-element `$$` selector.
+- PR #53 corrected the call to `$$(".nav-link").forEach(...)` and added a focused regression test.
+- Lesson: static syntax validation alone does not catch DOM API misuse. Future navigation/UI changes should include targeted behavioural tests for selector cardinality and initial route rendering, in addition to syntax and backend regression suites. Browser smoke validation remains a separate release gate.
+
+### Release status
+
+- PR #52 and PR #53: merged.
+- CI: passed on both exact PR heads.
+- VM deployment: completed by user and verified against exact PR #53 merge SHA.
+- Browser/runtime validation: user confirmed successful operation.
+- This release checkpoint is closed.
+
+### Next product-design work — UI refinement proposal (not yet implemented)
+
+Before selecting the next feature, the user requested a design review of the General Configuration and Historical Backfill screens. Initial screenshot-based observations:
+- General Configuration currently presents the collector settings in a narrow form card with substantial unused horizontal space; infrastructure telemetry footprint and backup history then expand across the page, producing an uneven hierarchy and a long, visually dense page.
+- Historical Backfill currently uses tightly packed, largely native inline form controls for cluster and date selection, with limited visual grouping and weak separation between job creation and job history.
+
+The next step is to propose and agree on a revised layout and interaction design for these two screens. No UI redesign implementation, branch, PR or deployment has been started or authorized by this handover entry. Preserve existing settings, validation, backup/restore semantics, backfill APIs, durable job behaviour, permissions and history unless the user explicitly approves a functional change.
