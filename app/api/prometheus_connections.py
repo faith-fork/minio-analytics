@@ -11,7 +11,9 @@ from app.auth.dependencies import require_master_admin
 from app.collectors.prometheus_discovery import build_prometheus_url, discover_minio_clusters
 from app.collectors.prometheus import PrometheusError
 from app.database.database import initialize_database, transaction
-from app.collectors.prometheus_credentials import (\n    PrometheusCredentialError, build_authorization_header, encrypt_credentials,\n)
+from app.collectors.prometheus_credentials import (
+    PrometheusCredentialError, build_authorization_header, encrypt_credentials,
+)
 
 router = APIRouter(prefix="/api/master-admin/prometheus-connections", tags=["master administration"])
 _ID = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
