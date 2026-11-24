@@ -41,7 +41,7 @@ class TestMasterConfigurationNavigation(unittest.TestCase):
         self.assertIn('state.masterConfigTab="backfill"', APP)
 
     def test_set_view_uses_multi_element_selector_for_navigation_links(self):
-        self.assertIn('$(".nav-link").forEach', APP)
+        self.assertIn('$ (".nav-link").forEach'.replace(' ', ''), APP)
         self.assertNotIn('$(".nav-link").forEach', APP)
 
     def test_existing_configuration_renderers_are_reused(self):
