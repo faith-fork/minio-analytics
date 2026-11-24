@@ -5,7 +5,9 @@ from app.database.database import initialize_database, transaction
 from app.database.prometheus_config import (
     import_location_configuration,
     list_prometheus_configuration,
+    load_database_locations,
 )
+from app.collectors.prometheus_credentials import encrypt_credentials
 
 
 def sample_locations() -> list[LocationConfig]:
@@ -164,3 +166,50 @@ def test_import_clears_credentials_when_prometheus_endpoint_changes(tmp_path, mo
         ).fetchone()
 
     assert tuple(row) == ("https", "prom-new.internal", 9443, "none", None)
+
+
+def test_database_loader_decrypts_credentials_for_collectors(tmp_path, monkeypatch):
+    from cryptography.fernet import Fernet
+
+    monkeypatch.setenv("MINIO_ANALYTICS_DB", str(tmp_path / "loader-auth.db"))
+    monkeypatch.setenv("MINIO_ANALYTICS_CREDENTIALS_KEY", Fernet.generate_key().decode())
+    import_location_configuration(sample_locations())
+    encrypted = encrypt_credentials(
+        "basic", {"username": "metrics-reader", "password": "secret"}
+    )
+    with transaction() as connection:
+        connection.execute(
+            """UPDATE prometheus_connections
+               SET auth_type='basic', auth_secret_encrypted=?
+               WHERE connection_id='prometheus:loc-a'""",
+            (encrypted,),
+        )
+
+    locations = load_database_locations()
+    location = next(item for item in locations if item.id == "loc-a")
+    assert location.auth_header is not None
+    assert location.auth_header.startswith("Basic ")
+
+
+def test_database_loader_fails_closed_when_encryption_key_is_wrong(tmp_path, monkeypatch):
+    from cryptography.fernet import Fernet
+    import pytest
+    from app.collectors.prometheus_credentials import PrometheusCredentialError
+
+    monkeypatch.setenv("MINIO_ANALYTICS_DB", str(tmp_path / "loader-wrong-key.db"))
+    monkeypatch.setenv("MINIO_ANALYTICS_CREDENTIALS_KEY", Fernet.generate_key().decode())
+    import_location_configuration(sample_locations())
+    encrypted = encrypt_credentials(
+        "bearer", {"token": "secret-token"}
+    )
+    with transaction() as connection:
+        connection.execute(
+            """UPDATE prometheus_connections
+               SET auth_type='bearer', auth_secret_encrypted=?
+               WHERE connection_id='prometheus:loc-a'""",
+            (encrypted,),
+        )
+    monkeypatch.setenv("MINIO_ANALYTICS_CREDENTIALS_KEY", Fernet.generate_key().decode())
+
+    with pytest.raises(PrometheusCredentialError, match="cannot be decrypted"):
+        load_database_locations()
