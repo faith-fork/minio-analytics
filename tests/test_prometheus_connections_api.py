@@ -224,3 +224,104 @@ def test_prometheus_connection_rejects_invalid_identifier(admin_client: TestClie
         "/api/master-admin/prometheus-connections", json=payload
     )
     assert response.status_code == 422
+
+
+def test_add_clusters_requires_master_admin(viewer_client: TestClient) -> None:
+    response = viewer_client.post(
+        "/api/master-admin/prometheus-connections/prometheus-lab/clusters/discover"
+    )
+    assert response.status_code == 403
+
+
+def test_discover_and_explicitly_add_new_cluster_without_changing_existing_history(
+    admin_client: TestClient, monkeypatch
+) -> None:
+    from app.api import prometheus_connections as api
+    from app.database.database import transaction
+
+    def fake_discovery(endpoint, *, verify_tls=True):
+        assert endpoint == "http://prometheus.internal:9090"
+        return {
+            "status": "success",
+            "prometheus_url": endpoint,
+            "minio_metrics_found": True,
+            "identity_labels": ["cluster"],
+            "clusters": [
+                {
+                    "label_name": "cluster",
+                    "label_value": "lab-two",
+                    "metrics_found": ["minio_cluster_capacity_raw_total_bytes"],
+                },
+                {
+                    "label_name": "cluster",
+                    "label_value": "lab-three",
+                    "metrics_found": ["minio_cluster_capacity_raw_total_bytes"],
+                },
+            ],
+            "cluster_count": 2,
+            "selection_required": True,
+            "warnings": [],
+        }
+
+    monkeypatch.setattr(api, "discover_minio_clusters", fake_discovery)
+    created = admin_client.post(
+        "/api/master-admin/prometheus-connections", json=connection_payload()
+    )
+    assert created.status_code == 201, created.text
+
+    discovered = admin_client.post(
+        "/api/master-admin/prometheus-connections/prometheus-lab/clusters/discover"
+    )
+    assert discovered.status_code == 200, discovered.text
+    payload = discovered.json()
+    assert payload["location_id"] == "LAB2"
+    by_value = {item["label_value"]: item for item in payload["clusters"]}
+    assert by_value["lab-two"]["already_configured"] is True
+    assert by_value["lab-three"]["already_configured"] is False
+    assert payload["new_cluster_count"] == 1
+
+    added = admin_client.post(
+        "/api/master-admin/prometheus-connections/prometheus-lab/clusters",
+        json={
+            "clusters": [{
+                "cluster_id": "cluster-lab-three",
+                "cluster_name": "MinIO Lab Three",
+                "identity_label_name": "cluster",
+                "identity_label_value": "lab-three",
+            }]
+        },
+    )
+    assert added.status_code == 201, added.text
+    assert added.json()["approved_cluster_count"] == 1
+
+    with transaction() as connection:
+        new_cluster = connection.execute(
+            "SELECT location_id, name, enabled FROM clusters WHERE id='cluster-lab-three'"
+        ).fetchone()
+        binding = connection.execute(
+            "SELECT connection_id, identity_label_value FROM cluster_prometheus_bindings WHERE cluster_id='cluster-lab-three'"
+        ).fetchone()
+        historical = connection.execute(
+            "SELECT COUNT(*) AS n FROM bucket_daily_metrics WHERE cluster_id='cluster-1'"
+        ).fetchone()["n"]
+        audit = connection.execute(
+            "SELECT COUNT(*) AS n FROM settings_audit WHERE setting_key LIKE 'prometheus_connection:%:cluster:cluster-lab-three'"
+        ).fetchone()["n"]
+
+    assert tuple(new_cluster) == ("LAB2", "MinIO Lab Three", 1)
+    assert tuple(binding) == ("prometheus-lab", "lab-three")
+    assert historical == 3
+    assert audit == 1
+
+    duplicate = admin_client.post(
+        "/api/master-admin/prometheus-connections/prometheus-lab/clusters",
+        json={
+            "clusters": [{
+                "cluster_id": "cluster-lab-three",
+                "cluster_name": "MinIO Lab Three",
+                "identity_label_name": "cluster",
+                "identity_label_value": "lab-three",
+            }]
+        },
+    )
+    assert duplicate.status_code == 409
