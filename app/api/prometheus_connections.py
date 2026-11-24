@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from typing import Literal
 
@@ -112,8 +113,32 @@ def test_connection(payload: PrometheusEndpointTestInput, _: dict = Depends(requ
 def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(require_master_admin)) -> dict:
     initialize_database()
     endpoint = build_prometheus_url(payload.protocol, payload.hostname, payload.port)
+    if not payload.verify_tls:
+        raise HTTPException(status_code=422, detail="Prometheus TLS certificate verification cannot be disabled")
     if len({cluster.cluster_id for cluster in payload.clusters}) != len(payload.clusters):
         raise HTTPException(status_code=422, detail="Cluster IDs must be unique in a connection")
+
+    # Browser discovery is advisory. Re-discover against the exact endpoint
+    # being saved so stale UI data cannot bind a cluster to another endpoint.
+    try:
+        discovery = discover_minio_clusters(endpoint, verify_tls=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PrometheusError as exc:
+        raise HTTPException(status_code=502, detail=f"Prometheus endpoint validation failed: {exc}") from exc
+
+    available_identities = {
+        (item["label_name"], item["label_value"])
+        for item in discovery.get("clusters", [])
+    }
+    requested_identities = {
+        (cluster.identity_label_name, cluster.identity_label_value)
+        for cluster in payload.clusters
+    }
+    missing = requested_identities - available_identities
+    if missing:
+        detail = ", ".join(f"{label}={value}" for label, value in sorted(missing))
+        raise HTTPException(status_code=409, detail=f"Selected cluster identity is not present on the endpoint being saved: {detail}")
 
     try:
         with transaction() as connection:
@@ -128,11 +153,24 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
                 (payload.location_id, payload.location_name),
             )
             existing = connection.execute(
-                "SELECT location_id FROM prometheus_connections WHERE connection_id=?",
+                """SELECT location_id, protocol, hostname, port, verify_tls, enabled
+                   FROM prometheus_connections WHERE connection_id=?""",
                 (payload.connection_id,),
             ).fetchone()
             if existing and existing["location_id"] != payload.location_id:
                 raise HTTPException(status_code=409, detail="Connection ID belongs to another location")
+
+            old_config = None
+            if existing:
+                old_config = {
+                    "protocol": existing["protocol"], "hostname": existing["hostname"],
+                    "port": existing["port"], "verify_tls": bool(existing["verify_tls"]),
+                    "enabled": bool(existing["enabled"]),
+                }
+            new_config = {
+                "protocol": payload.protocol, "hostname": payload.hostname,
+                "port": payload.port, "verify_tls": True, "enabled": bool(payload.enabled),
+            }
             connection.execute(
                 """INSERT INTO prometheus_connections
                    (connection_id,location_id,protocol,hostname,port,verify_tls,enabled)
@@ -145,29 +183,64 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
                 (payload.connection_id, payload.location_id, payload.protocol,
                  payload.hostname, payload.port, 1, int(payload.enabled)),
             )
+            if old_config != new_config:
+                connection.execute(
+                    """INSERT INTO settings_audit(setting_key,old_value,new_value,changed_by)
+                       VALUES(?,?,?,?)""",
+                    (f"prometheus_connection:{payload.connection_id}:endpoint",
+                     json.dumps(old_config, sort_keys=True) if old_config is not None else None,
+                     json.dumps(new_config, sort_keys=True), actor.get("username", "unknown")),
+                )
+
             for cluster in payload.clusters:
                 current = connection.execute(
-                    "SELECT location_id FROM clusters WHERE id=?", (cluster.cluster_id,)
+                    "SELECT location_id, name FROM clusters WHERE id=?", (cluster.cluster_id,)
                 ).fetchone()
                 if current and current["location_id"] != payload.location_id:
                     raise HTTPException(status_code=409, detail=f"Cluster {cluster.cluster_id} belongs to another location")
-                connection.execute(
-                    """INSERT INTO clusters(id,location_id,name,enabled,labels_json)
-                       VALUES(?,?,?,1,'{}')
-                       ON CONFLICT(id) DO UPDATE SET name=excluded.name""",
-                    (cluster.cluster_id, payload.location_id, cluster.cluster_name),
-                )
+                if current is None:
+                    connection.execute(
+                        """INSERT INTO clusters(id,location_id,name,enabled,labels_json)
+                           VALUES(?,?,?,1,'{}')""",
+                        (cluster.cluster_id, payload.location_id, cluster.cluster_name),
+                    )
+
+                binding = connection.execute(
+                    """SELECT connection_id, identity_label_name, identity_label_value
+                       FROM cluster_prometheus_bindings WHERE cluster_id=?""",
+                    (cluster.cluster_id,),
+                ).fetchone()
+                if binding:
+                    same = (
+                        binding["connection_id"] == payload.connection_id
+                        and binding["identity_label_name"] == cluster.identity_label_name
+                        and binding["identity_label_value"] == cluster.identity_label_value
+                    )
+                    if not same:
+                        raise HTTPException(
+                            status_code=409,
+                            detail=f"Cluster {cluster.cluster_id} is already bound to {binding['connection_id']} with a different identity; existing binding was not changed",
+                        )
+                    # Preserve the existing cluster name, binding and history.
+                    continue
+
                 connection.execute(
                     """INSERT INTO cluster_prometheus_bindings
                        (cluster_id,connection_id,identity_label_name,identity_label_value)
-                       VALUES(?,?,?,?)
-                       ON CONFLICT(cluster_id) DO UPDATE SET
-                       connection_id=excluded.connection_id,
-                       identity_label_name=excluded.identity_label_name,
-                       identity_label_value=excluded.identity_label_value,
-                       updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')""",
+                       VALUES(?,?,?,?)""",
                     (cluster.cluster_id, payload.connection_id,
                      cluster.identity_label_name, cluster.identity_label_value),
+                )
+                connection.execute(
+                    """INSERT INTO settings_audit(setting_key,old_value,new_value,changed_by)
+                       VALUES(?,?,?,?)""",
+                    (f"prometheus_connection:{payload.connection_id}:cluster:{cluster.cluster_id}",
+                     None, json.dumps({
+                         "action": "cluster_bound", "cluster_id": cluster.cluster_id,
+                         "cluster_name": current["name"] if current else cluster.cluster_name,
+                         "identity_label_name": cluster.identity_label_name,
+                         "identity_label_value": cluster.identity_label_value,
+                     }, sort_keys=True), actor.get("username", "unknown")),
                 )
     except HTTPException:
         raise
