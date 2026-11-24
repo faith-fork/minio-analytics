@@ -22,6 +22,21 @@ class DiscoveredClusterBinding(BaseModel):
     identity_label_name: Literal["cluster", "site", "environment"] = "cluster"
     identity_label_value: str = Field(min_length=1, max_length=255)
 
+    @field_validator("cluster_id")
+    @classmethod
+    def validate_cluster_id(cls, value: str) -> str:
+        if not _ID.fullmatch(value):
+            raise ValueError("Use letters, numbers, dot, underscore or hyphen for cluster IDs")
+        return value
+
+    @field_validator("cluster_name", "identity_label_value")
+    @classmethod
+    def strip_cluster_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Cluster name and identity value must not be blank")
+        return value
+
 
 class PrometheusEndpointTestInput(BaseModel):
     protocol: Literal["http", "https"] = "http"
@@ -280,3 +295,207 @@ def set_connection_enabled(connection_id: str, enabled: bool, actor: dict = Depe
             ),
         )
     return {"updated": True, "connection_id": connection_id, "enabled": enabled}
+
+
+class AddClustersInput(BaseModel):
+    clusters: list[DiscoveredClusterBinding] = Field(min_length=1, max_length=100)
+
+
+@router.post("/{connection_id}/clusters/discover")
+def discover_connection_clusters(
+    connection_id: str,
+    _: dict = Depends(require_master_admin),
+) -> dict:
+    """Re-discover MinIO identities on an existing endpoint without writes."""
+    initialize_database()
+    with transaction() as connection:
+        endpoint = connection.execute(
+            """SELECT pc.location_id, pc.protocol, pc.hostname, pc.port, pc.enabled
+               FROM prometheus_connections pc WHERE pc.connection_id=?""",
+            (connection_id,),
+        ).fetchone()
+        if endpoint is None:
+            raise HTTPException(status_code=404, detail="Prometheus connection not found")
+        if not endpoint["enabled"]:
+            raise HTTPException(status_code=409, detail="Enable the Prometheus connection before discovery")
+        existing_rows = connection.execute(
+            """SELECT cpb.identity_label_name, cpb.identity_label_value,
+                      cpb.cluster_id, c.name AS cluster_name, cpb.connection_id
+               FROM cluster_prometheus_bindings cpb
+               JOIN clusters c ON c.id=cpb.cluster_id
+               WHERE c.location_id=?""",
+            (endpoint["location_id"],),
+        ).fetchall()
+
+    base_url = build_prometheus_url(
+        endpoint["protocol"], endpoint["hostname"], endpoint["port"]
+    )
+    try:
+        result = discover_minio_clusters(base_url, verify_tls=True)
+    except (ValueError, PrometheusError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    bindings = {
+        (row["identity_label_name"], row["identity_label_value"]): {
+            "cluster_id": row["cluster_id"],
+            "cluster_name": row["cluster_name"],
+            "connection_id": row["connection_id"],
+        }
+        for row in existing_rows
+    }
+    for item in result["clusters"]:
+        existing = bindings.get((item["label_name"], item["label_value"]))
+        item["existing_cluster_id"] = existing["cluster_id"] if existing else None
+        item["existing_cluster_name"] = existing["cluster_name"] if existing else None
+        item["bound_connection_id"] = existing["connection_id"] if existing else None
+        item["already_configured"] = bool(
+            existing and existing["connection_id"] == connection_id
+        )
+        item["bound_elsewhere"] = bool(
+            existing and existing["connection_id"] != connection_id
+        )
+    result["connection_id"] = connection_id
+    result["location_id"] = endpoint["location_id"]
+    result["new_cluster_count"] = sum(
+        not item["already_configured"] and not item["bound_elsewhere"]
+        for item in result["clusters"]
+    )
+    return result
+
+
+@router.post("/{connection_id}/clusters", status_code=201)
+def add_connection_clusters(
+    connection_id: str,
+    payload: AddClustersInput,
+    actor: dict = Depends(require_master_admin),
+) -> dict:
+    """Explicitly approve and bind selected, freshly discovered MinIO clusters."""
+    initialize_database()
+    with transaction() as connection:
+        endpoint = connection.execute(
+            """SELECT pc.location_id, pc.protocol, pc.hostname, pc.port, pc.enabled
+               FROM prometheus_connections pc WHERE pc.connection_id=?""",
+            (connection_id,),
+        ).fetchone()
+        if endpoint is None:
+            raise HTTPException(status_code=404, detail="Prometheus connection not found")
+        if not endpoint["enabled"]:
+            raise HTTPException(status_code=409, detail="Enable the Prometheus connection before adding clusters")
+        location = connection.execute(
+            "SELECT name FROM locations WHERE id=?", (endpoint["location_id"],)
+        ).fetchone()
+        if location is None:
+            raise HTTPException(status_code=409, detail="Connection location is missing")
+
+    base_url = build_prometheus_url(
+        endpoint["protocol"], endpoint["hostname"], endpoint["port"]
+    )
+    try:
+        discovered = discover_minio_clusters(base_url, verify_tls=True)
+    except (ValueError, PrometheusError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    available = {
+        (item["label_name"], item["label_value"])
+        for item in discovered["clusters"]
+    }
+    identities = [
+        (item.identity_label_name, item.identity_label_value)
+        for item in payload.clusters
+    ]
+    if len(set(identities)) != len(identities):
+        raise HTTPException(status_code=422, detail="Selected cluster identities must be unique")
+    if len({item.cluster_id for item in payload.clusters}) != len(payload.clusters):
+        raise HTTPException(status_code=422, detail="Selected cluster IDs must be unique")
+    for item in payload.clusters:
+        if (item.identity_label_name, item.identity_label_value) not in available:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Cluster identity is no longer present in Prometheus: {item.identity_label_name}={item.identity_label_value}",
+            )
+
+    added: list[dict[str, str]] = []
+    with transaction() as connection:
+        for item in payload.clusters:
+            existing_binding = connection.execute(
+                """SELECT cpb.cluster_id, cpb.connection_id, c.name, c.location_id
+                   FROM cluster_prometheus_bindings cpb
+                   JOIN clusters c ON c.id=cpb.cluster_id
+                   WHERE cpb.identity_label_name=? AND cpb.identity_label_value=? AND c.location_id=?""",
+                (item.identity_label_name, item.identity_label_value, endpoint["location_id"]),
+            ).fetchone()
+            if existing_binding:
+                if existing_binding["connection_id"] == connection_id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Cluster {existing_binding['cluster_id']} is already configured on this connection",
+                    )
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Cluster identity is already bound to connection {existing_binding['connection_id']}; existing cluster {existing_binding['cluster_id']} was not changed",
+                )
+
+            current = connection.execute(
+                "SELECT location_id, name FROM clusters WHERE id=?",
+                (item.cluster_id,),
+            ).fetchone()
+            if current and current["location_id"] != endpoint["location_id"]:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Cluster ID {item.cluster_id} already belongs to another location",
+                )
+            if current:
+                cluster_id = item.cluster_id
+                # Existing cluster names and historical rows are intentionally preserved.
+            else:
+                name_owner = connection.execute(
+                    "SELECT id FROM clusters WHERE location_id=? AND name=?",
+                    (endpoint["location_id"], item.cluster_name),
+                ).fetchone()
+                if name_owner:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Cluster name already belongs to {name_owner['id']}; use that existing cluster ID",
+                    )
+                connection.execute(
+                    """INSERT INTO clusters(id, location_id, name, enabled, labels_json)
+                       VALUES(?,?,?,1,'{}')""",
+                    (item.cluster_id, endpoint["location_id"], item.cluster_name),
+                )
+                cluster_id = item.cluster_id
+
+            connection.execute(
+                """INSERT INTO cluster_prometheus_bindings
+                   (cluster_id, connection_id, identity_label_name, identity_label_value)
+                   VALUES(?,?,?,?)""",
+                (cluster_id, connection_id, item.identity_label_name, item.identity_label_value),
+            )
+            connection.execute(
+                """INSERT INTO settings_audit(setting_key, old_value, new_value, changed_by)
+                   VALUES(?,?,?,?)""",
+                (
+                    f"prometheus_connection:{connection_id}:cluster:{cluster_id}",
+                    None,
+                    json.dumps({
+                        "action": "cluster_approved_and_bound",
+                        "cluster_id": cluster_id,
+                        "cluster_name": current["name"] if current else item.cluster_name,
+                        "identity_label_name": item.identity_label_name,
+                        "identity_label_value": item.identity_label_value,
+                    }, sort_keys=True),
+                    actor.get("username", "unknown"),
+                ),
+            )
+            added.append({
+                "cluster_id": cluster_id,
+                "cluster_name": current["name"] if current else item.cluster_name,
+                "identity_label_name": item.identity_label_name,
+                "identity_label_value": item.identity_label_value,
+            })
+
+    return {
+        "added": True,
+        "connection_id": connection_id,
+        "approved_cluster_count": len(added),
+        "clusters": added,
+    }
