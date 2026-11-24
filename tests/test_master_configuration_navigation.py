@@ -68,7 +68,9 @@ class TestConfigurationUiRefinement(unittest.TestCase):
     def test_password_confirmation_is_separate_from_settings_form(self):
         self.assertIn('master-settings-confirm-form', APP)
         self.assertIn('current_password:new FormData(confirmForm)', APP)
-        self.assertNotIn('name="current_password" autocomplete="current-password" required></label>', APP)
+        settings_form_start = APP.index('<form id="master-settings-form"')
+        settings_form_end = APP.index("</form>", settings_form_start)
+        self.assertNotIn('name="current_password"', APP[settings_form_start:settings_form_end])
 
     def test_backfill_uses_presets_summary_and_job_cards(self):
         for value in ('data-bf-range="7"', 'data-bf-range="30"', 'data-bf-range="60"'):
