@@ -172,7 +172,7 @@ function setView(view){
   else if(view==="prometheus-connections"){view="master-config";state.masterConfigTab="prometheus";}
   else if(view==="backfill-jobs"){view="master-config";state.masterConfigTab="backfill";}
   state.view=view;
-  $(".nav-link").forEach(b=>b.classList.toggle("active",b.dataset.view===(["bucket-usage-report","raw-capacity-report"].includes(view)?"capacity-report":view)));
+  $$(".nav-link").forEach(b=>b.classList.toggle("active",b.dataset.view===(["bucket-usage-report","raw-capacity-report"].includes(view)?"capacity-report":view)));
   $("#page-breadcrumb").textContent=(["capacity-report","bucket-usage-report","raw-capacity-report"].includes(view)?"REPORTS":view==="master-config"?"MASTER CONFIGURATION":view.replaceAll("-"," ")).toUpperCase();
   render().catch(e=>toast(e.message,true));
 }
