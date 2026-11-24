@@ -170,7 +170,8 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
                 (payload.location_id, payload.location_name),
             )
             existing = connection.execute(
-                "SELECT location_id FROM prometheus_connections WHERE connection_id=?",
+                """SELECT location_id, protocol, hostname, port, verify_tls, enabled
+                   FROM prometheus_connections WHERE connection_id=?""",
                 (payload.connection_id,),
             ).fetchone()
             if existing and existing["location_id"] != payload.location_id:
@@ -187,6 +188,34 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
                 (payload.connection_id, payload.location_id, payload.protocol,
                  payload.hostname, payload.port, 1, int(payload.enabled)),
             )
+
+            old_config = None if existing is None else {
+                "location_id": existing["location_id"],
+                "protocol": existing["protocol"],
+                "hostname": existing["hostname"],
+                "port": existing["port"],
+                "verify_tls": bool(existing["verify_tls"]),
+                "enabled": bool(existing["enabled"]),
+            }
+            new_config = {
+                "location_id": payload.location_id,
+                "protocol": payload.protocol,
+                "hostname": payload.hostname,
+                "port": payload.port,
+                "verify_tls": True,
+                "enabled": bool(payload.enabled),
+            }
+            connection.execute(
+                """INSERT INTO settings_audit(setting_key, old_value, new_value, changed_by)
+                   VALUES(?,?,?,?)""",
+                (
+                    f"prometheus_connection:{payload.connection_id}",
+                    json.dumps(old_config, sort_keys=True) if old_config is not None else None,
+                    json.dumps(new_config, sort_keys=True),
+                    actor.get("username", "unknown"),
+                ),
+            )
+
             for cluster in payload.clusters:
                 current = connection.execute(
                     "SELECT location_id, name FROM clusters WHERE id=?", (cluster.cluster_id,)

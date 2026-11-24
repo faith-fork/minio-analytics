@@ -102,7 +102,6 @@ def test_prometheus_connection_test_uses_discovery_without_persisting(
     assert admin_client.get("/api/master-admin/prometheus-connections").json()["count"] == 0
 
 
-
 def test_save_revalidates_selected_cluster_against_exact_endpoint(
     admin_client: TestClient, monkeypatch
 ) -> None:
@@ -205,6 +204,7 @@ def test_save_preserves_existing_cluster_name_and_refuses_binding_reassignment(
             "WHERE cluster_id='cluster-lab-two'"
         ).fetchone()
     assert tuple(binding) == ("prometheus-lab", "lab-two")
+
 
 def test_prometheus_connection_rejects_invalid_identifier(admin_client: TestClient) -> None:
     payload = connection_payload()
