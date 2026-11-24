@@ -86,19 +86,43 @@
       const data = await api("/api/master-admin/prometheus-connections/" + encodeURIComponent(connectionId) + "/clusters/discover", { method: "POST" });
       const rows = data.clusters.map((item, index) => {
         const blocked = item.already_configured || item.bound_elsewhere;
-        const detail = item.already_configured
-          ? "Already configured · " + item.existing_cluster_id
+        const status = item.already_configured
+          ? '<span class="status-pill">Already configured</span>'
           : item.bound_elsewhere
-            ? "Already bound to another connection · " + item.existing_cluster_id
-            : "New cluster · explicitly approved when you click Add selected clusters";
+            ? '<span class="status-pill neutral">Bound to another connection</span>'
+            : '<span class="status-pill">New cluster</span>';
+        const detail = item.already_configured
+          ? "This cluster is already configured on this connection."
+          : item.bound_elsewhere
+            ? "This cluster is already bound elsewhere and cannot be added here."
+            : "Select this cluster to approve its connection.";
         const generatedId = "cluster-" + slug(data.location_id).slice(0, 35) + "-" + slug(item.label_value).slice(0, 80);
-        return '<div class="discovery-list"><label class="checkbox-row"><input type="checkbox" class="pc-add-select" data-index="' + index + '" ' + (blocked ? "disabled" : "checked") + '><span><strong>' + esc(item.label_value) + '</strong><small>' + esc(detail) + ' · Identity: ' + esc(item.label_name) + '</small></span></label>' +
-          (blocked ? "" : '<div class="form-grid"><label>Cluster ID<input class="pc-add-id" data-index="' + index + '" maxlength="128" value="' + esc(generatedId) + '" required></label><label>Display name<input class="pc-add-name" data-index="' + index + '" maxlength="255" value="' + esc(item.label_value) + '" required></label></div>') +
-          '</div>';
+        return '<article class="pc-discovery-card' + (blocked ? " is-existing" : "") + '">' +
+          '<div class="pc-discovery-card-main">' +
+            (blocked ? '<span class="pc-discovery-indicator" aria-hidden="true">✓</span>' :
+              '<label class="pc-discovery-select"><input type="checkbox" class="pc-add-select" data-index="' + index + '" checked><span class="sr-only">Select ' + esc(item.label_value) + '</span></label>') +
+            '<div class="pc-discovery-identity"><strong>' + esc(item.label_value) + '</strong><p>' + esc(detail) + '</p></div>' +
+            status +
+          '</div>' +
+          '<div class="pc-discovery-meta"><span><small>CLUSTER ID</small><strong>' + esc(item.existing_cluster_id || (blocked ? "—" : generatedId)) + '</strong></span>' +
+            '<span><small>IDENTITY LABEL</small><strong>' + esc(item.label_name) + '</strong></span></div>' +
+          (blocked ? "" : '<div class="pc-discovery-fields"><label>Cluster ID<input class="pc-add-id" data-index="' + index + '" maxlength="128" value="' + esc(generatedId) + '" required></label><label>Display name<input class="pc-add-name" data-index="' + index + '" maxlength="255" value="' + esc(item.label_value) + '" required></label></div>') +
+        '</article>';
       }).join("");
-      host.innerHTML = '<section class="panel"><div class="panel-header"><div><h2>Add clusters</h2><p>Review newly discovered identities. Nothing is added until you confirm below.</p></div><button class="secondary-button" id="pc-add-close">Close</button></div>' +
-        (rows || '<div class="empty-state">No MinIO clusters were discovered.</div>') +
-        '<div class="form-actions"><button class="primary-button" id="pc-add-confirm" ' + (data.new_cluster_count ? "" : "disabled") + '>Add selected clusters</button></div><p class="form-hint">Existing cluster IDs, names, bindings and history are preserved. New selections are explicitly approved and enabled for collection.</p></section>';
+      const newCount = Number(data.new_cluster_count || 0);
+      host.innerHTML = '<section class="panel pc-discovery-panel"><div class="panel-header"><div><h2>Add clusters</h2><p>Review discovered identities. Existing cluster bindings and history are preserved.</p></div><button class="secondary-button" id="pc-add-close">Close</button></div>' +
+        '<div class="pc-discovery-summary"><span class="pc-discovery-summary-icon" aria-hidden="true">i</span><span><strong>' + newCount + ' new cluster' + (newCount === 1 ? '' : 's') + ' available</strong><small>Already configured clusters are shown for reference and cannot be selected again.</small></span></div>' +
+        (rows ? '<div class="pc-discovery-list">' + rows + '</div>' : '<div class="empty-state">No MinIO clusters were discovered.</div>') +
+        '<div class="pc-discovery-footer"><p class="form-hint" id="pc-add-selection-count">' + newCount + ' available for approval</p><button class="primary-button" id="pc-add-confirm" ' + (newCount ? "" : "disabled") + '>Add selected clusters</button></div></section>';
+      const confirmButton = document.getElementById("pc-add-confirm");
+      const selectionCount = document.getElementById("pc-add-selection-count");
+      const updateSelectionState = () => {
+        const selectedCount = host.querySelectorAll(".pc-add-select:checked").length;
+        confirmButton.disabled = selectedCount === 0;
+        selectionCount.textContent = selectedCount + ' cluster' + (selectedCount === 1 ? '' : 's') + ' selected for approval';
+      };
+      host.querySelectorAll(".pc-add-select").forEach((checkbox) => checkbox.addEventListener("change", updateSelectionState));
+      updateSelectionState();
       document.getElementById("pc-add-close").addEventListener("click", () => { host.innerHTML = ""; });
       document.getElementById("pc-add-confirm").addEventListener("click", async () => {
         const selected = [...host.querySelectorAll(".pc-add-select:checked")];
