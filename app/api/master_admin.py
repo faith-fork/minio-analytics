@@ -7,9 +7,14 @@ from pydantic import BaseModel,Field
 from fastapi import APIRouter,Depends,HTTPException,Query
 from fastapi.responses import FileResponse
 from pathlib import Path
-from scripts.backup_database import (\n    DEFAULT_MINIMUM_BACKUPS, backup_database, backup_management_lock,\n    inspect_backup_retention, verify_backup,\n)\nfrom app.auth.dependencies import require_master_admin
+from scripts.backup_database import (
+    DEFAULT_MINIMUM_BACKUPS, backup_database, backup_management_lock,
+    inspect_backup_retention, verify_backup,
+)
+from app.auth.dependencies import require_master_admin
 from app.auth.security import verify_password
-from app.database.database import database_path, transaction\nrouter=APIRouter(prefix="/api/master-admin",tags=["master administration"])
+from app.database.database import database_path, transaction
+router=APIRouter(prefix="/api/master-admin",tags=["master administration"])
 class SettingsUpdate(BaseModel):
     current_password:str=Field(min_length=1,max_length=1024)
     node_interval_minutes:int|None=Field(default=None,ge=1,le=60)
@@ -78,7 +83,8 @@ def _append_backup_audit(record: dict) -> None:
     BACKUP_AUDIT_DIR.mkdir(parents=True, exist_ok=True)
     if BACKUP_AUDIT_DIR.is_symlink() or BACKUP_AUDIT_FILE.is_symlink():
         raise RuntimeError("Backup audit path must not contain symbolic links")
-    payload = (json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    payload = (json.dumps(record, sort_keys=True, separators=(",", ":")) + "
+").encode("utf-8")
     flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(BACKUP_AUDIT_FILE, flags, 0o600)
     try:
