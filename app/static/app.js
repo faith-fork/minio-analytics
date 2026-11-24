@@ -399,7 +399,7 @@ async function reviewBackupCleanup(){
     if(form)form.addEventListener("submit",async event=>{
       event.preventDefault();const button=form.querySelector("button[type=submit]");button.disabled=true;button.textContent="Cleaning up…";
       try{
-        const result=await api("/api/master-admin/backups/cleanup",{method:"POST",body:JSON.stringify({retention_days:retentionDays,minimum_keep:minimumKeep,current_password:new FormData(form).get("current_password")})});
+        const result=await api("/api/master-admin/backups/cleanup",{method:"POST",body:JSON.stringify({retention_days:retentionDays,minimum_keep:minimumKeep,preview_token:preview.preview_token,current_password:new FormData(form).get("current_password")})});
         $("#modal-root").innerHTML="";toast("Backup cleanup completed: "+result.deleted_count+" file(s), "+fmt(result.deleted_size_bytes/1024/1024,2)+" MiB reclaimed.");state.backupOffset=0;await renderMasterAdmin();
       }catch(err){$("#backup-cleanup-error").textContent=err.message;button.disabled=false;button.textContent="Confirm cleanup";}
     });
