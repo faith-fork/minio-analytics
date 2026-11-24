@@ -14,6 +14,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js" defer></script>
   <script src="/static/app.js" defer></script>
   <script src="/static/prometheus-connections.js" defer></script>
+  <script src="/static/backfill-jobs.js" defer></script>
 </head>
 <body>
   <main id="login-screen" class="login-screen">
@@ -60,6 +61,7 @@
         <button class="nav-link admin-only hidden" data-view="users"><span>♙</span> User administration</button>
         <button class="nav-link master-admin-only hidden" data-view="master-admin"><span>⚙</span> Master Admin</button>
         <button class="nav-link master-admin-only hidden" data-view="prometheus-connections"><span>⌁</span> Prometheus connections</button>
+        <button class="nav-link master-admin-only hidden" data-view="backfill-jobs"><span>◷</span> Historical backfill</button>
       </nav>
       <div class="sidebar-bottom">
         <div class="side-label">SESSION</div>
