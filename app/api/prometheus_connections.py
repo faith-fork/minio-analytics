@@ -232,6 +232,27 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
             ).fetchone()
             if existing and existing["location_id"] != payload.location_id:
                 raise HTTPException(status_code=409, detail="Connection ID belongs to another location")
+            endpoint_changed = bool(existing) and (
+                existing["protocol"] != payload.protocol
+                or existing["hostname"] != payload.hostname
+                or existing["port"] != payload.port
+            )
+            if endpoint_changed and payload.auth_type == "none" and existing["auth_type"] != "none":
+                # Never carry credentials to a different Prometheus endpoint.
+                # The caller must explicitly configure new credentials after
+                # the endpoint change has been validated.
+                auth_type = "none"
+                stored_secret = None
+            elif payload.auth_type == "none" and payload.password is None and payload.token is None and payload.username is None:
+                # The general connection form is not the credential lifecycle
+                # API. Preserve existing credentials unless the administrator
+                # explicitly uses the dedicated authentication endpoint.
+                auth_type = existing["auth_type"] if existing else "none"
+                stored_secret = existing["auth_secret_encrypted"] if existing else None
+            else:
+                auth_type = payload.auth_type
+                stored_secret = encrypted_secret
+
             connection.execute(
                 """INSERT INTO prometheus_connections
                    (connection_id,location_id,protocol,hostname,port,verify_tls,enabled,auth_type,auth_secret_encrypted)
@@ -244,7 +265,7 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
                    updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')""",
                 (payload.connection_id, payload.location_id, payload.protocol,
                  payload.hostname, payload.port, 1, int(payload.enabled),
-                 payload.auth_type, encrypted_secret),
+                 auth_type, stored_secret),
             )
 
             old_config = None if existing is None else {
@@ -264,8 +285,8 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
                 "port": payload.port,
                 "verify_tls": True,
                 "enabled": bool(payload.enabled),
-                "auth_type": payload.auth_type,
-                "credentials_configured": bool(encrypted_secret),
+                "auth_type": auth_type,
+                "credentials_configured": bool(stored_secret),
             }
             connection.execute(
                 """INSERT INTO settings_audit(setting_key, old_value, new_value, changed_by)
