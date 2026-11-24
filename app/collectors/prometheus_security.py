@@ -55,7 +55,6 @@ def _address_allowed(value: str) -> bool:
     if address.is_global:
         return True
     return address in _PRIVATE_V6
-    return address in _PRIVATE_V6
 
 
 def resolve_prometheus_endpoint(base_url: str, *, resolver=None) -> tuple[str, int, tuple[str, ...], str]:
