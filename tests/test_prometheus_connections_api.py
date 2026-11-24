@@ -64,6 +64,17 @@ def test_master_admin_can_save_list_and_disable_prometheus_connection(
     assert disabled.json()["enabled"] is False
     assert admin_client.get("/api/master-admin/prometheus-connections").json()["items"][0]["enabled"] is False
 
+    from app.database.database import transaction
+    with transaction() as connection:
+        config_audit = connection.execute(
+            "SELECT COUNT(*) AS n FROM settings_audit WHERE setting_key='prometheus_connection:prometheus-lab'"
+        ).fetchone()["n"]
+        enabled_audit = connection.execute(
+            "SELECT COUNT(*) AS n FROM settings_audit WHERE setting_key='prometheus_connection:prometheus-lab:enabled'"
+        ).fetchone()["n"]
+    assert config_audit == 1
+    assert enabled_audit == 1
+
 
 def test_prometheus_connection_test_uses_discovery_without_persisting(
     admin_client: TestClient, monkeypatch
