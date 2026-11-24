@@ -62,3 +62,19 @@ def test_auth_type_mismatch_is_rejected(monkeypatch):
 
     with pytest.raises(PrometheusCredentialError, match="invalid format"):
         decrypt_credentials("bearer", encrypted)
+
+
+
+def test_location_config_repr_never_exposes_authorization_header():
+    from app.config.loader import LocationConfig
+
+    location = LocationConfig(
+        id="site-a",
+        name="Site A",
+        prometheus_url="https://prometheus.example:9443",
+        clusters=(),
+        auth_header="Bearer do-not-print-this-token",
+    )
+
+    assert "do-not-print-this-token" not in repr(location)
+    assert "Bearer " not in repr(location)
