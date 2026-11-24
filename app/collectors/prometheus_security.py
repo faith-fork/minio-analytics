@@ -13,8 +13,7 @@ _PRIVATE_V4 = tuple(ipaddress.ip_network(value) for value in (
     "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
 ))
 _PRIVATE_V6 = ipaddress.ip_network("fc00::/7")
-# RFC 6598 Shared Address Space used by some private enterprise networks.
-# Accepted only for explicitly configured literal IPv4 endpoints, never DNS answers.
+# RFC 6598 Shared Address Space is used by some enterprise/customer networks.
 _SHARED_V4 = ipaddress.ip_network("100.64.0.0/10")
 _BLOCKED_METADATA = {
     ipaddress.ip_address("169.254.169.254"),
@@ -32,6 +31,7 @@ def _normalized_address(value: str) -> ipaddress.IPv4Address | ipaddress.IPv6Add
 
 
 def _address_allowed(value: str) -> bool:
+    """Allow customer/private and globally routable targets, deny special targets."""
     address = _normalized_address(value)
     if address in _BLOCKED_METADATA:
         return False
@@ -42,17 +42,20 @@ def _address_allowed(value: str) -> bool:
     if address.is_global:
         return True
     if isinstance(address, ipaddress.IPv4Address):
-        return any(address in network for network in _PRIVATE_V4)
+        return (
+            any(address in network for network in _PRIVATE_V4)
+            or address in _SHARED_V4
+        )
     return address in _PRIVATE_V6
 
 
 def resolve_prometheus_endpoint(base_url: str, *, resolver=None) -> tuple[str, int, tuple[str, ...], str]:
-    """Validate endpoint syntax and return the exact IPs to which transport must connect.
+    """Validate a Prometheus endpoint and return the exact addresses to connect to.
 
-    RFC1918 IPv4 and IPv6 ULA customer networks are allowed. Every A/AAAA
-    answer must satisfy policy. The returned address set must be used by the
-    transport directly; resolving the hostname again would reintroduce DNS
-    rebinding between validation and connection.
+    Hostnames use the operating system resolver (DNS and local hosts sources,
+    according to system resolver configuration). Every A/AAAA result must be
+    allowed; mixed safe/unsafe answer sets are rejected. The returned IPs must
+    be used directly by the transport to prevent a second DNS lookup/rebinding.
     """
     try:
         parsed = urlsplit(base_url)
@@ -74,10 +77,11 @@ def resolve_prometheus_endpoint(base_url: str, *, resolver=None) -> tuple[str, i
     if "%" in host:
         raise PrometheusEndpointError("Scoped IPv6 addresses are not supported")
 
-    literal_endpoint = False
     try:
         literal = ipaddress.ip_address(host)
     except ValueError:
+        # getaddrinfo follows the host's configured NSS resolver path, including
+        # /etc/hosts where configured, as well as DNS.
         lookup = resolver or socket.getaddrinfo
         try:
             records = lookup(host, port, type=socket.SOCK_STREAM)
@@ -85,21 +89,11 @@ def resolve_prometheus_endpoint(base_url: str, *, resolver=None) -> tuple[str, i
             raise PrometheusEndpointError("Prometheus hostname could not be resolved") from exc
         addresses = {_normalized_address(record[4][0]) for record in records}
     else:
-        literal_endpoint = True
         addresses = {_normalized_address(str(literal))}
 
     if not addresses:
         raise PrometheusEndpointError("Prometheus hostname resolved to no addresses")
-    if not all(
-        _address_allowed(str(address))
-        or (
-            literal_endpoint
-            and isinstance(address, ipaddress.IPv4Address)
-            and address in _SHARED_V4
-            and address not in _BLOCKED_METADATA
-        )
-        for address in addresses
-    ):
+    if not all(_address_allowed(str(address)) for address in addresses):
         raise PrometheusEndpointError(
             "Prometheus endpoint resolves to a prohibited network address"
         )
