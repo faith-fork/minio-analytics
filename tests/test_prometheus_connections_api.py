@@ -452,7 +452,9 @@ def test_general_connection_save_preserves_existing_authentication(
     saved = admin_client.post("/api/master-admin/prometheus-connections", json=edited)
     assert saved.status_code == 201, saved.text
 
-    assert observed[-1] is None  # discovery uses the submitted no-auth request
+    # Existing write-only credentials must be used for discovery as well
+    # as preserved in SQLite when the general form omits them.
+    assert observed[-1].startswith("Basic ")
     with transaction() as connection:
         row = connection.execute(
             "SELECT auth_type, auth_secret_encrypted FROM prometheus_connections "
