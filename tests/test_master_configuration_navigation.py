@@ -6,6 +6,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 INDEX = (ROOT / "app/static/index.html").read_text(encoding="utf-8")
 APP = (ROOT / "app/static/app.js").read_text(encoding="utf-8")
+CSS = (ROOT / "app/static/app.css").read_text(encoding="utf-8")
+BACKFILL = (ROOT / "app/static/backfill-jobs.js").read_text(encoding="utf-8")
 PROMETHEUS = (ROOT / "app/static/prometheus-connections.js").read_text(encoding="utf-8")
 BACKFILL = (ROOT / "app/static/backfill-jobs.js").read_text(encoding="utf-8")
 
@@ -59,3 +61,35 @@ class TestMasterConfigurationNavigation(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestConfigurationUiRefinement(unittest.TestCase):
+    def test_general_configuration_uses_balanced_settings_and_footprint_layout(self):
+        self.assertIn('class="config-settings-grid"', APP)
+        self.assertIn('class="config-footprint"', APP)
+        self.assertIn('class="config-backup-table"', APP)
+        self.assertIn('Review &amp; save settings', APP)
+
+    def test_password_confirmation_is_separate_from_settings_form(self):
+        self.assertIn('master-settings-confirm-form', APP)
+        self.assertIn('current_password:new FormData(confirmForm)', APP)
+        self.assertNotIn('name="current_password" autocomplete="current-password" required></label>', APP)
+
+    def test_backfill_uses_presets_summary_and_job_cards(self):
+        for value in ('data-bf-range="7"', 'data-bf-range="30"', 'data-bf-range="60"'):
+            self.assertIn(value, BACKFILL)
+        self.assertIn('bf-summary-grid', BACKFILL)
+        self.assertIn('bf-job-card', BACKFILL)
+        self.assertIn('role="progressbar"', BACKFILL)
+
+    def test_backfill_preserves_api_routes_and_date_limit(self):
+        self.assertIn('/api/master-admin/prometheus-connections', BACKFILL)
+        self.assertIn('/api/master-admin/backfill-jobs', BACKFILL)
+        self.assertIn('/action', BACKFILL)
+        self.assertIn('dayCount>60', BACKFILL)
+
+    def test_configuration_ui_styles_are_responsive(self):
+        self.assertIn('@media(max-width:760px)', CSS)
+        self.assertIn('.bf-job-list{grid-template-columns:1fr}', CSS)
+
+
