@@ -332,3 +332,26 @@ This section supersedes Section 14's PR-open, pre-merge, and pending-CI statemen
 - No merge or deployment without separate explicit user approval.
 
 This checkpoint supersedes the prior handover statement that customer private-network Prometheus connectivity was merely unverified: the reported failure is attributed to the new address-policy rejection, while successful post-fix runtime connectivity remains pending.
+
+
+## 17. Prometheus customer-network endpoint support redesign — 24 November 2026
+
+### Product decision
+The user confirmed that Prometheus endpoints may be configured as reachable IP addresses or FQDNs, on the default port 9090 or a customer-selected port. Customer endpoints may reside in the same or a different private subnet. Hostname resolution must support the operating system resolver, including DNS and local hosts-file/NSS entries.
+
+### Corrected scope for PR #43
+- Permit RFC1918 IPv4, RFC6598 shared IPv4 (100.64.0.0/10), IPv6 ULA and globally routable addresses for both literal endpoints and validated hostname answers.
+- Resolve FQDNs using the system resolver path (socket.getaddrinfo); this naturally follows configured NSS sources such as /etc/hosts and DNS.
+- Validate every A/AAAA result. Reject the entire hostname if any answer is prohibited; do not select only the safe answers.
+- Pin the TCP connection to a validated IP; retain the configured hostname for HTTP Host and HTTPS SNI/certificate hostname validation.
+- Continue blocking loopback, link-local, multicast, unspecified, reserved/special targets and the explicitly listed metadata addresses.
+- Permit custom ports; 9090 remains a convention/default at the configuration layer, not a network-policy restriction.
+- HTTPS always requires certificate-chain and hostname verification. The legacy verify_tls constructor argument is retained for compatibility but cannot disable verification. HTTP remains supported as explicitly configured, without TLS protection.
+
+### Security and release notes
+- This change does not introduce an arbitrary destination port restriction. Reachability is still determined by customer routing/firewall policy; application-level destination validation remains mandatory.
+- Mixed safe/unsafe DNS answer sets are rejected. DNS validation and socket IP pinning prevent a second lookup from changing the connection target.
+- Prometheus credentials and secret lifecycle remain a separate P0 design item; do not embed credentials in endpoint URLs.
+- No schema migration, UI, database mutation, or VM deployment is included in this PR.
+- CI and exact-head review must be verified before any merge consideration. No merge or deployment is authorized by this handover.
+- The previous Section 16's literal-only RFC6598 exception and claim that DNS-resolved RFC6598 addresses remain blocked are superseded by this section. The asserted specific cause of the original customer failure remains an inference until runtime validation confirms it.
