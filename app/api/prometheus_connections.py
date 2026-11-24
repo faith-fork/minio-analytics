@@ -353,6 +353,73 @@ def set_connection_enabled(connection_id: str, enabled: bool, actor: dict = Depe
     return {"updated": True, "connection_id": connection_id, "enabled": enabled}
 
 
+@router.patch("/{connection_id}/authentication")
+def update_connection_authentication(
+    connection_id: str,
+    payload: PrometheusAuthenticationInput,
+    actor: dict = Depends(require_master_admin),
+) -> dict:
+    """Validate and rotate optional credentials without returning any secret."""
+    initialize_database()
+    with transaction() as connection:
+        current = connection.execute(
+            """SELECT protocol, hostname, port, auth_type, auth_secret_encrypted
+               FROM prometheus_connections WHERE connection_id=?""",
+            (connection_id,),
+        ).fetchone()
+    if current is None:
+        raise HTTPException(status_code=404, detail="Prometheus connection not found")
+
+    encrypted, auth_header = _prepare_auth(
+        current["protocol"], payload.auth_type, payload.username, payload.password, payload.token
+    )
+    endpoint = build_prometheus_url(current["protocol"], current["hostname"], current["port"])
+    try:
+        _discover_with_auth(endpoint, auth_header)
+    except (ValueError, PrometheusError) as exc:
+        raise HTTPException(status_code=502, detail=f"Prometheus authentication test failed: {exc}") from exc
+
+    old_config = {
+        "auth_type": current["auth_type"],
+        "credentials_configured": bool(current["auth_secret_encrypted"]),
+    }
+    new_config = {
+        "auth_type": payload.auth_type,
+        "credentials_configured": bool(encrypted),
+    }
+    with transaction() as connection:
+        connection.execute(
+            """UPDATE prometheus_connections
+               SET auth_type=?, auth_secret_encrypted=?,
+                   updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+               WHERE connection_id=?""",
+            (payload.auth_type, encrypted, connection_id),
+        )
+        connection.execute(
+            """INSERT INTO settings_audit(setting_key, old_value, new_value, changed_by)
+               VALUES(?,?,?,?)""",
+            (
+                f"prometheus_connection:{connection_id}:authentication",
+                json.dumps(old_config, sort_keys=True),
+                json.dumps(new_config, sort_keys=True),
+                actor.get("username", "unknown"),
+            ),
+        )
+    return {
+        "updated": True,
+        "connection_id": connection_id,
+        "auth_type": payload.auth_type,
+        "credentials_configured": bool(encrypted),
+    }
+
+
+class PrometheusAuthenticationInput(BaseModel):
+    auth_type: Literal["none", "basic", "bearer"] = "none"
+    username: str | None = Field(default=None, max_length=255)
+    password: str | None = Field(default=None, max_length=4096)
+    token: str | None = Field(default=None, max_length=4096)
+
+
 class AddClustersInput(BaseModel):
     clusters: list[DiscoveredClusterBinding] = Field(min_length=1, max_length=100)
 
