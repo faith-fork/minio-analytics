@@ -55,6 +55,12 @@ def main() -> int:
                        WHERE connection_id=?""",
                     (encrypted, connection_id),
                 )
+            if rotated:
+                connection.execute(
+                    """INSERT INTO settings_audit(setting_key, old_value, new_value, changed_by)
+                       VALUES('prometheus_credentials_key_rotation', ?, ?, 'system-key-rotation')""",
+                    (str(len(rotated)), str(len(rotated))),
+                )
     except Exception as exc:
         print(str(exc), file=sys.stderr)
         return 1
