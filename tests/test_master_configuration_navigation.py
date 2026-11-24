@@ -61,7 +61,7 @@ class TestMasterConfigurationNavigation(unittest.TestCase):
 class TestConfigurationUiRefinement(unittest.TestCase):
     def test_general_configuration_uses_balanced_settings_and_footprint_layout(self):
         self.assertIn('class="config-settings-grid"', APP)
-        self.assertIn('class="config-footprint"', APP)
+        self.assertIn('class="panel config-footprint"', APP)
         self.assertIn('class="config-backup-table"', APP)
         self.assertIn('Review &amp; save settings', APP)
 
