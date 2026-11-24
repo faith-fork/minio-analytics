@@ -1,5 +1,7 @@
 from __future__ import annotations
 from datetime import datetime, timezone
+import hashlib
+import hmac
 import json
 import os
 import stat
@@ -77,6 +79,7 @@ class BackupCleanupPreviewRequest(BaseModel):
 
 class BackupCleanupRequest(BackupCleanupPreviewRequest):
     current_password: str = Field(min_length=1, max_length=1024)
+    preview_token: str = Field(min_length=64, max_length=64)
 
 
 def _append_backup_audit(record: dict) -> None:
@@ -181,6 +184,8 @@ def cleanup_backups(
         with backup_management_lock(BACKUP_DIR):
             preview = inspect_backup_retention(BACKUP_DIR, request.retention_days, request.minimum_keep)
             candidates = preview["candidates"]
+            if not hmac.compare_digest(preview["preview_token"], request.preview_token):
+                raise HTTPException(status_code=409, detail="Backup inventory changed after preview. Refresh the cleanup preview before confirming.")
             _append_backup_audit({
                 "timestamp": timestamp,
                 "event": "backup_cleanup_started",
