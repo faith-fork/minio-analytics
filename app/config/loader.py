@@ -23,6 +23,7 @@ class LocationConfig:
     prometheus_url: str
     clusters: tuple[ClusterConfig, ...]
     verify_tls: bool = True
+    auth_header: str | None = None
 
 
 def _required_string(data: dict, key: str, context: str) -> str:
