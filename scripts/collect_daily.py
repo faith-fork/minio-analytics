@@ -3,8 +3,17 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sys
 from datetime import datetime, time, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
+
+# Direct script execution puts the scripts directory, not the repository root,
+# at sys.path[0]. Add the project root before importing the application package
+# so callers do not need to export PYTHONPATH or install the project package.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.collectors.orchestrator import collect_all
 from app.config.loader import load_locations
