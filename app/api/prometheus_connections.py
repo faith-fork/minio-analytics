@@ -126,6 +126,12 @@ def list_connections(_: dict = Depends(require_master_admin)) -> dict:
 
 
 @router.post("/test")
+def _discover_with_auth(endpoint: str, auth_header: str | None) -> dict:
+    if auth_header is None:
+        return discover_minio_clusters(endpoint, verify_tls=True)
+    return _discover_with_auth(endpoint, auth_header)
+
+
 def _prepare_auth(protocol: str, auth_type: str, username: str | None,
                   password: str | None, token: str | None) -> tuple[str | None, str | None]:
     if auth_type == "none":
@@ -383,7 +389,7 @@ def discover_connection_clusters(
     )
     try:
         auth_header = build_authorization_header(endpoint["auth_type"], endpoint["auth_secret_encrypted"])
-        result = discover_minio_clusters(base_url, verify_tls=True, auth_header=auth_header)
+        result = _discover_with_auth(base_url, auth_header)
     except (ValueError, PrometheusError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
