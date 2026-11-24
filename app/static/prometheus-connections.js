@@ -38,11 +38,13 @@
     setActiveNav();
     const host = root();
     if (!host) return;
-    host.innerHTML = '<div class="page-heading"><div><h1>Prometheus connections</h1><p>Manage customer-network endpoints and their MinIO cluster bindings.</p></div><button class="secondary-button" id="pc-reload">↻ Refresh</button></div><section class="panel"><div class="panel-header"><div><h2>Configured endpoints</h2><p>Endpoint secrets are not stored or displayed by this screen.</p></div><button class="primary-button" id="pc-new">Add connection</button></div><div id="pc-list" class="table-scroll"><div class="loading-state">Loading connections…</div></div></section><div id="pc-cluster-modal"></div><section class="panel hidden" id="pc-editor"><div class="panel-header"><div><h2 id="pc-editor-title">Add Prometheus connection</h2><p>Test the endpoint and discover MinIO identity labels before saving.</p></div></div><form id="pc-form" class="settings-form"><div class="form-grid"><label>Location ID<input name="location_id" required maxlength="128" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" placeholder="site1"></label><label>Location name<input name="location_name" required maxlength="255" placeholder="Primary DC"></label><label>Connection ID<input name="connection_id" required maxlength="128" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" placeholder="prometheus-site1"></label><label>Protocol<select name="protocol"><option value="http">HTTP</option><option value="https">HTTPS</option></select></label><label>Prometheus host / IP<input name="hostname" required maxlength="253" placeholder="prometheus.example.net or 100.64.1.10"></label><label>Port<input name="port" type="number" min="1" max="65535" value="9090" required></label></div><p class="form-hint">HTTPS certificate-chain and hostname verification is always enforced.</p><div class="form-actions"><button type="button" class="secondary-button" id="pc-test">Test & discover clusters</button><button type="button" class="secondary-button" id="pc-cancel">Cancel</button></div><div id="pc-test-result" class="form-hint" aria-live="polite"></div><div id="pc-discovered"></div><div class="form-actions"><button type="submit" class="primary-button" id="pc-save" disabled>Save connection</button></div></form></section>';
+    host.innerHTML = '<div class="page-heading"><div><h1>Prometheus connections</h1><p>Manage customer-network endpoints and their MinIO cluster bindings.</p></div><button class="secondary-button" id="pc-reload">↻ Refresh</button></div><section class="panel"><div class="panel-header"><div><h2>Configured endpoints</h2><p>Endpoint secrets are not stored or displayed by this screen.</p></div><button class="primary-button" id="pc-new">Add connection</button></div><div id="pc-list" class="table-scroll"><div class="loading-state">Loading connections…</div></div></section><div id="pc-cluster-modal"></div><section class="panel hidden" id="pc-editor"><div class="panel-header"><div><h2 id="pc-editor-title">Add Prometheus connection</h2><p>Test the endpoint and discover MinIO identity labels before saving.</p></div></div><form id="pc-form" class="settings-form"><div class="form-grid"><label>Location ID<input name="location_id" required maxlength="128" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" placeholder="site1"></label><label>Location name<input name="location_name" required maxlength="255" placeholder="Primary DC"></label><label>Connection ID<input name="connection_id" required maxlength="128" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" placeholder="prometheus-site1"></label><label>Protocol<select name="protocol"><option value="http">HTTP</option><option value="https">HTTPS</option></select></label><label>Prometheus host / IP<input name="hostname" required maxlength="253" placeholder="prometheus.example.net or 100.64.1.10"></label><label>Port<input name="port" type="number" min="1" max="65535" value="9090" required></label><label>Authentication<select name="auth_type" id="pc-auth-type"><option value="none">None (default)</option><option value="basic">Basic Authentication</option><option value="bearer">Bearer Token</option></select></label><label id="pc-auth-user-wrap" class="hidden">Username<input name="username" autocomplete="off" maxlength="255"></label><label id="pc-auth-pass-wrap" class="hidden">Password<input name="password" type="password" autocomplete="new-password" maxlength="4096"></label><label id="pc-auth-token-wrap" class="hidden">Bearer Token<input name="token" type="password" autocomplete="new-password" maxlength="4096"></label></div><p class="form-hint">Authentication requires HTTPS. HTTPS certificate-chain and hostname verification is always enforced. Secrets are encrypted before storage and never displayed again.</p><div class="form-actions"><button type="button" class="secondary-button" id="pc-test">Test & discover clusters</button><button type="button" class="secondary-button" id="pc-cancel">Cancel</button></div><div id="pc-test-result" class="form-hint" aria-live="polite"></div><div id="pc-discovered"></div><div class="form-actions"><button type="submit" class="primary-button" id="pc-save" disabled>Save connection</button></div></form></section>';
     document.getElementById("pc-reload").addEventListener("click", loadList);
     document.getElementById("pc-new").addEventListener("click", () => openEditor());
     document.getElementById("pc-cancel").addEventListener("click", () => document.getElementById("pc-editor").classList.add("hidden"));
     document.getElementById("pc-test").addEventListener("click", testEndpoint);
+    document.getElementById("pc-auth-type").addEventListener("change", updateAuthFields);
+    updateAuthFields();
     document.getElementById("pc-form").addEventListener("submit", save);
     await loadList();
   }
@@ -57,10 +59,11 @@
         target.innerHTML = '<div class="empty-state"><strong>No Prometheus connections configured</strong><p>Add an endpoint, test it, discover clusters and bind the clusters you want to collect.</p></div>';
         return;
       }
-      target.innerHTML = '<table><thead><tr><th>LOCATION</th><th>ENDPOINT</th><th>CLUSTERS</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>' +
-        data.items.map((item) => '<tr><td><strong>' + esc(item.location_name) + '</strong><small>' + esc(item.location_id) + '</small></td><td>' + esc(item.protocol) + ':\/\/' + esc(item.hostname) + ':' + esc(item.port) + '</td><td>' + item.clusters.map((cluster) => esc(cluster.cluster_name) + ' <small>(' + esc(cluster.cluster_id) + ')</small>').join("<br>") + '</td><td><span class="status-pill ' + (item.enabled ? "success" : "muted") + '">' + (item.enabled ? "Enabled" : "Disabled") + '</span></td><td><button class="secondary-button pc-add-clusters" data-id="' + esc(item.connection_id) + '" ' + (item.enabled ? "" : "disabled") + '>Add clusters</button> <button class="secondary-button pc-toggle" data-id="' + esc(item.connection_id) + '" data-enabled="' + (!item.enabled) + '">' + (item.enabled ? "Disable" : "Enable") + '</button></td></tr>').join("") +
+      target.innerHTML = '<table><thead><tr><th>LOCATION</th><th>ENDPOINT</th><th>CLUSTERS</th><th>AUTHENTICATION</th><th>STATUS</th><th>ACTION</th></tr></thead><tbody>' +
+        data.items.map((item) => '<tr><td><strong>' + esc(item.location_name) + '</strong><small>' + esc(item.location_id) + '</small></td><td>' + esc(item.protocol) + ':\/\/' + esc(item.hostname) + ':' + esc(item.port) + '</td><td>' + item.clusters.map((cluster) => esc(cluster.cluster_name) + ' <small>(' + esc(cluster.cluster_id) + ')</small>').join("<br>") + '</td><td>' + esc(item.auth_type || "none") + '</td><td><span class="status-pill ' + (item.enabled ? "success" : "muted") + '">' + (item.enabled ? "Enabled" : "Disabled") + '</span></td><td><button class="secondary-button pc-add-clusters" data-id="' + esc(item.connection_id) + '" ' + (item.enabled ? "" : "disabled") + '>Add clusters</button> <button class="secondary-button pc-toggle" data-id="' + esc(item.connection_id) + '" data-enabled="' + (!item.enabled) + '">' + (item.enabled ? "Disable" : "Enable") + '</button></td></tr>').join("") +
         '</tbody></table>';
       target.querySelectorAll(".pc-add-clusters").forEach((button) => button.addEventListener("click", () => openAddClusters(button.dataset.id)));
+      target.querySelectorAll(".pc-auth").forEach((button) => button.addEventListener("click", () => openAuthEditor(button.dataset.id)));
       target.querySelectorAll(".pc-toggle").forEach((button) => button.addEventListener("click", async () => {
         try {
           await api("/api/master-admin/prometheus-connections/" + encodeURIComponent(button.dataset.id) + "/enabled?enabled=" + button.dataset.enabled, { method: "PATCH" });
@@ -132,6 +135,51 @@
     }
   }
 
+  async function openAuthEditor(connectionId) {
+    const host = document.getElementById("pc-cluster-modal");
+    if (!host) return;
+    const data = await api("/api/master-admin/prometheus-connections");
+    const item = data.items.find((entry) => entry.connection_id === connectionId);
+    if (!item) { toast("Prometheus connection not found", "error"); return; }
+    host.innerHTML = '<section class="panel"><div class="panel-header"><div><h2>Update authentication</h2><p>' + esc(item.location_name) + ' · ' + esc(item.hostname) + ':' + esc(item.port) + '</p></div><button class="secondary-button" id="pc-auth-close">Close</button></div><form id="pc-auth-form" class="settings-form"><label>Authentication<select name="auth_type"><option value="none">None</option><option value="basic">Basic Authentication</option><option value="bearer">Bearer Token</option></select></label><div class="form-grid"><label id="pc-auth-edit-user-wrap">Username<input name="username" autocomplete="off" maxlength="255"></label><label id="pc-auth-edit-pass-wrap">New password<input name="password" type="password" autocomplete="new-password" maxlength="4096"></label><label id="pc-auth-edit-token-wrap">New bearer token<input name="token" type="password" autocomplete="new-password" maxlength="4096"></label></div><p class="form-hint">Enter the new secret; the existing secret cannot be retrieved or displayed. Credentials are tested over HTTPS before being saved. Choose None to remove authentication.</p><div class="form-actions"><button class="primary-button" type="submit">Test and save</button></div><div id="pc-auth-edit-result" class="form-hint" aria-live="polite"></div></form></section>';
+    host.scrollIntoView({ behavior: "smooth", block: "start" });
+    const form = document.getElementById("pc-auth-form");
+    form.elements.auth_type.value = item.auth_type || "none";
+    const update = () => {
+      const type = form.elements.auth_type.value;
+      document.getElementById("pc-auth-edit-user-wrap").classList.toggle("hidden", type !== "basic");
+      document.getElementById("pc-auth-edit-pass-wrap").classList.toggle("hidden", type !== "basic");
+      document.getElementById("pc-auth-edit-token-wrap").classList.toggle("hidden", type !== "bearer");
+    };
+    form.elements.auth_type.addEventListener("change", update);
+    update();
+    document.getElementById("pc-auth-close").addEventListener("click", () => { host.innerHTML = ""; });
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = form.querySelector('button[type="submit"]');
+      const result = document.getElementById("pc-auth-edit-result");
+      button.disabled = true;
+      result.textContent = "Testing authentication and saving…";
+      try {
+        const payload = {
+          auth_type: form.elements.auth_type.value,
+          username: form.elements.username.value || null,
+          password: form.elements.password.value || null,
+          token: form.elements.token.value || null
+        };
+        await api("/api/master-admin/prometheus-connections/" + encodeURIComponent(connectionId) + "/authentication", {
+          method: "PATCH", body: JSON.stringify(payload)
+        });
+        toast("Prometheus authentication updated");
+        host.innerHTML = "";
+        await loadList();
+      } catch (error) {
+        result.textContent = error.message;
+        button.disabled = false;
+      }
+    });
+  }
+
   function openEditor(existing) {
     const editor = document.getElementById("pc-editor");
     const form = document.getElementById("pc-form");
@@ -149,7 +197,7 @@
     editor.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function endpointPayload() {
+  function updateAuthFields() {\n    const form = document.getElementById("pc-form");\n    const type = form?.elements.auth_type?.value || "none";\n    document.getElementById("pc-auth-user-wrap")?.classList.toggle("hidden", type !== "basic");\n    document.getElementById("pc-auth-pass-wrap")?.classList.toggle("hidden", type !== "basic");\n    document.getElementById("pc-auth-token-wrap")?.classList.toggle("hidden", type !== "bearer");\n  }\n\n  function endpointPayload() {
     const form = document.getElementById("pc-form");
     return {
       protocol: form.elements.protocol.value,
