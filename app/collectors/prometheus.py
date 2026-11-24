@@ -93,6 +93,8 @@ class PrometheusClient:
         except ValueError as exc:
             raise PrometheusError(str(exc)) from exc
 
+        if self.auth_header and scheme != "https":
+            raise PrometheusError("Prometheus authentication requires HTTPS")
         params: dict[str, Any] = {"query": promql}
         if at is not None:
             params["time"] = at
