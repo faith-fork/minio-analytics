@@ -56,6 +56,7 @@
         const actions=[];
         if(["queued","running"].includes(j.status))actions.push('<button class="table-link" data-bf-action="pause" data-bf-id="'+esc(j.job_id)+'">Pause</button>');
         if(["paused","failed"].includes(j.status))actions.push('<button class="table-link" data-bf-action="resume" data-bf-id="'+esc(j.job_id)+'">Resume</button>');
+        if(j.status==="completed"&&j.failed_days>0)actions.push('<button class="table-link" data-bf-action="retry" data-bf-id="'+esc(j.job_id)+'">Retry failed dates</button>');
         if(["queued","running","paused","failed"].includes(j.status))actions.push('<button class="table-link" data-bf-action="cancel" data-bf-id="'+esc(j.job_id)+'">Cancel</button>');
         return '<tr><td><strong>'+esc(j.cluster_name)+'</strong><br><small>'+esc(j.location_name)+'</small></td><td>'+esc(j.start_date)+' → '+esc(j.end_date)+'</td><td>'+j.completed_days+'/'+j.total_days+' ('+pct+'%)<div class="progress-track"><span style="width:'+pct+'%"></span></div></td><td>'+j.successful_days+' success · '+j.partial_days+' partial · '+j.failed_days+' failed</td><td>'+esc(j.status)+'</td><td>'+actions.join(" · ")+'</td></tr>';
       }).join("")+'</tbody></table>';
