@@ -228,11 +228,6 @@ def test_discover_and_explicitly_add_new_cluster_without_changing_existing_histo
     from app.api import prometheus_connections as api
     from app.database.database import transaction
 
-    created = admin_client.post(
-        "/api/master-admin/prometheus-connections", json=connection_payload()
-    )
-    assert created.status_code == 201, created.text
-
     def fake_discovery(endpoint, *, verify_tls=True):
         assert endpoint == "http://prometheus.internal:9090"
         return {
@@ -258,6 +253,11 @@ def test_discover_and_explicitly_add_new_cluster_without_changing_existing_histo
         }
 
     monkeypatch.setattr(api, "discover_minio_clusters", fake_discovery)
+    created = admin_client.post(
+        "/api/master-admin/prometheus-connections", json=connection_payload()
+    )
+    assert created.status_code == 201, created.text
+
     discovered = admin_client.post(
         "/api/master-admin/prometheus-connections/prometheus-lab/clusters/discover"
     )
