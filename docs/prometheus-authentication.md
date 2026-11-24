@@ -22,7 +22,7 @@ python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 Set the resulting value as `MINIO_ANALYTICS_CREDENTIALS_KEY` in the protected application environment (for the lab service, `/etc/minio-analytics/web.env`). Restrict that file to the service administrator, for example mode `0600`. Do not commit the key, put it in a command-line argument, or include it in support bundles.
 
-The key is not required while every connection uses authentication type `none`. If an authenticated connection exists, the key must be available to the web application and every collector process that loads the connection from SQLite.
+The key is not required while every connection uses authentication type `none`. If an authenticated connection exists, the key must be available to the web application and every collector process that loads the connection from SQLite. The web, daily collection and scheduler systemd units all load `/etc/minio-analytics/web.env`; keep the key there so both daily collection and scheduled/backfill collection can decrypt credentials.
 
 **Back up the key separately from the database.** If the key is lost, encrypted credentials cannot be recovered; configure replacement Prometheus credentials through the Master Admin screen.
 
