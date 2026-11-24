@@ -374,3 +374,36 @@ The user confirmed that Prometheus endpoints may be configured as reachable IP a
 - Fix commits: 6e2290518f0e93810c88586111a9a85f9cd257e8 (policy) and 4fe6a851ce3842af9658d21ad9ee6a0ab9012c7f (tests).
 - CI must rerun against the resulting exact PR head before the fix can be considered validated.
 - No merge or deployment is authorized by this checkpoint.
+
+## 19. Prometheus RFC 6598 endpoint-validation incident — 24 November 2026
+
+### Incident
+- The scheduled daily collection at approximately 00:15 IST on 24 November failed twice for cluster `miniotestcl02`.
+- The recorded error was: `Prometheus endpoint resolves to a prohibited network address`.
+- The configured Prometheus connection was `prometheus:lab`, using the literal endpoint `100.125.x.x:9090` over HTTP.
+- The configured address is within RFC 6598 Shared Address Space (`100.64.0.0/10`).
+
+### Root cause and correction
+- The earlier outbound endpoint policy did not permit RFC 6598 addresses. This caused a legitimate configured customer-network endpoint to be rejected before the Prometheus HTTP request.
+- The policy was corrected in commit `e1dd236ed09dae3cde5c920cdcbfd29a7d19de70` — `Support secure customer-network Prometheus endpoints`.
+- The corrected policy explicitly permits RFC 6598 addresses while retaining the broader outbound safeguards, including rejection of prohibited destinations and metadata addresses, validation of every DNS answer, and address-pinned transport.
+- The deployed PR #48 revision `cb7728d1a4d32c64f9c078640d35967e564588ea` contains the correction.
+- On 24 November, the user directly tested the configured literal address against `_address_allowed()` and `resolve_prometheus_endpoint()`; both passed and returned the configured address as the pinned destination.
+
+### Resolution and operational status
+- No endpoint, database, or security-policy changes were required during this investigation.
+- No additional service restart was required for this incident.
+- The investigation is closed. The original collection error is attributed to the earlier validator policy and is not evidence of a routing or Tailscale connectivity failure.
+- The failed daily scheduler state was historical; do not interpret it as proof of a current endpoint-validation failure.
+
+### Preventive troubleshooting rule
+When investigating a collection or connectivity failure:
+1. Establish the exact deployed commit and the code that was running when the failure occurred.
+2. Compare the historical implementation at the failure time with the corrected/current implementation.
+3. Inspect the actual configured endpoint and the complete validation/resolution result before attributing fault to customer networking.
+4. Reproduce the failure against the exact validator and endpoint where possible.
+5. Do not assume a customer-network IP is invalid solely because it is not RFC1918 or globally routable.
+6. Do not change network policy, endpoint configuration, database records, or runtime services until the evidence identifies the responsible layer.
+
+This incident record is a troubleshooting lesson and does not authorize changes to the security policy or customer endpoint configuration.
+
