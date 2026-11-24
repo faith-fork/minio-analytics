@@ -412,3 +412,52 @@ def test_prometheus_credentials_are_encrypted_and_never_returned(
     assert "new-sensitive-token" not in admin_client.get(
         "/api/master-admin/prometheus-connections"
     ).text
+
+def test_general_connection_save_preserves_existing_authentication(
+    admin_client: TestClient, monkeypatch
+) -> None:
+    from cryptography.fernet import Fernet
+    from app.api import prometheus_connections as api
+    from app.database.database import transaction
+
+    monkeypatch.setenv(
+        "MINIO_ANALYTICS_CREDENTIALS_KEY",
+        Fernet.generate_key().decode("ascii"),
+    )
+    observed = []
+
+    def fake_discovery(endpoint, *, verify_tls=True, auth_header=None):
+        observed.append(auth_header)
+        return {
+            "clusters": [{"label_name": "cluster", "label_value": "lab-two"}],
+            "cluster_count": 1,
+        }
+
+    monkeypatch.setattr(api, "discover_minio_clusters", fake_discovery)
+    payload = connection_payload()
+    payload.update({
+        "protocol": "https",
+        "auth_type": "basic",
+        "username": "metrics-reader",
+        "password": "first-secret",
+    })
+    created = admin_client.post("/api/master-admin/prometheus-connections", json=payload)
+    assert created.status_code == 201, created.text
+    assert observed[-1].startswith("Basic ")
+
+    # Simulate a stale/general connection form that does not submit secrets.
+    edited = {**payload, "auth_type": "none"}
+    edited.pop("username")
+    edited.pop("password")
+    saved = admin_client.post("/api/master-admin/prometheus-connections", json=edited)
+    assert saved.status_code == 201, saved.text
+
+    assert observed[-1] is None  # discovery uses the submitted no-auth request
+    with transaction() as connection:
+        row = connection.execute(
+            "SELECT auth_type, auth_secret_encrypted FROM prometheus_connections "
+            "WHERE connection_id='prometheus-lab'"
+        ).fetchone()
+    assert row["auth_type"] == "basic"
+    assert row["auth_secret_encrypted"]
+
