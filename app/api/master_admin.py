@@ -1,6 +1,5 @@
 from __future__ import annotations
 from datetime import datetime, timezone
-import hashlib
 import hmac
 import json
 import os
