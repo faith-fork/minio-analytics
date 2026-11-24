@@ -85,6 +85,7 @@ def test_backup_creation_applies_same_minimum_keep_retention(tmp_path, monkeypat
 
 def test_backup_list_is_paginated_and_reports_actual_integrity(admin_client, monkeypatch, tmp_path):
     backup_dir, _ = configure_backup_paths(monkeypatch, tmp_path)
+    backup_dir.mkdir(parents=True, exist_ok=True)
     for index in range(12):
         make_sqlite_backup(backup_dir / f"minio_analytics_page_{index:02d}.db")
 
