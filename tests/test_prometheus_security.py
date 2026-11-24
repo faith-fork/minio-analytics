@@ -84,9 +84,8 @@ def test_rejects_unsupported_or_credential_bearing_urls(url):
     "http://100.100.10.20:9090",
     "http://100.127.255.254:9090",
 ])
-def test_allows_explicit_literal_endpoints_in_shared_address_space(url):
-    # RFC 6598 is used by some private enterprise networks. The exception is
-    # deliberately limited to an operator-configured literal endpoint.
+def test_allows_literal_endpoints_in_shared_address_space(url):
+    # RFC 6598 is used by some private enterprise networks.
     validate_prometheus_endpoint(url)
 
 
@@ -162,8 +161,9 @@ def test_system_resolver_is_used_for_fqdn_and_hosts_file_names(monkeypatch):
         calls.append((host, port, type))
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.40.0.5", port))]
 
+    monkeypatch.setattr(socket, "getaddrinfo", resolver)
     host, port, addresses, scheme = resolve_prometheus_endpoint(
-        "http://prometheus-from-hosts:19090", resolver=resolver
+        "http://prometheus-from-hosts:19090"
     )
     assert calls == [("prometheus-from-hosts", 19090, socket.SOCK_STREAM)]
     assert (host, port, addresses, scheme) == (
