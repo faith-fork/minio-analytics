@@ -242,6 +242,8 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
                 "port": existing["port"],
                 "verify_tls": bool(existing["verify_tls"]),
                 "enabled": bool(existing["enabled"]),
+                "auth_type": existing["auth_type"],
+                "credentials_configured": None,
             }
             new_config = {
                 "location_id": payload.location_id,
@@ -250,6 +252,8 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
                 "port": payload.port,
                 "verify_tls": True,
                 "enabled": bool(payload.enabled),
+                "auth_type": payload.auth_type,
+                "credentials_configured": bool(encrypted_secret),
             }
             connection.execute(
                 """INSERT INTO settings_audit(setting_key, old_value, new_value, changed_by)
@@ -421,7 +425,8 @@ def add_connection_clusters(
     initialize_database()
     with transaction() as connection:
         endpoint = connection.execute(
-            """SELECT pc.location_id, pc.protocol, pc.hostname, pc.port, pc.enabled
+            """SELECT pc.location_id, pc.protocol, pc.hostname, pc.port, pc.enabled,
+                      pc.auth_type, pc.auth_secret_encrypted
                FROM prometheus_connections pc WHERE pc.connection_id=?""",
             (connection_id,),
         ).fetchone()
