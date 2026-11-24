@@ -142,10 +142,14 @@ def _prepare_auth(protocol: str, auth_type: str, username: str | None,
     if protocol != "https":
         raise HTTPException(status_code=422, detail="Prometheus authentication requires HTTPS")
     if auth_type == "basic":
+        if token is not None:
+            raise HTTPException(status_code=422, detail="Remove the Bearer Token when using Basic Authentication")
         if not username or password is None:
             raise HTTPException(status_code=422, detail="Basic Authentication requires username and password")
         credentials = {"username": username, "password": password}
     elif auth_type == "bearer":
+        if username is not None or password is not None:
+            raise HTTPException(status_code=422, detail="Remove Basic Authentication fields when using Bearer Token")
         if not token:
             raise HTTPException(status_code=422, detail="Bearer Token authentication requires a token")
         credentials = {"token": token}
