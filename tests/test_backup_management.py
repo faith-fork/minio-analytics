@@ -131,6 +131,7 @@ def test_cleanup_preview_and_password_confirmed_cleanup_are_audited(
             "retention_days": 14,
             "minimum_keep": 5,
             "current_password": "incorrect-password",
+            "preview_token": preview.json()["preview_token"],
         },
     )
     assert denied.status_code == 403
@@ -142,6 +143,7 @@ def test_cleanup_preview_and_password_confirmed_cleanup_are_audited(
             "retention_days": 14,
             "minimum_keep": 5,
             "current_password": PASSWORD,
+            "preview_token": preview.json()["preview_token"],
         },
     )
     assert completed.status_code == 200, completed.text
