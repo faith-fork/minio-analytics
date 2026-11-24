@@ -155,7 +155,7 @@ def create_backup(actor: dict = Depends(require_master_admin)):
         "created": True,
         "filename": path.name,
         "size_bytes": stat_result.st_size,
-        "integrity": "verified",
+        "integrity": "ok",
         "created_at": datetime.fromtimestamp(stat_result.st_mtime, timezone.utc).isoformat().replace("+00:00", "Z"),
         "download_url": f"/api/master-admin/backups/{path.name}/download",
     }
