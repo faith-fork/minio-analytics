@@ -269,16 +269,31 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
 
 
 @router.patch("/{connection_id}/enabled")
-def set_connection_enabled(connection_id: str, enabled: bool, _: dict = Depends(require_master_admin)) -> dict:
+def set_connection_enabled(connection_id: str, enabled: bool, actor: dict = Depends(require_master_admin)) -> dict:
     initialize_database()
     with transaction() as connection:
-        result = connection.execute(
+        current = connection.execute(
+            "SELECT enabled FROM prometheus_connections WHERE connection_id=?",
+            (connection_id,),
+        ).fetchone()
+        if current is None:
+            raise HTTPException(status_code=404, detail="Prometheus connection not found")
+        old_enabled = bool(current["enabled"])
+        connection.execute(
             """UPDATE prometheus_connections SET enabled=?,
                updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE connection_id=?""",
             (int(enabled), connection_id),
         )
-        if result.rowcount != 1:
-            raise HTTPException(status_code=404, detail="Prometheus connection not found")
+        connection.execute(
+            """INSERT INTO settings_audit(setting_key, old_value, new_value, changed_by)
+               VALUES(?,?,?,?)""",
+            (
+                f"prometheus_connection:{connection_id}:enabled",
+                json.dumps(old_enabled),
+                json.dumps(bool(enabled)),
+                actor.get("username", "unknown"),
+            ),
+        )
     return {"updated": True, "connection_id": connection_id, "enabled": enabled}
 
 
