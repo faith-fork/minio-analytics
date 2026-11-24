@@ -36,6 +36,10 @@ def main() -> int:
     initialize_database()
     try:
         with transaction() as connection:
+            # Acquire the SQLite write reservation before reading ciphertext so
+            # no concurrent credential update can slip between validation and
+            # the all-or-nothing replacement.
+            connection.execute("BEGIN IMMEDIATE")
             rows = connection.execute(
                 """SELECT connection_id, auth_type, auth_secret_encrypted
                    FROM prometheus_connections
