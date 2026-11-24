@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import json
 import os
 import sqlite3
 import stat
@@ -148,6 +149,23 @@ def cleanup_expired_backups(
         return preview
 
 
+def _append_retention_audit(record: dict, backup_dir: Path) -> None:
+    audit_dir = backup_dir.parent / "logs"
+    audit_file = audit_dir / "backup-cleanup-audit.jsonl"
+    audit_dir.mkdir(parents=True, exist_ok=True)
+    if audit_dir.is_symlink() or audit_file.is_symlink():
+        raise RuntimeError("Backup audit path must not contain symbolic links")
+    payload = (json.dumps(record, sort_keys=True, separators=(",", ":")) + "\\n").encode("utf-8")
+    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(audit_file, flags, 0o600)
+    try:
+        os.fchmod(descriptor, 0o600)
+        os.write(descriptor, payload)
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def backup_database(
     backup_dir: Path,
     retention_days: int = 14,
@@ -183,14 +201,38 @@ def backup_database(
         os.replace(temporary, destination)
 
         preview = inspect_backup_retention(backup_dir, retention_days, minimum_keep)
-        for item in preview["candidates"]:
+        candidates = preview["candidates"]
+        if candidates:
+            _append_retention_audit({
+                "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "event": "automatic_backup_retention_started",
+                "actor": "system",
+                "retention_days": retention_days,
+                "minimum_keep": minimum_keep,
+                "candidate_filenames": [item["filename"] for item in candidates],
+                "candidate_size_bytes": sum(item["size_bytes"] for item in candidates),
+            }, backup_dir)
+        deleted = []
+        for item in candidates:
             path = backup_dir / item["filename"]
             try:
                 metadata = path.lstat()
                 if stat.S_ISREG(metadata.st_mode) and not path.is_symlink():
                     path.unlink()
+                    deleted.append({"filename": path.name, "size_bytes": metadata.st_size})
             except FileNotFoundError:
                 pass
+        if deleted:
+            _append_retention_audit({
+                "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "event": "automatic_backup_retention_completed",
+                "actor": "system",
+                "deleted": deleted,
+                "deleted_count": len(deleted),
+                "deleted_size_bytes": sum(item["size_bytes"] for item in deleted),
+                "retention_days": retention_days,
+                "minimum_keep": minimum_keep,
+            }, backup_dir)
 
     return destination
 
