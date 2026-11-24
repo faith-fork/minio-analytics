@@ -225,7 +225,8 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
                 (payload.location_id, payload.location_name),
             )
             existing = connection.execute(
-                """SELECT location_id, protocol, hostname, port, verify_tls, enabled, auth_type
+                """SELECT location_id, protocol, hostname, port, verify_tls, enabled, auth_type,
+                          auth_secret_encrypted
                    FROM prometheus_connections WHERE connection_id=?""",
                 (payload.connection_id,),
             ).fetchone()
@@ -254,7 +255,7 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
                 "verify_tls": bool(existing["verify_tls"]),
                 "enabled": bool(existing["enabled"]),
                 "auth_type": existing["auth_type"],
-                "credentials_configured": None,
+                "credentials_configured": bool(existing["auth_secret_encrypted"]),
             }
             new_config = {
                 "location_id": payload.location_id,
