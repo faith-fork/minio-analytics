@@ -57,3 +57,4 @@ jobs:
         run: |
           node --check app/static/app.js
           node --check app/static/prometheus-connections.js
+          node --check app/static/backfill-jobs.js
