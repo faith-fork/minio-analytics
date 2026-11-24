@@ -72,3 +72,34 @@ def test_rotation_failure_leaves_every_credential_unchanged(tmp_path, monkeypatc
         ("prom-a", valid),
         ("prom-b", "not-valid-fernet-ciphertext"),
     ]
+
+
+def test_rotation_fails_closed_when_authenticated_credential_is_missing(tmp_path, monkeypatch):
+    monkeypatch.setenv("MINIO_ANALYTICS_DB", str(tmp_path / "rotate-missing.db"))
+    old_key = Fernet.generate_key()
+    new_key = Fernet.generate_key()
+    valid = Fernet(old_key).encrypt(
+        b'{"auth_type":"bearer","credentials":{"token":"secret-token"}}'
+    ).decode()
+    initialize_database()
+    _seed_connection("prom-a", valid)
+    _seed_connection("prom-b", valid)
+    with transaction() as connection:
+        connection.execute(
+            "UPDATE prometheus_connections SET auth_secret_encrypted=NULL "
+            "WHERE connection_id='prom-b'"
+        )
+    monkeypatch.setenv("MINIO_ANALYTICS_CREDENTIALS_OLD_KEY", old_key.decode())
+    monkeypatch.setenv("MINIO_ANALYTICS_CREDENTIALS_KEY", new_key.decode())
+
+    assert main() == 1
+
+    with transaction() as connection:
+        rows = connection.execute(
+            "SELECT connection_id, auth_secret_encrypted FROM prometheus_connections "
+            "ORDER BY connection_id"
+        ).fetchall()
+    assert [(row["connection_id"], row["auth_secret_encrypted"]) for row in rows] == [
+        ("prom-a", valid),
+        ("prom-b", None),
+    ]
