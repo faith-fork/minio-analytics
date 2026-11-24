@@ -15,6 +15,10 @@ _PRIVATE_V4 = tuple(ipaddress.ip_network(value) for value in (
 _PRIVATE_V6 = ipaddress.ip_network("fc00::/7")
 # RFC 6598 Shared Address Space is used by some enterprise/customer networks.
 _SHARED_V4 = ipaddress.ip_network("100.64.0.0/10")
+# Treat the rest of 100.0.0.0/8 conservatively as non-public. Some Python
+# ipaddress versions classify addresses outside RFC 6598 in this block as
+# global; they must not become an accidental bypass of the shared-range rule.
+_IPV4_100_BLOCK = ipaddress.ip_network("100.0.0.0/8")
 _BLOCKED_METADATA = {
     ipaddress.ip_address("169.254.169.254"),
     ipaddress.ip_address("100.100.100.200"),
@@ -39,13 +43,18 @@ def _address_allowed(value: str) -> bool:
         return False
     if address.is_unspecified or address.is_reserved:
         return False
+    if isinstance(address, ipaddress.IPv4Address):
+        # Only RFC 6598 within 100.0.0.0/8 is accepted for customer networks.
+        # Do this before is_global: its classification has varied by Python
+        # version for addresses surrounding the shared-address block.
+        if address in _IPV4_100_BLOCK:
+            return address in _SHARED_V4
+        if address.is_global:
+            return True
+        return any(address in network for network in _PRIVATE_V4)
     if address.is_global:
         return True
-    if isinstance(address, ipaddress.IPv4Address):
-        return (
-            any(address in network for network in _PRIVATE_V4)
-            or address in _SHARED_V4
-        )
+    return address in _PRIVATE_V6
     return address in _PRIVATE_V6
 
 
