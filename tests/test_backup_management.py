@@ -80,7 +80,12 @@ def test_backup_creation_applies_same_minimum_keep_retention(tmp_path, monkeypat
     assert created.exists()
     assert len(remaining) == 5
     assert created in remaining
-    assert all(inspect_backup_retention(backup_dir, 14, 5)["verified_count"] == 5 for _ in [0])
+    assert inspect_backup_retention(backup_dir, 14, 5)["verified_count"] == 5
+    audit = [json.loads(line) for line in (tmp_path / "logs" / "backup-cleanup-audit.jsonl").read_text().splitlines()]
+    assert [entry["event"] for entry in audit] == [
+        "automatic_backup_retention_started",
+        "automatic_backup_retention_completed",
+    ]
 
 
 def test_backup_list_is_paginated_and_reports_actual_integrity(admin_client, monkeypatch, tmp_path):
