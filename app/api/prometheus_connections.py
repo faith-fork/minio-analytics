@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from typing import Literal
 
@@ -250,6 +251,7 @@ def discover_connection_clusters(
             existing and existing["connection_id"] != connection_id
         )
     result["connection_id"] = connection_id
+    result["location_id"] = endpoint["location_id"]
     result["new_cluster_count"] = sum(
         not item["already_configured"] and not item["bound_elsewhere"]
         for item in result["clusters"]
@@ -313,8 +315,8 @@ def add_connection_clusters(
                 """SELECT cpb.cluster_id, cpb.connection_id, c.name, c.location_id
                    FROM cluster_prometheus_bindings cpb
                    JOIN clusters c ON c.id=cpb.cluster_id
-                   WHERE cpb.identity_label_name=? AND cpb.identity_label_value=?""",
-                (item.identity_label_name, item.identity_label_value),
+                   WHERE cpb.identity_label_name=? AND cpb.identity_label_value=? AND c.location_id=?""",
+                (item.identity_label_name, item.identity_label_value, endpoint["location_id"]),
             ).fetchone()
             if existing_binding:
                 if existing_binding["connection_id"] == connection_id:
@@ -368,7 +370,7 @@ def add_connection_clusters(
                 (
                     f"prometheus_connection:{connection_id}:cluster:{cluster_id}",
                     None,
-                    __import__("json").dumps({
+                    json.dumps({
                         "action": "cluster_approved_and_bound",
                         "cluster_id": cluster_id,
                         "cluster_name": current["name"] if current else item.cluster_name,
