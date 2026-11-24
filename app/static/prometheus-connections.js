@@ -163,9 +163,9 @@
       try {
         const payload = {
           auth_type: form.elements.auth_type.value,
-          username: form.elements.username.value || null,
-          password: form.elements.password.value || null,
-          token: form.elements.token.value || null
+          username: form.elements.auth_type.value === "basic" ? (form.elements.username.value || null) : null,
+          password: form.elements.auth_type.value === "basic" ? (form.elements.password.value || null) : null,
+          token: form.elements.auth_type.value === "bearer" ? (form.elements.token.value || null) : null
         };
         await api("/api/master-admin/prometheus-connections/" + encodeURIComponent(connectionId) + "/authentication", {
           method: "PATCH", body: JSON.stringify(payload)
@@ -213,9 +213,9 @@
       port: Number(form.elements.port.value),
       verify_tls: true,
       auth_type: form.elements.auth_type.value,
-      username: form.elements.username.value || null,
-      password: form.elements.password.value || null,
-      token: form.elements.token.value || null
+      username: form.elements.auth_type.value === "basic" ? (form.elements.username.value || null) : null,
+      password: form.elements.auth_type.value === "basic" ? (form.elements.password.value || null) : null,
+      token: form.elements.auth_type.value === "bearer" ? (form.elements.token.value || null) : null
     };
   }
 
