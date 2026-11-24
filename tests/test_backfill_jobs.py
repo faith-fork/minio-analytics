@@ -55,20 +55,23 @@ def test_backfill_job_rejects_disabled_connection(client):
         )
 
 
-def test_master_admin_api_authorization_and_date_validation(admin_client, client):
+def test_master_admin_api_authorization_and_date_validation(admin_client):
     _configure_prometheus()
     payload = {
         "location_id": "LOC1", "cluster_id": "cluster-1",
         "start_date": "2026-01-01", "end_date": "2026-01-03",
     }
     with TestClient(app, base_url="https://testserver") as viewer_client:
-        login = viewer_client.post("/api/auth/login", json={"username": "viewer-test", "password": "Viewer-Test-Password-123!"})
+        login = viewer_client.post(
+            "/api/auth/login",
+            json={"username": "viewer-test", "password": "Viewer-Test-Password-123!"},
+        )
         assert login.status_code == 200
         assert viewer_client.get("/api/master-admin/backfill-jobs").status_code == 403
-    response = admin_client.post("/api/master-admin/backfill-jobs", json=payload)
-    assert response.status_code == 201
-    job_id = response.json()["job"]["job_id"]
-    assert admin_client.get(f"/api/master-admin/backfill-jobs/{job_id}").status_code == 200
+        response = admin_client.post("/api/master-admin/backfill-jobs", json=payload)
+        assert response.status_code == 201
+        job_id = response.json()["job"]["job_id"]
+        assert admin_client.get(f"/api/master-admin/backfill-jobs/{job_id}").status_code == 200
         assert viewer_client.post(
             f"/api/master-admin/backfill-jobs/{job_id}/action",
             json={"action": "cancel"},
