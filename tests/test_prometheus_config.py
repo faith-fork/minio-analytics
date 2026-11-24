@@ -127,3 +127,40 @@ def test_existing_cluster_ids_are_not_replaced_by_import(tmp_path, monkeypatch):
         }
 
     assert ids == {"cluster-a1", "cluster-a2", "cluster-b1"}
+
+
+def test_import_clears_credentials_when_prometheus_endpoint_changes(tmp_path, monkeypatch):
+    monkeypatch.setenv("MINIO_ANALYTICS_DB", str(tmp_path / "endpoint-change.db"))
+    locations = sample_locations()
+    import_location_configuration(locations)
+
+    with transaction() as connection:
+        connection.execute(
+            """UPDATE prometheus_connections
+               SET auth_type='basic', auth_secret_encrypted='encrypted-secret'
+               WHERE connection_id='prometheus:loc-a'"""
+        )
+
+    changed = [
+        LocationConfig(
+            id=item.id,
+            name=item.name,
+            prometheus_url=(
+                "https://prom-new.internal:9443" if item.id == "loc-a"
+                else item.prometheus_url
+            ),
+            clusters=item.clusters,
+            verify_tls=item.verify_tls,
+            auth_header=item.auth_header,
+        )
+        for item in locations
+    ]
+    import_location_configuration(changed)
+
+    with transaction() as connection:
+        row = connection.execute(
+            "SELECT protocol, hostname, port, auth_type, auth_secret_encrypted "
+            "FROM prometheus_connections WHERE connection_id='prometheus:loc-a'"
+        ).fetchone()
+
+    assert tuple(row) == ("https", "prom-new.internal", 9443, "none", None)
