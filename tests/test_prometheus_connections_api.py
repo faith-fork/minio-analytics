@@ -160,8 +160,11 @@ def test_save_preserves_existing_cluster_name_and_refuses_binding_reassignment(
     from app.database.database import transaction
 
     monkeypatch.setattr(api, "discover_minio_clusters", lambda endpoint, verify_tls=True: {
-        "clusters": [{"label_name": "cluster", "label_value": "lab-two"}],
-        "cluster_count": 1,
+        "clusters": [
+            {"label_name": "cluster", "label_value": "lab-two"},
+            {"label_name": "cluster", "label_value": "lab-three"},
+        ],
+        "cluster_count": 2,
     })
     first = connection_payload()
     created = admin_client.post("/api/master-admin/prometheus-connections", json=first)
@@ -184,8 +187,11 @@ def test_save_preserves_existing_cluster_name_and_refuses_binding_reassignment(
 
     reassignment = {
         **first,
-        "connection_id": "prometheus-lab-secondary",
-        "cluster_name": "Another name",
+        "clusters": [{
+            **first["clusters"][0],
+            "identity_label_value": "lab-three",
+            "cluster_name": "Another name",
+        }],
     }
     rejected = admin_client.post(
         "/api/master-admin/prometheus-connections", json=reassignment
@@ -194,16 +200,11 @@ def test_save_preserves_existing_cluster_name_and_refuses_binding_reassignment(
     assert "already bound" in rejected.json()["detail"]
 
     with transaction() as connection:
-        count = connection.execute(
-            "SELECT COUNT(*) AS n FROM prometheus_connections "
-            "WHERE connection_id='prometheus-lab-secondary'"
-        ).fetchone()["n"]
         binding = connection.execute(
-            "SELECT connection_id FROM cluster_prometheus_bindings "
+            "SELECT connection_id, identity_label_value FROM cluster_prometheus_bindings "
             "WHERE cluster_id='cluster-lab-two'"
         ).fetchone()
-    assert count == 0
-    assert binding["connection_id"] == "prometheus-lab"
+    assert tuple(binding) == ("prometheus-lab", "lab-two")
 
 def test_prometheus_connection_rejects_invalid_identifier(admin_client: TestClient) -> None:
     payload = connection_payload()
