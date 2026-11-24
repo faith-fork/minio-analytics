@@ -5,6 +5,7 @@ import sqlite3
 
 from app.config.loader import ClusterConfig, LocationConfig
 from app.database.database import database_path, initialize_database, transaction
+from app.collectors.prometheus_credentials import build_authorization_header
 
 
 def _endpoint_parts(url: str) -> tuple[str, str, int]:
@@ -70,6 +71,16 @@ def import_location_configuration(
                     hostname = excluded.hostname,
                     port = excluded.port,
                     verify_tls = excluded.verify_tls,
+                    auth_type = CASE
+                        WHEN prometheus_connections.protocol != excluded.protocol
+                          OR prometheus_connections.hostname != excluded.hostname
+                          OR prometheus_connections.port != excluded.port
+                        THEN 'none' ELSE prometheus_connections.auth_type END,
+                    auth_secret_encrypted = CASE
+                        WHEN prometheus_connections.protocol != excluded.protocol
+                          OR prometheus_connections.hostname != excluded.hostname
+                          OR prometheus_connections.port != excluded.port
+                        THEN NULL ELSE prometheus_connections.auth_secret_encrypted END,
                     enabled = 1,
                     updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                 """,
@@ -168,6 +179,7 @@ def load_database_locations(*, read_only: bool = False) -> list[LocationConfig]:
     query = """
         SELECT pc.connection_id, pc.location_id, l.name AS location_name,
                pc.protocol, pc.hostname, pc.port, pc.verify_tls,
+               pc.auth_type, pc.auth_secret_encrypted,
                cpb.cluster_id, cpb.identity_label_name,
                cpb.identity_label_value, c.name AS cluster_name
         FROM prometheus_connections pc
@@ -212,6 +224,8 @@ def load_database_locations(*, read_only: bool = False) -> list[LocationConfig]:
                 "hostname": row["hostname"],
                 "port": row["port"],
                 "verify_tls": bool(row["verify_tls"]),
+                "auth_type": row["auth_type"],
+                "auth_secret_encrypted": row["auth_secret_encrypted"],
                 "clusters": [],
             },
         )
@@ -237,6 +251,9 @@ def load_database_locations(*, read_only: bool = False) -> list[LocationConfig]:
                 prometheus_url=endpoint,
                 clusters=tuple(item["clusters"]),
                 verify_tls=bool(item["verify_tls"]),
+                auth_header=build_authorization_header(
+                    str(item["auth_type"]), item["auth_secret_encrypted"]
+                ),
             )
         )
     return locations

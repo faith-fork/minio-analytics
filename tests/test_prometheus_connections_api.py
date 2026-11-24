@@ -325,3 +325,233 @@ def test_discover_and_explicitly_add_new_cluster_without_changing_existing_histo
         },
     )
     assert duplicate.status_code == 409
+
+
+def test_prometheus_authentication_requires_https(admin_client: TestClient) -> None:
+    payload = connection_payload()
+    payload.update({
+        "auth_type": "basic",
+        "username": "metrics-reader",
+        "password": "secret-value",
+    })
+    response = admin_client.post(
+        "/api/master-admin/prometheus-connections/test", json=payload
+    )
+    assert response.status_code == 422
+    assert "requires HTTPS" in response.json()["detail"]
+
+
+def test_prometheus_credentials_are_encrypted_and_never_returned(
+    admin_client: TestClient, monkeypatch
+) -> None:
+    from cryptography.fernet import Fernet
+    from app.api import prometheus_connections as api
+    from app.database.database import transaction
+
+    monkeypatch.setenv(
+        "MINIO_ANALYTICS_CREDENTIALS_KEY",
+        Fernet.generate_key().decode("ascii"),
+    )
+    observed = {}
+
+    def fake_discovery(endpoint, *, verify_tls=True, auth_header=None):
+        observed["endpoint"] = endpoint
+        observed["auth_header"] = auth_header
+        return {
+            "clusters": [{"label_name": "cluster", "label_value": "lab-two"}],
+            "cluster_count": 1,
+        }
+
+    monkeypatch.setattr(api, "discover_minio_clusters", fake_discovery)
+    payload = connection_payload()
+    payload.update({
+        "protocol": "https",
+        "auth_type": "basic",
+        "username": "metrics-reader",
+        "password": "never-return-this-secret",
+    })
+    created = admin_client.post(
+        "/api/master-admin/prometheus-connections", json=payload
+    )
+    assert created.status_code == 201, created.text
+    assert observed["endpoint"] == "https://prometheus.internal:9090"
+    assert observed["auth_header"].startswith("Basic ")
+
+    listed = admin_client.get("/api/master-admin/prometheus-connections")
+    assert listed.status_code == 200
+    item = listed.json()["items"][0]
+    assert item["auth_type"] == "basic"
+    assert item["credentials_configured"] is True
+    assert "password" not in item
+    assert "never-return-this-secret" not in listed.text
+
+    with transaction() as connection:
+        row = connection.execute(
+            "SELECT auth_type, auth_secret_encrypted FROM prometheus_connections "
+            "WHERE connection_id='prometheus-lab'"
+        ).fetchone()
+        audit = connection.execute(
+            "SELECT old_value, new_value FROM settings_audit "
+            "WHERE setting_key='prometheus_connection:prometheus-lab'"
+        ).fetchone()
+    assert row["auth_type"] == "basic"
+    assert "never-return-this-secret" not in row["auth_secret_encrypted"]
+    assert "never-return-this-secret" not in audit["new_value"]
+
+    observed.clear()
+    updated = admin_client.patch(
+        "/api/master-admin/prometheus-connections/prometheus-lab/authentication",
+        json={
+            "auth_type": "bearer",
+            "token": "new-sensitive-token",
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    assert observed["auth_header"] == "Bearer new-sensitive-token"
+    assert "new-sensitive-token" not in updated.text
+    assert "new-sensitive-token" not in admin_client.get(
+        "/api/master-admin/prometheus-connections"
+    ).text
+
+def test_general_connection_save_preserves_existing_authentication(
+    admin_client: TestClient, monkeypatch
+) -> None:
+    from cryptography.fernet import Fernet
+    from app.api import prometheus_connections as api
+    from app.database.database import transaction
+
+    monkeypatch.setenv(
+        "MINIO_ANALYTICS_CREDENTIALS_KEY",
+        Fernet.generate_key().decode("ascii"),
+    )
+    observed = []
+
+    def fake_discovery(endpoint, *, verify_tls=True, auth_header=None):
+        observed.append(auth_header)
+        return {
+            "clusters": [{"label_name": "cluster", "label_value": "lab-two"}],
+            "cluster_count": 1,
+        }
+
+    monkeypatch.setattr(api, "discover_minio_clusters", fake_discovery)
+    payload = connection_payload()
+    payload.update({
+        "protocol": "https",
+        "auth_type": "basic",
+        "username": "metrics-reader",
+        "password": "first-secret",
+    })
+    created = admin_client.post("/api/master-admin/prometheus-connections", json=payload)
+    assert created.status_code == 201, created.text
+    assert observed[-1].startswith("Basic ")
+
+    # Simulate a stale/general connection form that does not submit secrets.
+    edited = {**payload, "auth_type": "none"}
+    edited.pop("username")
+    edited.pop("password")
+    saved = admin_client.post("/api/master-admin/prometheus-connections", json=edited)
+    assert saved.status_code == 201, saved.text
+
+    # Existing write-only credentials must be used for discovery as well
+    # as preserved in SQLite when the general form omits them.
+    assert observed[-1].startswith("Basic ")
+    with transaction() as connection:
+        row = connection.execute(
+            "SELECT auth_type, auth_secret_encrypted FROM prometheus_connections "
+            "WHERE connection_id='prometheus-lab'"
+        ).fetchone()
+    assert row["auth_type"] == "basic"
+    assert row["auth_secret_encrypted"]
+
+def test_authentication_update_rejects_stale_connection_configuration(
+    admin_client: TestClient, monkeypatch
+) -> None:
+    from cryptography.fernet import Fernet
+    from app.api import prometheus_connections as api
+    from app.database.database import transaction
+
+    monkeypatch.setenv(
+        "MINIO_ANALYTICS_CREDENTIALS_KEY",
+        Fernet.generate_key().decode("ascii"),
+    )
+    observed = []
+
+    def fake_discovery(endpoint, *, verify_tls=True, auth_header=None):
+        observed.append(auth_header)
+        # Simulate another administrator changing the endpoint while the
+        # authentication request is being validated.
+        if len(observed) == 2:
+            with transaction() as connection:
+                connection.execute(
+                    "UPDATE prometheus_connections SET hostname='replacement.internal' "
+                    "WHERE connection_id='prometheus-lab'"
+                )
+        return {
+            "clusters": [{"label_name": "cluster", "label_value": "lab-two"}],
+            "cluster_count": 1,
+        }
+
+    monkeypatch.setattr(api, "discover_minio_clusters", fake_discovery)
+    initial_payload = connection_payload()
+    initial_payload["protocol"] = "https"
+    created = admin_client.post(
+        "/api/master-admin/prometheus-connections", json=initial_payload
+    )
+    assert created.status_code == 201, created.text
+
+    update = admin_client.patch(
+        "/api/master-admin/prometheus-connections/prometheus-lab/authentication",
+        json={"auth_type": "bearer", "token": "racing-token"},
+    )
+    assert update.status_code == 409, update.text
+
+    with transaction() as connection:
+        row = connection.execute(
+            "SELECT hostname, auth_type, auth_secret_encrypted FROM prometheus_connections "
+            "WHERE connection_id='prometheus-lab'"
+        ).fetchone()
+    assert row["hostname"] == "replacement.internal"
+    assert row["auth_type"] == "none"
+    assert row["auth_secret_encrypted"] is None
+
+
+
+def test_cluster_discovery_reports_decryption_failure_without_server_error(
+    admin_client: TestClient, monkeypatch
+) -> None:
+    from cryptography.fernet import Fernet
+    from app.api import prometheus_connections as api
+
+    monkeypatch.setenv(
+        "MINIO_ANALYTICS_CREDENTIALS_KEY",
+        Fernet.generate_key().decode("ascii"),
+    )
+
+    def fake_discovery(endpoint, *, verify_tls=True, auth_header=None):
+        return {
+            "clusters": [{"label_name": "cluster", "label_value": "lab-two"}],
+            "cluster_count": 1,
+        }
+
+    monkeypatch.setattr(api, "discover_minio_clusters", fake_discovery)
+    payload = connection_payload()
+    payload.update({
+        "protocol": "https",
+        "auth_type": "bearer",
+        "token": "sensitive-token",
+    })
+    created = admin_client.post(
+        "/api/master-admin/prometheus-connections", json=payload
+    )
+    assert created.status_code == 201, created.text
+
+    monkeypatch.setenv(
+        "MINIO_ANALYTICS_CREDENTIALS_KEY",
+        Fernet.generate_key().decode("ascii"),
+    )
+    response = admin_client.post(
+        "/api/master-admin/prometheus-connections/prometheus-lab/clusters/discover"
+    )
+    assert response.status_code == 502
+    assert "cannot be decrypted" in response.json()["detail"]
+    assert "sensitive-token" not in response.text

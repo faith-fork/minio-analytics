@@ -11,6 +11,9 @@ from app.auth.dependencies import require_master_admin
 from app.collectors.prometheus_discovery import build_prometheus_url, discover_minio_clusters
 from app.collectors.prometheus import PrometheusError
 from app.database.database import initialize_database, transaction
+from app.collectors.prometheus_credentials import (
+    PrometheusCredentialError, build_authorization_header, encrypt_credentials,
+)
 
 router = APIRouter(prefix="/api/master-admin/prometheus-connections", tags=["master administration"])
 _ID = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
@@ -43,6 +46,10 @@ class PrometheusEndpointTestInput(BaseModel):
     hostname: str = Field(min_length=1, max_length=253)
     port: int = Field(default=9090, ge=1, le=65535)
     verify_tls: bool = True
+    auth_type: Literal["none", "basic", "bearer"] = "none"
+    username: str | None = Field(default=None, max_length=255)
+    password: str | None = Field(default=None, max_length=4096)
+    token: str | None = Field(default=None, max_length=4096)
 
 
 class PrometheusConnectionInput(BaseModel):
@@ -53,6 +60,10 @@ class PrometheusConnectionInput(BaseModel):
     hostname: str = Field(min_length=1, max_length=253)
     port: int = Field(default=9090, ge=1, le=65535)
     verify_tls: bool = True
+    auth_type: Literal["none", "basic", "bearer"] = "none"
+    username: str | None = Field(default=None, max_length=255)
+    password: str | None = Field(default=None, max_length=4096)
+    token: str | None = Field(default=None, max_length=4096)
     enabled: bool = True
     clusters: list[DiscoveredClusterBinding] = Field(min_length=1, max_length=100)
 
@@ -79,7 +90,8 @@ def list_connections(_: dict = Depends(require_master_admin)) -> dict:
         rows = connection.execute(
             """
             SELECT pc.connection_id, pc.location_id, l.name AS location_name,
-                   pc.protocol, pc.hostname, pc.port, pc.verify_tls, pc.enabled,
+                   pc.protocol, pc.hostname, pc.port, pc.verify_tls, pc.auth_type,
+                   pc.auth_secret_encrypted, pc.enabled,
                    cpb.cluster_id, c.name AS cluster_name,
                    cpb.identity_label_name, cpb.identity_label_value
             FROM prometheus_connections pc
@@ -100,6 +112,8 @@ def list_connections(_: dict = Depends(require_master_admin)) -> dict:
             "hostname": row["hostname"],
             "port": row["port"],
             "verify_tls": bool(row["verify_tls"]),
+            "auth_type": row["auth_type"],
+            "credentials_configured": bool(row["auth_secret_encrypted"]),
             "enabled": bool(row["enabled"]),
             "clusters": [],
         })
@@ -113,11 +127,49 @@ def list_connections(_: dict = Depends(require_master_admin)) -> dict:
     return {"items": list(items.values()), "count": len(items)}
 
 
+def _discover_with_auth(endpoint: str, auth_header: str | None) -> dict:
+    if auth_header is None:
+        return discover_minio_clusters(endpoint, verify_tls=True)
+    return discover_minio_clusters(endpoint, verify_tls=True, auth_header=auth_header)
+
+
+def _prepare_auth(protocol: str, auth_type: str, username: str | None,
+                  password: str | None, token: str | None) -> tuple[str | None, str | None]:
+    if auth_type == "none":
+        if username is not None or password is not None or token is not None:
+            raise HTTPException(status_code=422, detail="Remove credential fields when authentication is set to None")
+        return None, None
+    if protocol != "https":
+        raise HTTPException(status_code=422, detail="Prometheus authentication requires HTTPS")
+    if auth_type == "basic":
+        if token is not None:
+            raise HTTPException(status_code=422, detail="Remove the Bearer Token when using Basic Authentication")
+        if not username or password is None:
+            raise HTTPException(status_code=422, detail="Basic Authentication requires username and password")
+        credentials = {"username": username, "password": password}
+    elif auth_type == "bearer":
+        if username is not None or password is not None:
+            raise HTTPException(status_code=422, detail="Remove Basic Authentication fields when using Bearer Token")
+        if not token:
+            raise HTTPException(status_code=422, detail="Bearer Token authentication requires a token")
+        credentials = {"token": token}
+    else:
+        raise HTTPException(status_code=422, detail="Unsupported authentication method")
+    try:
+        encrypted = encrypt_credentials(auth_type, credentials)
+        return encrypted, build_authorization_header(auth_type, encrypted)
+    except PrometheusCredentialError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.post("/test")
 def test_connection(payload: PrometheusEndpointTestInput, _: dict = Depends(require_master_admin)) -> dict:
     try:
         endpoint = build_prometheus_url(payload.protocol, payload.hostname, payload.port)
-        return discover_minio_clusters(endpoint, verify_tls=True)
+        _encrypted, auth_header = _prepare_auth(
+            payload.protocol, payload.auth_type, payload.username, payload.password, payload.token
+        )
+        return _discover_with_auth(endpoint, auth_header)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PrometheusError as exc:
@@ -128,14 +180,50 @@ def test_connection(payload: PrometheusEndpointTestInput, _: dict = Depends(requ
 def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(require_master_admin)) -> dict:
     initialize_database()
     endpoint = build_prometheus_url(payload.protocol, payload.hostname, payload.port)
+    encrypted_secret, auth_header = _prepare_auth(
+        payload.protocol, payload.auth_type, payload.username, payload.password, payload.token
+    )
     if len({cluster.cluster_id for cluster in payload.clusters}) != len(payload.clusters):
         raise HTTPException(status_code=422, detail="Cluster IDs must be unique in a connection")
 
+    # Read the existing authentication state before probing. A general
+    # connection edit that omits write-only credentials must authenticate with
+    # the already-stored secret when the endpoint is unchanged.
+    with transaction() as connection:
+        existing_before = connection.execute(
+            """SELECT location_id, protocol, hostname, port, verify_tls, enabled,
+                      auth_type, auth_secret_encrypted
+               FROM prometheus_connections WHERE connection_id=?""",
+            (payload.connection_id,),
+        ).fetchone()
+
+    endpoint_changed_before = bool(existing_before) and (
+        existing_before["protocol"] != payload.protocol
+        or existing_before["hostname"] != payload.hostname
+        or existing_before["port"] != payload.port
+    )
+    preserving_existing_auth = (
+        existing_before is not None
+        and not endpoint_changed_before
+        and payload.auth_type == "none"
+        and payload.username is None
+        and payload.password is None
+        and payload.token is None
+        and existing_before["auth_type"] != "none"
+    )
+    if preserving_existing_auth:
+        try:
+            auth_header = build_authorization_header(
+                existing_before["auth_type"], existing_before["auth_secret_encrypted"]
+            )
+        except PrometheusCredentialError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
     # Discovery results shown in the browser are advisory only. Re-discover
-    # against the exact endpoint being saved so a changed host/port or stale
-    # browser result cannot create an incorrect cluster binding.
+    # against the exact endpoint and effective authentication being saved so a
+    # stale browser result cannot create an incorrect cluster binding.
     try:
-        discovery = discover_minio_clusters(endpoint, verify_tls=True)
+        discovery = _discover_with_auth(endpoint, auth_header)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PrometheusError as exc:
@@ -170,23 +258,63 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
                 (payload.location_id, payload.location_name),
             )
             existing = connection.execute(
-                """SELECT location_id, protocol, hostname, port, verify_tls, enabled
+                """SELECT location_id, protocol, hostname, port, verify_tls, enabled, auth_type,
+                          auth_secret_encrypted
                    FROM prometheus_connections WHERE connection_id=?""",
                 (payload.connection_id,),
             ).fetchone()
+
+            # Do not let a slow discovery test overwrite a concurrent endpoint,
+            # authentication, or enabled-state change.
+            compared_fields = (
+                "location_id", "protocol", "hostname", "port", "verify_tls",
+                "enabled", "auth_type", "auth_secret_encrypted",
+            )
+            if (existing_before is None) != (existing is None) or (
+                existing_before is not None
+                and any(existing_before[field] != existing[field] for field in compared_fields)
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Prometheus connection changed during validation; retry the save",
+                )
+
             if existing and existing["location_id"] != payload.location_id:
                 raise HTTPException(status_code=409, detail="Connection ID belongs to another location")
+            endpoint_changed = bool(existing) and (
+                existing["protocol"] != payload.protocol
+                or existing["hostname"] != payload.hostname
+                or existing["port"] != payload.port
+            )
+            if endpoint_changed and payload.auth_type == "none" and existing["auth_type"] != "none":
+                # Never carry credentials to a different Prometheus endpoint.
+                # The caller must explicitly configure new credentials after
+                # the endpoint change has been validated.
+                auth_type = "none"
+                stored_secret = None
+            elif payload.auth_type == "none" and payload.password is None and payload.token is None and payload.username is None:
+                # The general connection form is not the credential lifecycle
+                # API. Preserve existing credentials unless the administrator
+                # explicitly uses the dedicated authentication endpoint.
+                auth_type = existing["auth_type"] if existing else "none"
+                stored_secret = existing["auth_secret_encrypted"] if existing else None
+            else:
+                auth_type = payload.auth_type
+                stored_secret = encrypted_secret
+
             connection.execute(
                 """INSERT INTO prometheus_connections
-                   (connection_id,location_id,protocol,hostname,port,verify_tls,enabled)
-                   VALUES(?,?,?,?,?,?,?)
+                   (connection_id,location_id,protocol,hostname,port,verify_tls,enabled,auth_type,auth_secret_encrypted)
+                   VALUES(?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(connection_id) DO UPDATE SET
                    protocol=excluded.protocol, hostname=excluded.hostname,
                    port=excluded.port, verify_tls=excluded.verify_tls,
-                   enabled=excluded.enabled,
+                   enabled=excluded.enabled, auth_type=excluded.auth_type,
+                   auth_secret_encrypted=excluded.auth_secret_encrypted,
                    updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')""",
                 (payload.connection_id, payload.location_id, payload.protocol,
-                 payload.hostname, payload.port, 1, int(payload.enabled)),
+                 payload.hostname, payload.port, 1, int(payload.enabled),
+                 auth_type, stored_secret),
             )
 
             old_config = None if existing is None else {
@@ -196,6 +324,8 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
                 "port": existing["port"],
                 "verify_tls": bool(existing["verify_tls"]),
                 "enabled": bool(existing["enabled"]),
+                "auth_type": existing["auth_type"],
+                "credentials_configured": bool(existing["auth_secret_encrypted"]),
             }
             new_config = {
                 "location_id": payload.location_id,
@@ -204,6 +334,8 @@ def save_connection(payload: PrometheusConnectionInput, actor: dict = Depends(re
                 "port": payload.port,
                 "verify_tls": True,
                 "enabled": bool(payload.enabled),
+                "auth_type": auth_type,
+                "credentials_configured": bool(stored_secret),
             }
             connection.execute(
                 """INSERT INTO settings_audit(setting_key, old_value, new_value, changed_by)
@@ -297,6 +429,91 @@ def set_connection_enabled(connection_id: str, enabled: bool, actor: dict = Depe
     return {"updated": True, "connection_id": connection_id, "enabled": enabled}
 
 
+@router.patch("/{connection_id}/authentication")
+def update_connection_authentication(
+    connection_id: str,
+    payload: PrometheusAuthenticationInput,
+    actor: dict = Depends(require_master_admin),
+) -> dict:
+    """Validate and rotate optional credentials without returning any secret."""
+    initialize_database()
+    with transaction() as connection:
+        current = connection.execute(
+            """SELECT protocol, hostname, port, auth_type, auth_secret_encrypted
+               FROM prometheus_connections WHERE connection_id=?""",
+            (connection_id,),
+        ).fetchone()
+    if current is None:
+        raise HTTPException(status_code=404, detail="Prometheus connection not found")
+
+    encrypted, auth_header = _prepare_auth(
+        current["protocol"], payload.auth_type, payload.username, payload.password, payload.token
+    )
+    endpoint = build_prometheus_url(current["protocol"], current["hostname"], current["port"])
+    try:
+        _discover_with_auth(endpoint, auth_header)
+    except (ValueError, PrometheusError, PrometheusCredentialError) as exc:
+        raise HTTPException(status_code=502, detail=f"Prometheus authentication test failed: {exc}") from exc
+
+    old_config = {
+        "protocol": current["protocol"],
+        "hostname": current["hostname"],
+        "port": current["port"],
+        "auth_type": current["auth_type"],
+        "credentials_configured": bool(current["auth_secret_encrypted"]),
+    }
+    new_config = {
+        "protocol": current["protocol"],
+        "hostname": current["hostname"],
+        "port": current["port"],
+        "auth_type": payload.auth_type,
+        "credentials_configured": bool(encrypted),
+    }
+    with transaction() as connection:
+        # Compare-and-swap protects against an endpoint or credential update
+        # racing with the external Prometheus authentication test above.
+        updated = connection.execute(
+            """UPDATE prometheus_connections
+               SET auth_type=?, auth_secret_encrypted=?,
+                   updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+               WHERE connection_id=? AND protocol=? AND hostname=? AND port=?
+                 AND auth_type=? AND auth_secret_encrypted IS ?""",
+            (
+                payload.auth_type, encrypted, connection_id,
+                current["protocol"], current["hostname"], current["port"],
+                current["auth_type"], current["auth_secret_encrypted"],
+            ),
+        )
+        if updated.rowcount != 1:
+            raise HTTPException(
+                status_code=409,
+                detail="Prometheus connection changed during authentication validation; retry the update",
+            )
+        connection.execute(
+            """INSERT INTO settings_audit(setting_key, old_value, new_value, changed_by)
+               VALUES(?,?,?,?)""",
+            (
+                f"prometheus_connection:{connection_id}:authentication",
+                json.dumps(old_config, sort_keys=True),
+                json.dumps(new_config, sort_keys=True),
+                actor.get("username", "unknown"),
+            ),
+        )
+    return {
+        "updated": True,
+        "connection_id": connection_id,
+        "auth_type": payload.auth_type,
+        "credentials_configured": bool(encrypted),
+    }
+
+
+class PrometheusAuthenticationInput(BaseModel):
+    auth_type: Literal["none", "basic", "bearer"] = "none"
+    username: str | None = Field(default=None, max_length=255)
+    password: str | None = Field(default=None, max_length=4096)
+    token: str | None = Field(default=None, max_length=4096)
+
+
 class AddClustersInput(BaseModel):
     clusters: list[DiscoveredClusterBinding] = Field(min_length=1, max_length=100)
 
@@ -310,7 +527,8 @@ def discover_connection_clusters(
     initialize_database()
     with transaction() as connection:
         endpoint = connection.execute(
-            """SELECT pc.location_id, pc.protocol, pc.hostname, pc.port, pc.enabled
+            """SELECT pc.location_id, pc.protocol, pc.hostname, pc.port, pc.enabled,
+                      pc.auth_type, pc.auth_secret_encrypted
                FROM prometheus_connections pc WHERE pc.connection_id=?""",
             (connection_id,),
         ).fetchone()
@@ -331,8 +549,9 @@ def discover_connection_clusters(
         endpoint["protocol"], endpoint["hostname"], endpoint["port"]
     )
     try:
-        result = discover_minio_clusters(base_url, verify_tls=True)
-    except (ValueError, PrometheusError) as exc:
+        auth_header = build_authorization_header(endpoint["auth_type"], endpoint["auth_secret_encrypted"])
+        result = _discover_with_auth(base_url, auth_header)
+    except (ValueError, PrometheusError, PrometheusCredentialError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     bindings = {
@@ -373,7 +592,8 @@ def add_connection_clusters(
     initialize_database()
     with transaction() as connection:
         endpoint = connection.execute(
-            """SELECT pc.location_id, pc.protocol, pc.hostname, pc.port, pc.enabled
+            """SELECT pc.location_id, pc.protocol, pc.hostname, pc.port, pc.enabled,
+                      pc.auth_type, pc.auth_secret_encrypted
                FROM prometheus_connections pc WHERE pc.connection_id=?""",
             (connection_id,),
         ).fetchone()
@@ -391,8 +611,9 @@ def add_connection_clusters(
         endpoint["protocol"], endpoint["hostname"], endpoint["port"]
     )
     try:
-        discovered = discover_minio_clusters(base_url, verify_tls=True)
-    except (ValueError, PrometheusError) as exc:
+        auth_header = build_authorization_header(endpoint["auth_type"], endpoint["auth_secret_encrypted"])
+        discovered = _discover_with_auth(base_url, auth_header)
+    except (ValueError, PrometheusError, PrometheusCredentialError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     available = {

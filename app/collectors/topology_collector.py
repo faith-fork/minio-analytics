@@ -83,7 +83,8 @@ def collect_topology_snapshot(
         raise ValueError("snapshot_ts must be timezone-aware")
     own_client = client is None
     prom = client or PrometheusClient(
-        location.prometheus_url, verify_tls=location.verify_tls
+        location.prometheus_url, verify_tls=location.verify_tls,
+        auth_header=location.auth_header
     )
     at = int(snapshot_ts.timestamp())
     label_matcher = f'{cluster.identity_label_name}="{_q(cluster.prometheus_label_value)}"'
