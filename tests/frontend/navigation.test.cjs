@@ -16,6 +16,9 @@ const dom = new JSDOM(html, {
   pretendToBeVisual: true,
 });
 const { window } = dom;
+window.URL.createObjectURL = () => "blob:drive-inventory-test";
+window.URL.revokeObjectURL = () => {};
+window.HTMLAnchorElement.prototype.click = function () { window.__lastDownload = this.download; window.__lastDownloadHref = this.href; };
 
 const payloads = {
   "/api/auth/me": { user: { username: "test-admin", role: "admin", is_master_admin: true } },
@@ -160,6 +163,11 @@ async function run() {
   stateFilter.value="readonly";stateFilter.dispatchEvent(new window.Event("change",{bubbles:true}));
   await waitFor(()=>window.document.querySelectorAll("[data-drive-row]").length===1,"filesystem state filter");
   assert.match(window.document.querySelector("[data-drive-row]").textContent,/Read-only/);
+  window.document.querySelector("[data-drive-export]").click();
+  assert.equal(window.__lastDownload,"drive-inventory-"+new Date().toISOString().slice(0,10)+".csv","Export should download the filtered inventory");
+  stateFilter.value="errors";stateFilter.dispatchEvent(new window.Event("change",{bubbles:true}));
+  await waitFor(()=>window.document.querySelectorAll("[data-drive-row]").length===1,"drive error filter");
+  assert.match(window.document.querySelector("[data-drive-row]").textContent,/1 \/ 0 \/ 0/,"Error filter should show the drive with reported errors");
   window.document.querySelector('[data-drive-view="graphs"]').click();
   await waitFor(()=>window.document.querySelector('[data-drive-view="graphs"][aria-selected="true"]'),"return to graphs tab");
   assert.ok(window.document.querySelector("#infra-filesystem-trend"),"Graphs tab should remain available after switching");
