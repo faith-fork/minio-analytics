@@ -49,6 +49,7 @@ const topologyPayload = {
     {node_name:"node01",drive_path:"/data1",mountpoint:"/mnt/data1",total_bytes:1000,used_bytes:500,filesystem_total_bytes:1000,filesystem_used_bytes:450,filesystem_used_pct:45,filesystem_readonly:0,availability_errors:0,io_errors:0,timeout_errors:0},
     {node_name:"node01",drive_path:"/data2",mountpoint:"/mnt/data2",total_bytes:1000,used_bytes:600,filesystem_total_bytes:1000,filesystem_used_bytes:600,filesystem_used_pct:60,filesystem_readonly:1,availability_errors:1,io_errors:0,timeout_errors:0},
     {node_name:"node02",drive_path:"/data3",mountpoint:"/mnt/data3",total_bytes:1000,used_bytes:400,filesystem_total_bytes:1000,filesystem_used_bytes:350,filesystem_used_pct:35,filesystem_readonly:null,availability_errors:0,io_errors:2,timeout_errors:0},
+    ...Array.from({length:27},(_,i)=>({node_name:"node02",drive_path:"/bulk"+String(i+1).padStart(2,"0"),mountpoint:"/mnt/bulk"+String(i+1).padStart(2,"0"),total_bytes:1000,used_bytes:100,filesystem_total_bytes:1000,filesystem_used_bytes:100,filesystem_used_pct:10,filesystem_readonly:0,availability_errors:0,io_errors:0,timeout_errors:0})),
   ],
   pools:[],erasure_sets:[],family_errors:{}
 };
