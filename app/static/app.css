@@ -408,3 +408,38 @@
 @media(max-width:1050px){.config-settings-grid{grid-template-columns:1fr}}
 @media(max-width:760px){.config-section-heading,.bf-section-heading{align-items:flex-start;flex-direction:column}.config-field-grid,.bf-form-fields{grid-template-columns:1fr}.config-field-wide,.bf-cluster-field{grid-column:auto;grid-row:auto}.config-form-footer,.bf-create-footer{align-items:stretch;flex-direction:column}.config-form-footer .primary-button,.bf-create-footer .primary-button{width:100%;justify-content:center}.bf-date-fields{grid-template-columns:1fr 1fr}.bf-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.bf-job-list{grid-template-columns:1fr}.config-backup-summary{align-items:flex-start;flex-wrap:wrap}.config-verified-tag{margin-left:46px}}
 @media(max-width:480px){.config-settings-form,.config-footprint,.bf-create-form{padding:14px}.bf-date-fields{grid-template-columns:1fr}.config-backup-table th,.config-backup-table td{padding:9px 7px;font-size:9px}}
+
+
+/* General Configuration secondary workspace tabs and backup management */
+.general-config-tabs{display:flex;align-items:center;gap:6px;margin:-4px 0 22px;border-bottom:1px solid var(--line);overflow-x:auto}
+.general-config-tab{flex:0 0 auto;padding:11px 14px 10px;border:0;border-bottom:2px solid transparent;background:transparent;color:#78869a;font-size:11px;font-weight:600;white-space:nowrap}
+.general-config-tab:hover{color:var(--teal);background:#13a58b08}
+.general-config-tab.active{border-bottom-color:var(--teal);color:#138c78;font-weight:700}
+.general-config-tab:focus-visible{outline:2px solid var(--teal);outline-offset:-3px;border-radius:5px}
+.backup-table-toolbar,.backup-pagination{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 2px;color:var(--muted);font-size:10px}
+.backup-table-toolbar label{display:flex;align-items:center;gap:8px}
+.backup-table-toolbar select{width:76px;height:31px;padding:4px 8px;font-size:10px}
+.backup-pagination{border-top:1px solid var(--line)}
+.backup-pagination>div{display:flex;gap:7px}
+.backup-pagination button{padding:6px 10px;font-size:10px}
+.backup-pagination button:disabled{opacity:.4;cursor:not-allowed}
+.backup-cleanup-panel{padding:18px}
+.backup-cleanup-fields{display:grid;grid-template-columns:repeat(2,minmax(0,240px));gap:18px}
+.backup-cleanup-footer{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-top:18px;padding-top:15px;border-top:1px solid var(--line)}
+.backup-cleanup-footer p{max-width:620px;margin:0;color:var(--muted);font-size:10px;line-height:1.6}
+.backup-cleanup-footer button{flex:0 0 auto}
+.backup-cleanup-dialog{max-height:min(82vh,760px);overflow-y:auto}
+.backup-cleanup-preview-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 14px}
+.backup-cleanup-preview-stats>div{display:grid;gap:4px;padding:11px;border:1px solid var(--line);border-radius:7px;background:#fafcfd}
+.backup-cleanup-preview-stats strong{font:600 17px 'Space Grotesk',sans-serif;color:var(--ink)}
+.backup-cleanup-preview-stats span{font-size:9px;color:var(--muted)}
+.backup-cleanup-candidate-list{max-height:190px;overflow:auto;list-style:none;padding:0;margin:0;border:1px solid var(--line);border-radius:7px}
+.backup-cleanup-candidate-list li{display:flex;justify-content:space-between;gap:12px;padding:9px 11px;border-top:1px solid #eff2f5;font-size:10px}
+.backup-cleanup-candidate-list li:first-child{border-top:0}
+.backup-cleanup-candidate-list strong{min-width:0;overflow-wrap:anywhere;color:var(--ink)}
+.backup-cleanup-candidate-list span{flex:0 0 auto;color:var(--muted)}
+.backup-cleanup-safety,.backup-cleanup-empty{padding:11px 12px;margin:12px 0;border-radius:7px;background:#f5f8fa;color:#65748a;font-size:10px;line-height:1.6}
+.danger-button{border:1px solid #e7caca;border-radius:6px;background:#b94d4d;color:#fff;padding:8px 13px;font-size:11px;font-weight:700}
+.danger-button:hover{background:#a83e3e}
+@media(max-width:760px){.backup-cleanup-fields{grid-template-columns:1fr}.backup-cleanup-footer{align-items:stretch;flex-direction:column}.backup-cleanup-footer button{width:100%}.backup-cleanup-preview-stats{grid-template-columns:1fr 1fr}.backup-cleanup-preview-stats>div:last-child{grid-column:1/-1}}
+@media(max-width:480px){.backup-table-toolbar{align-items:flex-start;flex-direction:column}.backup-pagination{align-items:flex-start;flex-direction:column}.backup-cleanup-preview-stats{grid-template-columns:1fr}}

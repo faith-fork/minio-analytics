@@ -435,3 +435,37 @@ This section records the PR #52 checkpoint only. It does not supersede the Chart
 - Automated tests, exact-head CI, complete patch review and browser validation remain pending.
 
 No merge or deployment is authorized by this checkpoint.
+
+
+## 21. General Configuration and database backup management — 24 November 2026
+
+### Approved product direction
+- Split General Configuration into two secondary workspaces: **Collection Settings** and **Database Backups**.
+- Keep the existing top-level Master Configuration tabs: General Configuration, Prometheus Configuration and Historical Backfill.
+- Show 10 backup records by default, with page sizes 10, 25, 50 and 100.
+- Add administrator-reviewed cleanup of old backups with a preview, password confirmation and an audit trail.
+- Preserve the latest configurable number of verified backups (default 5), including when older than the retention window.
+- Unverified files must be preserved for investigation; cleanup must never follow symlinks or remove files outside the application-managed backup naming pattern.
+- Automatic retention and manual cleanup must apply the same age and minimum-keep safeguards.
+
+### PR #57 — implementation checkpoint
+- URL: https://github.com/faith-fork/minio-analytics/pull/57
+- Branch: `feature/backup-management-workspace`
+- Base: `feature/prometheus-authentication` at `850ff98e80855a0dd2981f26f17292ce6e78a255` (merged PR #55).
+- Application/test head reviewed and validated: `d9d5034025f082dfcf5680d9571b99359d0c58bc`. This checkpoint update is documentation-only; verify the live PR head and CI again after it is committed.
+- Compare at PR creation: 16 commits ahead, 0 behind; merge base equals the deployed PR #55 commit.
+- Changed files at PR creation: `app/api/master_admin.py`, `app/static/app.css`, `app/static/app.js`, `scripts/backup_database.py`, `tests/test_backup_management.py`, and `tests/test_master_configuration_navigation.py`.
+- No database schema migration or dependency change is intended.
+- Existing settings, backup creation and download routes remain; cleanup preview and execution routes are additive.
+- Backup cleanup audit records are written to `/data/minio-analytics/logs/backup-cleanup-audit.jsonl` with restrictive file permissions.
+- Draft PR created for review. GitHub Actions run [45453807552](https://github.com/faith-fork/minio-analytics/actions/runs/45453807552) on exact application/test head `d9d5034025f082dfcf5680d9571b99359d0c58bc` passed: **209 Python tests passed, 1 existing Starlette/httpx deprecation warning; frontend syntax validation passed**. Complete diff reviewed; PR is mergeable, with no review comments submitted. Browser/runtime validation remains pending. No merge or deployment approval is given.
+
+### Explicitly deferred navigation-test improvement
+- GitHub Issue #56: https://github.com/faith-fork/minio-analytics/issues/56
+- Scope: add executable DOM-backed JavaScript navigation tests for `setView`, Master Configuration tab switching, legacy view aliases and selector/DOM assumptions; run them in CI.
+- This is intentionally separate from PR #57 to keep backup-management scope focused.
+
+### Release and safety gates
+- Verify exact PR head, complete diff, backend tests, frontend syntax and CI before requesting merge approval.
+- Review backup retention and cleanup behaviour, including audit failure handling and concurrent operations.
+- No VM deployment is authorized. User-owned browser/runtime validation is required after any later approved deployment.

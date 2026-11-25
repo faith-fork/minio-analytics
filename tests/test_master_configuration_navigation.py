@@ -68,7 +68,9 @@ class TestConfigurationUiRefinement(unittest.TestCase):
     def test_password_confirmation_is_separate_from_settings_form(self):
         self.assertIn('master-settings-confirm-form', APP)
         self.assertIn('current_password:new FormData(confirmForm)', APP)
-        self.assertNotIn('name="current_password" autocomplete="current-password" required></label>', APP)
+        settings_form_start = APP.index('<form id="master-settings-form"')
+        settings_form_end = APP.index("</form>", settings_form_start)
+        self.assertNotIn('name="current_password"', APP[settings_form_start:settings_form_end])
 
     def test_backfill_uses_presets_summary_and_job_cards(self):
         for value in ('data-bf-range="7"', 'data-bf-range="30"', 'data-bf-range="60"'):
@@ -87,6 +89,29 @@ class TestConfigurationUiRefinement(unittest.TestCase):
         self.assertIn('@media(max-width:760px)', CSS)
         self.assertIn('.bf-job-list{grid-template-columns:1fr}', CSS)
 
+
+
+    def test_general_configuration_has_separate_collection_and_backup_workspaces(self):
+        self.assertIn('data-general-config-tab="collection"', APP)
+        self.assertIn('data-general-config-tab="backups"', APP)
+        self.assertIn('Collection Settings', APP)
+        self.assertIn('Database Backups', APP)
+
+    def test_backup_history_is_paginated_with_ten_rows_by_default(self):
+        self.assertIn('backupPageSize:10', APP)
+        self.assertIn('limit="+state.backupPageSize', APP)
+        for value in ('value="10"', 'value="25"', 'value="50"', 'value="100"'):
+            self.assertIn(value, APP)
+        self.assertIn('data-action="backup-page-prev"', APP)
+        self.assertIn('data-action="backup-page-next"', APP)
+
+    def test_backup_cleanup_requires_preview_password_and_audit_api(self):
+        self.assertIn('/api/master-admin/backups/cleanup/preview', APP)
+        self.assertIn('/api/master-admin/backups/cleanup', APP)
+        self.assertIn('backup-cleanup-confirm-form', APP)
+        self.assertIn('current_password', APP)
+        self.assertIn('minimum_keep', APP)
+        self.assertIn('backup-cleanup-audit.jsonl', (ROOT / "app/api/master_admin.py").read_text(encoding="utf-8"))
 
 if __name__ == "__main__":
     unittest.main()
