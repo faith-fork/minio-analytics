@@ -512,8 +512,8 @@ async function showClusterTopology(id, section="infra-overview"){
   const infraOverview='<div class="metric-grid">'+
     metric("NODES",nodes.length,nodes.filter(n=>n.node_exporter_up===1).length+" Node Exporter targets reachable","⌁")+
     metric("DRIVES",drives.length,drivesOnline==null?"Online/offline counts unavailable":drivesOnline+" online · "+drivesOffline+" offline","▤")+
-    metric("CPU AVG",performanceData?.nodes?.length?fmt(performanceData.nodes.filter(n=>n.avg_cpu_pct!=null).reduce((sum,n)=>sum+n.avg_cpu_pct,0)/performanceData.nodes.filter(n=>n.avg_cpu_pct!=null).length,1)+"%":"—","Selected averaging window","◉")+
-    metric("MEMORY AVG",performanceData?.nodes?.length?fmt(performanceData.nodes.filter(n=>n.avg_memory_used_pct!=null).reduce((sum,n)=>sum+n.avg_memory_used_pct,0)/performanceData.nodes.filter(n=>n.avg_memory_used_pct!=null).length,1)+"%":"—","Selected averaging window","◈")+
+    metric("CPU AVG",performanceData?.nodes?.some(n=>n.avg_cpu_pct!=null)?fmt(performanceData.nodes.filter(n=>n.avg_cpu_pct!=null).reduce((sum,n)=>sum+n.avg_cpu_pct,0)/performanceData.nodes.filter(n=>n.avg_cpu_pct!=null).length,1)+"%":"—","Selected averaging window","◉")+
+    metric("MEMORY AVG",performanceData?.nodes?.some(n=>n.avg_memory_used_pct!=null)?fmt(performanceData.nodes.filter(n=>n.avg_memory_used_pct!=null).reduce((sum,n)=>sum+n.avg_memory_used_pct,0)/performanceData.nodes.filter(n=>n.avg_memory_used_pct!=null).length,1)+"%":"—","Selected averaging window","◈")+
     metric("NODE EXPORTER",nodes.filter(n=>n.node_exporter_up===1).length+" / "+nodes.length,"Reachable nodes","◉")+
     metric("MINIO SCRAPES",nodes.filter(n=>n.minio_scrape_up===1).length+" / "+nodes.length,"Reachable MinIO targets","◈")+'</div>'+
     (performanceData?.samples?.length?'<div class="health-infra-trend-grid">'+performanceTrendPanel("CPU utilization trend","Average CPU utilization across nodes · selected window","infra-overview-cpu")+performanceTrendPanel("Memory utilization trend","Average memory utilization across nodes · selected window","infra-overview-memory")+'</div>':'');
