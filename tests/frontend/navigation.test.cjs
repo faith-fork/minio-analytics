@@ -52,18 +52,10 @@ const topologyPayload = {
 
 window.fetch = async (url) => {
   const key = String(url);
-  if (key.includes("/api/analytics/clusters/test-cluster/topology/trends")) return {ok:true,status:200,json:async()=>({sample_count:1,samples:[]})};
+  if (key.includes("/api/analytics/clusters/test-cluster/topology/trends")) return {ok:true,status:200,json:async()=>({sample_count:1,samples:[{snapshot_ts:"2026-11-25T10:00:00Z",drives_online:3,drives_offline:1,availability_errors:1,io_errors:2,timeout_errors:0,filesystem_used_pct:46,filesystem_weighted_used_pct:46}]})};
   if (key.includes("/api/analytics/clusters/test-cluster/topology")) return {ok:true,status:200,json:async()=>topologyPayload};
   const body = payloads[key] ?? { items: [] };
   return {ok:true,status:200,json:async()=>body};
-};
-  const key = String(url);
-  const body = payloads[key] ?? { items: [] };
-  return {
-    ok: true,
-    status: 200,
-    json: async () => body,
-  };
 };
 
 function tick() {
