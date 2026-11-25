@@ -49,11 +49,13 @@ def discover_minio_clusters(
     timeout_seconds: float = 8.0,
     verify_tls: bool = True,
     client: PrometheusClient | None = None,
+    auth_header: str | None = None,
 ) -> dict:
     """Probe Prometheus and discover MinIO cluster identities without writes."""
     own_client = client is None
     prom = client or PrometheusClient(
-        base_url, timeout_seconds=timeout_seconds, verify_tls=verify_tls
+        base_url, timeout_seconds=timeout_seconds, verify_tls=verify_tls,
+        auth_header=auth_header,
     )
     try:
         discovered: dict[tuple[str, str], set[str]] = defaultdict(set)

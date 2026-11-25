@@ -163,3 +163,18 @@ def test_connection_socket_uses_pinned_ip_not_configured_hostname(monkeypatch, c
 
     assert isinstance(connection._new_conn(), FakeSocket)
     assert captured["address"] == ("10.2.3.4", 9090)
+
+
+def test_authorization_header_is_passed_only_to_pinned_prometheus_request(monkeypatch):
+    monkeypatch.setattr(module, "resolve_prometheus_endpoint",
+        lambda url: ("prometheus.customer.internal", 9443, ("10.2.3.4",), "https"))
+    monkeypatch.setattr(module, "_PinnedHTTPSConnectionPool", FakePool)
+
+    PrometheusClient(
+        "https://prometheus.customer.internal:9443",
+        auth_header="Bearer test-token",
+    ).query("up")
+
+    request_kwargs = FakePool.instances[0].request_kwargs[1]
+    assert request_kwargs["headers"] == {"Authorization": "Bearer test-token"}
+    assert FakePool.instances[0].kwargs["pinned_ip"] == "10.2.3.4"

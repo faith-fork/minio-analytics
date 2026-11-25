@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -15,6 +16,8 @@ from app.api.clusters import router as cluster_router
 from app.api.analytics import router as analytics_router
 from app.api.tenants import router as tenant_router
 from app.api.master_admin import router as master_admin_router
+from app.api.prometheus_connections import router as prometheus_connections_router
+from app.api.backfill_jobs import router as backfill_jobs_router
 from app.database.database import get_connection, initialize_database
 
 
@@ -59,6 +62,8 @@ app.include_router(cluster_router)
 app.include_router(tenant_router)
 app.include_router(analytics_router)
 app.include_router(master_admin_router)
+app.include_router(prometheus_connections_router)
+app.include_router(backfill_jobs_router)
 
 @app.get("/health", tags=["health"])
 @app.get("/healthz", tags=["health"])
@@ -78,9 +83,23 @@ def health() -> dict[str, str]:
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
+def _static_asset_version() -> str:
+    """Return a content-derived version for first-party browser assets."""
+    digest = hashlib.sha256()
+    for name in ("app.css", "app.js", "prometheus-connections.js", "backfill-jobs.js"):
+        digest.update(name.encode("utf-8"))
+        digest.update((STATIC_DIR / name).read_bytes())
+    return digest.hexdigest()[:16]
+
+
 @app.get("/", include_in_schema=False)
-def dashboard_index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+def dashboard_index() -> HTMLResponse:
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    html = html.replace("__ASSET_VERSION__", _static_asset_version())
+    return HTMLResponse(
+        html,
+        headers={"Cache-Control": "no-cache, must-revalidate"},
+    )
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
