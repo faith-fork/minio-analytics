@@ -497,7 +497,7 @@ async function showClusterTopology(id, section="infra-overview"){
       const barClass=util>=90?"critical":util>=75?"warning":"normal";
       const bar=util==null?"—":'<div class="drive-utilization"><div class="drive-util-track"><span class="'+barClass+'" style="width:'+Math.max(0,Math.min(100,util))+'%"></span></div><strong>'+fmt(util,1)+'%</strong></div>';
       const statusLabel=status==="readonly"?"Read-only":status==="writable"?"Writable":"Unknown";
-      return '<tr data-drive-row data-drive-status="'+status+'" data-drive-error="'+(driveHasErrors(v)?'1':'0')+'" data-drive-search="'+esc(searchText)+'" data-drive-node="'+esc(v.node_name)+'" data-drive-filter-visible="1">'+
+      return '<tr data-drive-row data-drive-status="'+status+'" data-drive-error="'+(driveHasErrors(v)?'1':'0')+'" data-drive-search="'+esc(searchText)+'" data-drive-node="'+esc(v.node_name)+'" data-drive-capacity="'+total+'" data-drive-used="'+used+'" data-drive-free="'+free+'" data-drive-util="'+(util==null?-1:util)+'" data-drive-errors="'+errors.reduce((sum,n)=>sum+Number(n||0),0)+'" data-drive-filter-visible="1">'+
         '<td><span class="cell-strong">'+esc(v.node_name)+'</span></td>'+
         '<td><span class="cell-strong">'+esc(v.drive_path)+'</span></td>'+
         '<td>'+esc(v.mountpoint||"—")+'</td>'+
@@ -532,8 +532,9 @@ async function showClusterTopology(id, section="infra-overview"){
     const indexMap={node:0,path:1,mountpoint:2,filesystem:3,capacity:4,used:5,free:6,utilization:7,state:8,errors:9};
     filtered.sort((a,b)=>{
       const i=indexMap[sortKey],av=a.cells[i]?.textContent.trim()||"",bv=b.cells[i]?.textContent.trim()||"";
-      const an=Number(av.replace(/[^0-9.]/g,"")),bn=Number(bv.replace(/[^0-9.]/g,""));
       const numeric=["capacity","used","free","utilization","errors"].includes(sortKey);
+      const dataKey={capacity:"driveCapacity",used:"driveUsed",free:"driveFree",utilization:"driveUtil",errors:"driveErrors"}[sortKey];
+      const an=dataKey?Number(a.dataset[dataKey]):NaN,bn=dataKey?Number(b.dataset[dataKey]):NaN;
       const cmp=numeric&&Number.isFinite(an)&&Number.isFinite(bn)?an-bn:av.localeCompare(bv,undefined,{numeric:true,sensitivity:"base"});
       return cmp*direction;
     });
