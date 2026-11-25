@@ -161,7 +161,7 @@ async function run() {
   const search=window.document.querySelector("[data-drive-search]");
   search.value="/data2";search.dispatchEvent(new window.Event("input",{bubbles:true}));
   assert.equal(window.document.querySelectorAll("[data-drive-row][data-drive-filter-visible='1']").length,1,"Search should filter drive rows");
-  assert.match(window.document.querySelector("[data-drive-row][data-drive-filter-visible='1']").textContent,/\\/data2/);
+  assert.ok(window.document.querySelector("[data-drive-row][data-drive-filter-visible='1']").textContent.includes("/data2"));
   const stateFilter=window.document.querySelector("[data-drive-state-filter]");
   stateFilter.value="readonly";stateFilter.dispatchEvent(new window.Event("change",{bubbles:true}));
   await waitFor(()=>window.document.querySelectorAll("[data-drive-row][data-drive-filter-visible='1']").length===1,"filesystem state filter");
@@ -170,7 +170,7 @@ async function run() {
   assert.equal(window.__lastDownload,"drive-inventory-"+new Date().toISOString().slice(0,10)+".csv","Export should download filtered inventory");
   stateFilter.value="errors";stateFilter.dispatchEvent(new window.Event("change",{bubbles:true}));
   await waitFor(()=>window.document.querySelectorAll("[data-drive-row][data-drive-filter-visible='1']").length===1,"drive error filter");
-  assert.match(window.document.querySelector("[data-drive-row][data-drive-filter-visible='1']").textContent,/1 \\/ 0 \\/ 0|0 \\/ 2 \\/ 0/,"Error filter should include a drive with reported errors");
+  assert.ok(/1 \/ 0 \/ 0|0 \/ 2 \/ 0/.test(window.document.querySelector("[data-drive-row][data-drive-filter-visible='1']").textContent),"Error filter should include a drive with reported errors");
   window.document.querySelector('[data-drive-sort="path"]').click();
   assert.match(window.document.querySelector('[data-drive-sort="path"] .sort-indicator').textContent,/▲|▼/,"Selected sort column should show its direction");
   window.document.querySelector('[data-drive-view="graphs"]').click();
