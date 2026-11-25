@@ -4,7 +4,7 @@ A lightweight analytics dashboard for multi-location, multi-cluster MinIO enviro
 
 ## Goals
 
-- Collect daily cluster, bucket, node, drive, pool, and erasure-set metrics from Prometheus.
+- Collect daily cluster, bucket, node, drive, pool, and erasure-set metrics from customer-managed Prometheus.
 - Maintain bucket inventory independently of daily metric collection.
 - Map buckets to customers/tenants through an administrator-only UI, including bulk assignment.
 - Preserve historical tenant attribution at snapshot time and audit every ownership change.
@@ -100,8 +100,8 @@ python -m scripts.collect_daily --config config/locations.yaml
 By default, the snapshot timestamp is the current UTC time. To backfill or test a specific snapshot, pass an explicit timezone-aware timestamp:
 
 ```bash
-python -m scripts.collect_daily \
-  --config config/locations.yaml \
+python -m scripts.collect_daily \\
+  --config config/locations.yaml \\
   --snapshot-at 2026-11-19T18:30:00Z
 ```
 
@@ -186,7 +186,6 @@ systemctl list-timers --all | grep minio-analytics
 
 Do not install, enable, or recreate a `minio-analytics-collect.timer`. The scheduler is the sole owner of recurring collection cadence. The standalone collector service is available only for deliberate operator-triggered execution. Inspect scheduled jobs with `journalctl -u minio-analytics-scheduler.service` and backups with `journalctl -u minio-analytics-backup.service`. Services run as root in the current lab deployment to match the protected environment file and data-directory ownership; adjust `User`, `Group`, file ownership, and directory permissions together if a dedicated service account is introduced.
 
-
 ## Web API authentication foundation
 
 The FastAPI application uses SQLite-backed users and signed, HTTP-only session cookies.
@@ -265,10 +264,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8001
 
 Use a persistent, root-readable environment file or systemd credential for a long-running deployment; do not generate a new secret on every restart, because that invalidates existing sessions.
 
-
 ### Cluster topology and health
 
-The daily collector also records infrastructure topology from MinIO metrics and Node Exporter:
+The daily collector also records infrastructure topology from Prometheus metrics emitted by MinIO and Node Exporter:
 
 - Nodes: MinIO metrics-target scrape availability, Node Exporter scrape availability, CPU utilization (five-minute rate), memory, and one-minute load.
 - Drives: per-drive MinIO total/used/free bytes and availability/I/O/timeout error counters.
