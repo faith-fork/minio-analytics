@@ -456,10 +456,10 @@ async function showClusterTopology(id, section="infra-overview"){
   const d=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/topology");
   state.topologyClusterId=id;state.topologySection=section;
   const storageView=section==="storage-overview"||section==="pools"||section==="sets";
-  const tabs=storageView?[["storage-overview","Overview"],["pools","Pools"],["sets","Erasure Sets"]]:[["infra-overview","Overview"],["nodes","Nodes"],["drives","Drives"]];
+  const tabs=storageView?[["storage-overview","Overview"],["pools","Pools"],["sets","Erasure Sets"]]:[["infra-overview","Overview"],["nodes","Node Health & Performance"],["drives","Drives & Filesystems"]];
   const tabHtml='<div class="tabs">'+tabs.map(([key,label])=>'<button class="tab '+(section===key?'active':'')+'" data-topology-tab="'+key+'">'+label+'</button>').join("")+'</div>';
   const nodeSubsection=state.nodeSubsection||"health";
-  const nodeSubTabsHtml='<div class="tabs node-subtabs">'+[["health","Health & Availability"],["performance","Performance"],["collection","Collection Health"],["reports","Reports"]].map(([key,label])=>'<button class="tab '+(nodeSubsection===key?'active':'')+'" data-node-subtab="'+key+'">'+label+'</button>').join("")+'</div>';
+  const nodeSubTabsHtml='<div class="tabs node-subtabs">'+[["health","Availability"],["performance","CPU & Memory Trends"],["collection","Collection Health"],["reports","Performance Reports"]].map(([key,label])=>'<button class="tab '+(nodeSubsection===key?'active':'')+'" data-node-subtab="'+key+'">'+label+'</button>').join("")+'</div>';
   const nodes=d.nodes||[],drives=d.drives||[],pools=d.pools||[],sets=d.erasure_sets||[];
   const driveCountsComplete=nodes.length>0&&nodes.every(n=>n.drives_online!=null&&n.drives_offline!=null);
   const drivesOnline=driveCountsComplete?nodes.reduce((sum,n)=>sum+n.drives_online,0):null;
