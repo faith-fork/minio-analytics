@@ -112,6 +112,16 @@ async function run() {
     "legacy Backfill Jobs alias",
   );
 
+  // Infrastructure workspace labels and overview trend panels are kept separate
+  // from collection reliability so CPU/memory telemetry stays in Node Infrastructure.
+  const appSource = fs.readFileSync(path.join(root, "app/static/app.js"), "utf8");
+  assert.match(appSource, /Node Health & Performance/);
+  assert.match(appSource, /Drives & Filesystems/);
+  assert.match(appSource, /CPU & Memory Trends/);
+  assert.match(appSource, /infra-overview-cpu/);
+  assert.match(appSource, /infra-overview-memory/);
+  assert.match(appSource, /section==="nodes"\|\|section==="infra-overview"/);
+
   await tick();
   await tick();
   console.log("DOM-backed frontend navigation tests passed.");
