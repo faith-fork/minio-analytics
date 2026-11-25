@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -82,9 +83,23 @@ def health() -> dict[str, str]:
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
+def _static_asset_version() -> str:
+    """Return a content-derived version for first-party browser assets."""
+    digest = hashlib.sha256()
+    for name in ("app.css", "app.js", "prometheus-connections.js", "backfill-jobs.js"):
+        digest.update(name.encode("utf-8"))
+        digest.update((STATIC_DIR / name).read_bytes())
+    return digest.hexdigest()[:16]
+
+
 @app.get("/", include_in_schema=False)
-def dashboard_index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+def dashboard_index() -> HTMLResponse:
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    html = html.replace("__ASSET_VERSION__", _static_asset_version())
+    return HTMLResponse(
+        html,
+        headers={"Cache-Control": "no-cache, must-revalidate"},
+    )
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
