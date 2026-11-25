@@ -96,22 +96,24 @@ async function run() {
   // Legacy view aliases must route to their corresponding workspace tabs.
   window.setView("master-admin");
   await waitFor(
-    () => window.document.querySelector('[data-master-config-tab="general"].active'),
+    () => window.document.querySelector('[data-master-config-tab="general"].active') && window.document.querySelector(".config-settings-grid"),
     "legacy Master Admin alias",
   );
 
   window.setView("prometheus-connections");
   await waitFor(
-    () => window.document.querySelector('[data-master-config-tab="prometheus"].active'),
+    () => window.document.querySelector('[data-master-config-tab="prometheus"].active') && window.document.querySelector("#pc-list .empty-state"),
     "legacy Prometheus Connections alias",
   );
 
   window.setView("backfill-jobs");
   await waitFor(
-    () => window.document.querySelector('[data-master-config-tab="backfill"].active'),
+    () => window.document.querySelector('[data-master-config-tab="backfill"].active') && window.document.querySelector("#bf-list .bf-empty-state"),
     "legacy Backfill Jobs alias",
   );
 
+  await tick();
+  await tick();
   console.log("DOM-backed frontend navigation tests passed.");
   dom.window.close();
 }
