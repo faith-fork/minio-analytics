@@ -172,7 +172,7 @@ async function run() {
   await waitFor(()=>window.document.querySelectorAll("[data-drive-row][data-drive-filter-visible='1']").length===1,"drive error filter");
   assert.match(window.document.querySelector("[data-drive-row][data-drive-filter-visible='1']").textContent,/1 \\/ 0 \\/ 0|0 \\/ 2 \\/ 0/,"Error filter should include a drive with reported errors");
   window.document.querySelector('[data-drive-sort="path"]').click();
-  assert.equal(window.document.querySelector(".sort-indicator").textContent,"","Only the active sort indicator should be set");
+  assert.match(window.document.querySelector('[data-drive-sort="path"] .sort-indicator').textContent,/▲|▼/,"Selected sort column should show its direction");
   window.document.querySelector('[data-drive-view="graphs"]').click();
   await waitFor(()=>window.document.querySelector('[data-drive-view="graphs"][aria-selected="true"]'),"return to graphs tab");
   assert.ok(window.document.querySelector("#infra-filesystem-trend"),"Graphs tab should remain available after switching");
