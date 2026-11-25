@@ -672,6 +672,7 @@ async function showClusterTopology(id, section="infra-overview"){
   const pageSubtitle=storageView?"MinIO storage pools, erasure sets and quorum topology":"Node availability, compute resources, drive health and filesystem telemetry";
   const pageSnapshot='<span class="page-heading-snapshot">Snapshot '+esc(snapshotTimestampLabel(storageView?d.topology_snapshot_ts:d.node_snapshot_ts))+'</span>';
   $("#content").innerHTML=pageHead(esc(d.cluster.name)+" — "+pageTitle,pageSubtitle+pageSnapshot,'<button class="subtle-button" data-action="back-to-cluster-overview">← Back to cluster</button>')+errors+tabHtml+body;
+  if(section==="drives"&&state.driveView==="inventory")applyDriveInventoryTable();
   if(performanceData?.samples?.length&&section==="infra-overview"){
     const overviewLabels=performanceData.samples.map(x=>snapshotTimestampLabel(x.snapshot_ts));
     chart("infra-overview-cpu",overviewLabels,[{label:"Average CPU",data:performanceData.samples.map(x=>x.avg_cpu_pct),color:"#16a085"}],"line",0,"%");
