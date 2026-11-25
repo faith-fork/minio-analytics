@@ -487,18 +487,24 @@ async function showClusterTopology(id, section="infra-overview"){
   const driveInventoryHtml=()=>{
     const filteredGroups=driveGroups.filter(name=>state.driveNodeFilter==="all"||name===state.driveNodeFilter);
     const nodeOptions=driveGroups.map(name=>'<option value="'+esc(name)+'" '+(state.driveNodeFilter===name?'selected':'')+'>'+esc(name)+'</option>').join("");
-    const groupHtml=filteredGroups.map((name,index)=>{
-      const group=drives.filter(v=>v.node_name===name);
-      const filtered=group.filter(v=>state.driveFsFilter==="all"||(state.driveFsFilter==="errors"?driveHasErrors(v):driveState(v)===state.driveFsFilter));
-      const errorCount=group.filter(driveHasErrors).length,readonlyCount=group.filter(v=>v.filesystem_readonly===1).length;
-      const rows=filtered.map(v=>{
-        const minioPct=v.total_bytes&&v.used_bytes!=null?v.used_bytes/v.total_bytes*100:null;
-        const fsPct=v.filesystem_used_pct,readonly=v.filesystem_readonly===1;
-        const status=driveState(v),errors=[v.availability_errors??0,v.io_errors??0,v.timeout_errors??0];
-        const searchText=[v.node_name,v.drive_path,v.mountpoint].join(" ").toLowerCase();
-        return '<tr data-drive-row data-drive-status="'+status+'" data-drive-error="'+(driveHasErrors(v)?'1':'0')+'" data-drive-search="'+esc(searchText)+'"><td><span class="cell-strong">'+esc(v.drive_path)+'</span></td><td>'+esc(v.mountpoint||"—")+'</td><td>'+bytes(v.total_bytes)+'</td><td>'+bytes(v.used_bytes)+'</td><td>'+(minioPct==null?'—':fmt(minioPct,1)+'%')+'</td><td>'+(fsPct==null?'—':fmt(fsPct,1)+'%')+'</td><td>'+pill(readonly?'Read-only':v.filesystem_readonly===0?'Writable':'Unknown')+'</td><td>'+errors.join(" / ")+'</td></tr>';
-      }).join("");
-      return '<details class="drive-node-group" data-drive-node-group '+(state.driveNodeFilter!=="all"||index===0?'open':'')+'><summary><span class="drive-node-title">'+esc(name)+'</span><span class="drive-node-summary">'+group.length+' drives · '+readonlyCount+' read-only · '+errorCount+' with errors</span></summary><div class="table-scroll"><table class="drive-inventory-table"><thead><tr><th>MINIO DRIVE</th><th>MOUNTPOINT</th><th>MINIO CAPACITY</th><th>MINIO USED</th><th>MINIO USED %</th><th>FILESYSTEM USED %</th><th>FILESYSTEM STATE</th><th>ERRORS A / I / T</th></tr></thead><tbody>'+(rows||'<tr data-drive-empty><td colspan="8" class="empty-state">No drives match the selected filters for this node.</td></tr>')+'</tbody></table></div></details>';
+    const rows=selectedDriveRows.map(v=>{
+      const total=Number(v.filesystem_total_bytes||v.total_bytes)||0;
+      const used=Number(v.filesystem_used_bytes??v.used_bytes)||0;
+      const free=Math.max(0,total-used);
+      const util=v.filesystem_used_pct!=null?Number(v.filesystem_used_pct):(total?used/total*100:null);
+      const status=driveState(v),errors=[v.availability_errors??0,v.io_errors??0,v.timeout_errors??0];
+      const searchText=[v.node_name,v.drive_path,v.mountpoint].join(" ").toLowerCase();
+      const barClass=util>=90?"critical":util>=75?"warning":"normal";
+      const bar=util==null?"—":'<div class="drive-utilization"><div class="drive-util-track"><span class="'+barClass+'" style="width:'+Math.max(0,Math.min(100,util))+'%"></span></div><strong>'+fmt(util,1)+'%</strong></div>';
+      const statusLabel=status==="readonly"?"Read-only":status==="writable"?"Writable":"Unknown";
+      return '<tr data-drive-row data-drive-status="'+status+'" data-drive-error="'+(driveHasErrors(v)?'1':'0')+'" data-drive-search="'+esc(searchText)+'" data-drive-node="'+esc(v.node_name)+'" data-drive-filter-visible="1">'+
+        '<td><span class="cell-strong">'+esc(v.node_name)+'</span></td>'+
+        '<td><span class="cell-strong">'+esc(v.drive_path)+'</span></td>'+
+        '<td>'+esc(v.mountpoint||"—")+'</td>'+
+        '<td>'+esc(v.filesystem_type||v.filesystem||"—")+'</td>'+
+        '<td>'+bytes(total||null)+'</td><td>'+bytes(used||null)+'</td><td>'+bytes(total?free:null)+'</td>'+
+        '<td>'+bar+'</td><td>'+pill(statusLabel)+'</td>'+
+        '<td class="drive-error-counts"><span class="'+(Number(errors[0])>0?'has-error':'')+'">'+errors[0]+'</span> / <span class="'+(Number(errors[1])>0?'has-error':'')+'">'+errors[1]+'</span> / <span class="'+(Number(errors[2])>0?'has-error':'')+'">'+errors[2]+'</span></td></tr>';
     }).join("");
     const weightedFsPct=driveInventorySummary.fsTotal>0?driveInventorySummary.fsUsed/driveInventorySummary.fsTotal*100:null;
     const selectionLabel=state.driveNodeFilter==="all"?"All nodes":state.driveNodeFilter;
@@ -509,8 +515,40 @@ async function showClusterTopology(id, section="infra-overview"){
       metric("FS UTILIZATION",weightedFsPct==null?"—":fmt(weightedFsPct,1)+"%",driveInventorySummary.fsReported+" drives with filesystem data","◉")+
       metric("READ-ONLY FS",fmt(driveInventorySummary.readonly,0),"Filesystem state","◈")+
       metric("DRIVES WITH ERRORS",fmt(driveInventorySummary.errors,0),"Any availability / I/O / timeout errors","!",driveInventorySummary.errors===0)+'</div>'+
-      '<section class="panel drive-inventory-filter-panel"><div class="drive-inventory-filters"><label>NODE<select class="form-control" data-drive-node-filter><option value="all" '+(state.driveNodeFilter==="all"?'selected':'')+'>All nodes</option>'+nodeOptions+'</select></label><label>FILESYSTEM STATE<select class="form-control" data-drive-state-filter><option value="all" '+(state.driveFsFilter==="all"?'selected':'')+'>All drives</option><option value="writable" '+(state.driveFsFilter==="writable"?'selected':'')+'>Writable</option><option value="readonly" '+(state.driveFsFilter==="readonly"?'selected':'')+'>Read-only</option><option value="unknown" '+(state.driveFsFilter==="unknown"?'selected':'')+'>Unknown</option><option value="errors" '+(state.driveFsFilter==="errors"?'selected':'')+'>With errors</option></select></label><label class="drive-inventory-search">SEARCH<input class="form-control" type="search" data-drive-search placeholder="Drive path, mountpoint or node"></label><button type="button" class="secondary-button drive-export-button" data-drive-export>↓ Export filtered drives</button></div></section>'+
-      '<section class="panel drive-inventory-node-list"><div class="panel-header"><div><h3>Node-wise drive inventory</h3><p>Expand a node to inspect its individual MinIO drives and filesystem metrics.</p></div><span class="panel-tag">'+filteredGroups.length+' node(s)</span></div>'+(groupHtml||'<div class="chart-empty-state"><strong>No drive inventory found</strong><p>No drive records are available for this cluster snapshot.</p></div>')+'<div class="chart-empty-state drive-search-empty hidden"><strong>No matching drives</strong><p>Adjust the search term to see drive inventory.</p></div></section></div>';
+      '<section class="panel drive-inventory-filter-panel"><div class="drive-inventory-filters"><label>NODE<select class="form-control" data-drive-node-filter><option value="all" '+(state.driveNodeFilter==="all"?'selected':'')+'>All nodes</option>'+nodeOptions+'</select></label><label>FILESYSTEM STATE<select class="form-control" data-drive-state-filter><option value="all" '+(state.driveFsFilter==="all"?'selected':'')+'>All drives</option><option value="writable" '+(state.driveFsFilter==="writable"?'selected':'')+'>Writable</option><option value="readonly" '+(state.driveFsFilter==="readonly"?'selected':'')+'>Read-only</option><option value="unknown" '+(state.driveFsFilter==="unknown"?'selected':'')+'>Unknown</option><option value="errors" '+(state.driveFsFilter==="errors"?'selected':'')+'>With errors</option></select></label><label class="drive-inventory-search">SEARCH<input class="form-control" type="search" data-drive-search placeholder="Node, drive path or mountpoint"></label><button type="button" class="secondary-button drive-export-button" data-drive-export>↓ Export filtered drives</button></div></section>'+
+      '<section class="panel drive-inventory-node-list"><div class="panel-header"><div><h3>Drive inventory</h3><p>Cluster-wide inventory · one drive per row · use sorting and filters to locate drives quickly.</p></div><span class="panel-tag">'+filteredGroups.length+' node(s)</span></div>'+
+      '<div class="table-scroll"><table class="drive-inventory-table drive-inventory-flat"><thead><tr>'+["NODE","DRIVE / PATH","MOUNTPOINT","FILESYSTEM","CAPACITY","USED","FREE","UTILIZATION","STATE","ERRORS A / I / T"].map((label,i)=>'<th><button type="button" class="drive-sort-button" data-drive-sort="'+["node","path","mountpoint","filesystem","capacity","used","free","utilization","state","errors"][i]+'">'+label+' <span class="sort-indicator" aria-hidden="true"></span></button></th>').join("")+'</tr></thead><tbody>'+ (rows||'<tr><td colspan="10" class="empty-state">No drive records are available for this cluster snapshot.</td></tr>')+'</tbody></table></div>'+
+      '<div class="drive-inventory-pagination"><span data-drive-page-summary>Showing 0 drives</span><label>Rows per page<select class="form-control" data-drive-page-size><option>25</option><option>50</option><option>100</option></select></label><div><button type="button" class="secondary-button" data-drive-page="prev">← Previous</button><span data-drive-page-number>Page 1</span><button type="button" class="secondary-button" data-drive-page="next">Next →</button></div></div>'+
+      '<div class="chart-empty-state drive-search-empty hidden"><strong>No matching drives</strong><p>Adjust the search term or filters.</p></div></section></div>';
+  };
+  const applyDriveInventoryTable=()=>{
+    const table=$("#content .drive-inventory-flat");if(!table)return;
+    const rows=[...table.querySelectorAll("[data-drive-row]")];
+    const q=($("#content [data-drive-search]")?.value||"").trim().toLowerCase();
+    const stateFilter=$("#content [data-drive-state-filter]")?.value||"all";
+    const nodeFilter=$("#content [data-drive-node-filter]")?.value||"all";
+    let filtered=rows.filter(row=>(!q||row.dataset.driveSearch.includes(q))&&(nodeFilter==="all"||row.dataset.driveNode===nodeFilter)&&(stateFilter==="all"||(stateFilter==="errors"?row.dataset.driveError==="1":row.dataset.driveStatus===stateFilter)));
+    const sortKey=state.driveSortKey||"node",direction=state.driveSortDirection||1;
+    const indexMap={node:0,path:1,mountpoint:2,filesystem:3,capacity:4,used:5,free:6,utilization:7,state:8,errors:9};
+    filtered.sort((a,b)=>{
+      const i=indexMap[sortKey],av=a.cells[i]?.textContent.trim()||"",bv=b.cells[i]?.textContent.trim()||"";
+      const an=Number(av.replace(/[^0-9.]/g,"")),bn=Number(bv.replace(/[^0-9.]/g,""));
+      const numeric=["capacity","used","free","utilization","errors"].includes(sortKey);
+      const cmp=numeric&&Number.isFinite(an)&&Number.isFinite(bn)?an-bn:av.localeCompare(bv,undefined,{numeric:true,sensitivity:"base"});
+      return cmp*direction;
+    });
+    const pageSize=Number($("#content [data-drive-page-size]")?.value||25),pageCount=Math.max(1,Math.ceil(filtered.length/pageSize));
+    state.driveInventoryPage=Math.min(Math.max(1,state.driveInventoryPage||1),pageCount);
+    rows.forEach(row=>row.classList.add("hidden"));
+    const start=(state.driveInventoryPage-1)*pageSize;
+    filtered.slice(start,start+pageSize).forEach(row=>row.classList.remove("hidden"));
+    $("#content [data-drive-page-summary]").textContent=filtered.length?"Showing "+(start+1)+"–"+Math.min(start+pageSize,filtered.length)+" of "+filtered.length+" drives":"Showing 0 drives";
+    $("#content [data-drive-page-number]").textContent="Page "+state.driveInventoryPage+" of "+pageCount;
+    $("#content [data-drive-page=prev]").disabled=state.driveInventoryPage<=1;
+    $("#content [data-drive-page=next]").disabled=state.driveInventoryPage>=pageCount;
+    $("#content .drive-search-empty")?.classList.toggle("hidden",filtered.length>0);
+    table.querySelectorAll("[data-drive-sort]").forEach(button=>button.querySelector(".sort-indicator").textContent=button.dataset.driveSort===sortKey?(direction===1?"▲":"▼"):"");
+    rows.forEach(row=>row.dataset.driveFilterVisible=filtered.includes(row)?"1":"0");
   };
   const poolRows=pools.map(p=>'<tr><td>'+esc(p.pool_id)+'</td><td>'+p.erasure_set_count+'</td><td>'+(p.online_drives??'—')+'</td><td>'+(p.healing_drives??'—')+'</td></tr>');
   const setRows=sets.map(s=>'<tr><td>'+esc(s.pool_id)+'</td><td>'+esc(s.set_id)+'</td><td>'+(s.status_value??'—')+'</td><td>'+(s.online_drives??'—')+'</td><td>'+(s.healing_drives??'—')+'</td><td>'+(s.read_quorum??'—')+'</td><td>'+(s.write_quorum??'—')+'</td></tr>');
