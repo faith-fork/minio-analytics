@@ -469,3 +469,57 @@ No merge or deployment is authorized by this checkpoint.
 - Verify exact PR head, complete diff, backend tests, frontend syntax and CI before requesting merge approval.
 - Review backup retention and cleanup behaviour, including audit failure handling and concurrent operations.
 - No VM deployment is authorized. User-owned browser/runtime validation is required after any later approved deployment.
+
+
+## 22. PR #57 merge checkpoint — 25 November 2026
+
+- PR #57, **Improve General Configuration and database backup management**, was squash-merged after explicit user approval.
+- PR: https://github.com/faith-fork/minio-analytics/pull/57
+- Source head: `3197bf1481588d6c8ce3053bb98545431c66b25a`
+- Merge commit: `9c3544444197d123d1c4f52eabc10bd2120bf137`
+- Verified `feature/prometheus-authentication` points exactly to the merge commit; compare result is identical (0 ahead / 0 behind).
+- CI on the exact PR head passed: 209 Python tests, 1 existing Starlette/httpx deprecation warning; frontend syntax validation passed.
+- PR #57 is closed and merged. No VM deployment has been performed or authorized by this merge approval.
+- Deployment gate remains separate: confirm the lab VM's branch, worktree, remote, current commit and service health before any update. Preserve any local modifications; do not reset or overwrite them.
+- After a separately approved deployment, the user must validate Collection Settings, Database Backups, pagination, backup creation/download, cleanup preview, password rejection/acceptance, stale-preview conflict handling, minimum-five preservation, unverified-file preservation and responsive layouts.
+- JavaScript DOM-backed navigation regression tests remain parked in Issue #56: https://github.com/faith-fork/minio-analytics/issues/56
+
+
+## 23. PR #59 frontend cache invalidation and DOM navigation tests — 25 November 2026
+
+### Implementation and integration
+- PR #59: https://github.com/faith-fork/minio-analytics/pull/59 — **Prevent stale frontend assets and test navigation in a DOM**.
+- Feature branch: `feature/frontend-cache-and-navigation-tests`.
+- Reviewed PR head: `53a49991faa713f6ae2d09a6342b31b563cd08c8`.
+- Squash merge commit: `55d7940ce32e1c76bb80ee7627bbacc2c5ce0feb`.
+- Integration branch `feature/prometheus-authentication` was verified to match the merge commit exactly (0 ahead / 0 behind).
+- PR #59 addresses the parked navigation-testing follow-up from Issue #56.
+
+### Scope
+- Dashboard HTML uses a content-derived fingerprint for the four first-party CSS/JavaScript assets.
+- HTML response uses `Cache-Control: no-cache, must-revalidate` so browsers re-check the document and obtain the current fingerprinted URLs.
+- CI runs DOM-backed navigation tests using jsdom for sidebar navigation, Master Configuration tab routing and legacy aliases, alongside syntax and Python tests.
+- Added regression coverage for root-route registration and asset-version substitution/cache headers.
+- No database schema, collector, scheduler, metrics, or persistent data changes.
+
+### CI and review
+- Exact PR-head CI passed: **212 Python tests passed**, with one existing non-blocking Starlette/httpx deprecation warning; JavaScript syntax checks and DOM-backed navigation tests passed.
+- Complete patch reviewed; the root-route decorator placement regression found during review was corrected and covered by a test before merge.
+- PR #59 was merged after explicit user approval. Merge commit: `55d7940ce32e1c76bb80ee7627bbacc2c5ce0feb`.
+
+### Lab deployment evidence — 25 November 2026
+- User completed preflight and fast-forward deployment on the lab VM `minio-analytics` at `/opt/minio-analytics`.
+- VM branch: `feature/prometheus-authentication`; worktree clean; remote is the expected repository.
+- VM HEAD verified at the exact merge commit `55d7940ce32e1c76bb80ee7627bbacc2c5ce0feb`.
+- `minio-analytics-web.service` restarted successfully and is `active (running)`.
+- `/healthz` returned HTTP 200 with `{"status":"ok","database":"ok"}`.
+- Dashboard root returned HTTP 200 and `Cache-Control: no-cache, must-revalidate`.
+- All four assets showed the same fingerprint query value: `0958cb659fb2458b`.
+- Git worktree remained clean after deployment.
+
+### Browser acceptance — 25 November 2026
+- User supplied screenshots confirming the dashboard Overview renders; Master Configuration navigation works; General Configuration / Collection Settings renders; Database Backups renders with pagination and backup integrity status; Prometheus Configuration renders with configured endpoint; and Historical Backfill renders.
+- The screenshots also show an authenticated Admin session and the sidebar navigation in the expected state.
+- Combined with deployment-stage 1–3 evidence, **browser functional acceptance is passed for the displayed views**.
+- Browser Console error status and explicit Network-panel verification of fingerprinted asset requests were not included in the evidence; these remain unverified, but do not block the demonstrated navigation/UI acceptance.
+- Deployment/runtime acceptance for PR #59 is therefore recorded as passed for the checks evidenced by terminal output and screenshots. No further deployment is requested by this checkpoint.
