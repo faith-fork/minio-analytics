@@ -182,7 +182,7 @@ async function run() {
   await waitFor(()=>window.document.querySelectorAll("[data-drive-row][data-drive-filter-visible='1']").length===30,"reset inventory filters");
   window.document.querySelector('[data-drive-sort="path"]').click();
   assert.match(window.document.querySelector('[data-drive-sort="path"] .sort-indicator').textContent,/▲|▼/,"Selected sort column should show its direction");
-  assert.match(window.document.querySelector(".drive-inventory-flat tbody tr:not(.hidden) td:nth-child(2)").textContent,/\/data1/,"Sorting by path should reorder visible rows");
+  assert.match(window.document.querySelector(".drive-inventory-flat tbody tr:not(.hidden) td:nth-child(2)").textContent,/\/bulk01/,"Sorting by path should reorder visible rows");
   window.document.querySelector('[data-drive-view="graphs"]').click();
   await waitFor(()=>window.document.querySelector('[data-drive-view="graphs"][aria-selected="true"]'),"return to graphs tab");
   assert.ok(window.document.querySelector("#infra-filesystem-trend"),"Graphs tab should remain available after switching");
