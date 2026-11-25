@@ -138,40 +138,44 @@ async function run() {
   assert.match(appSource, /performanceTrendPanel/);
   assert.match(appSource, /section==="nodes"\|\|section==="infra-overview"/);
 
-  // Drives & Filesystems is split into Graphs and a node-wise Drive Inventory.
+  // Drives & Filesystems retains Graphs and presents the inventory as a sortable flat table.
   await window.showClusterTopology("test-cluster", "drives");
   await waitFor(() => window.document.querySelector('[data-drive-view="graphs"]'), "Drives graphs workspace");
   assert.equal(window.document.querySelector('[data-drive-view="graphs"]').getAttribute("aria-selected"), "true");
   assert.ok(window.document.querySelector("#infra-drive-availability"), "Graphs tab should retain drive availability panel");
   window.document.querySelector('[data-drive-view="inventory"]').click();
   await waitFor(() => window.document.querySelector('[data-drive-node-filter]'), "Drive Inventory tab");
-  assert.equal(window.document.querySelectorAll("[data-drive-node-group]").length, 2, "All nodes should be grouped");
-  assert.equal(window.document.querySelectorAll("[data-drive-row]").length, 3, "Individual drive rows should render");
+  assert.ok(window.document.querySelector(".drive-inventory-flat"), "Inventory should use a unified flat table");
+  assert.equal(window.document.querySelectorAll("[data-drive-row]").length, 3, "All drives should be rows");
   assert.ok(window.document.querySelector("[data-drive-export]"), "Inventory should provide CSV export");
+  assert.ok(window.document.querySelector("[data-drive-page-size]"), "Inventory should provide page-size selection");
+  assert.ok(window.document.querySelector("[data-drive-sort=capacity]"), "Capacity should be sortable");
   assert.match(window.document.querySelector(".drive-inventory-summary").textContent, /3/);
   assert.ok(window.document.querySelector('[data-drive-row][data-drive-status="readonly"]'));
   assert.ok(window.document.querySelector('[data-drive-row][data-drive-error="1"]'));
+
   const nodeFilter=window.document.querySelector("[data-drive-node-filter]");
   nodeFilter.value="node01";nodeFilter.dispatchEvent(new window.Event("change",{bubbles:true}));
-  await waitFor(()=>window.document.querySelectorAll("[data-drive-node-group]").length===1,"node selector filtering");
-  assert.equal(window.document.querySelectorAll("[data-drive-row]").length,2,"Selecting node01 should show its two drives");
+  await waitFor(()=>window.document.querySelectorAll("[data-drive-row][data-drive-filter-visible='1']").length===2,"node selector filtering");
+  assert.match(window.document.querySelector("[data-drive-page-summary]").textContent,/2 drives/);
   const search=window.document.querySelector("[data-drive-search]");
   search.value="/data2";search.dispatchEvent(new window.Event("input",{bubbles:true}));
-  assert.equal(window.document.querySelectorAll("[data-drive-row]:not(.hidden)").length,1,"Search should filter drive rows");
-  assert.match(window.document.querySelector("[data-drive-row]:not(.hidden)").textContent,/\/data2/);
+  assert.equal(window.document.querySelectorAll("[data-drive-row][data-drive-filter-visible='1']").length,1,"Search should filter drive rows");
+  assert.match(window.document.querySelector("[data-drive-row][data-drive-filter-visible='1']").textContent,/\\/data2/);
   const stateFilter=window.document.querySelector("[data-drive-state-filter]");
   stateFilter.value="readonly";stateFilter.dispatchEvent(new window.Event("change",{bubbles:true}));
-  await waitFor(()=>window.document.querySelectorAll("[data-drive-row]").length===1,"filesystem state filter");
-  assert.match(window.document.querySelector("[data-drive-row]").textContent,/Read-only/);
+  await waitFor(()=>window.document.querySelectorAll("[data-drive-row][data-drive-filter-visible='1']").length===1,"filesystem state filter");
+  assert.match(window.document.querySelector("[data-drive-row][data-drive-filter-visible='1']").textContent,/Read-only/);
   window.document.querySelector("[data-drive-export]").click();
-  assert.equal(window.__lastDownload,"drive-inventory-"+new Date().toISOString().slice(0,10)+".csv","Export should download the filtered inventory");
+  assert.equal(window.__lastDownload,"drive-inventory-"+new Date().toISOString().slice(0,10)+".csv","Export should download filtered inventory");
   stateFilter.value="errors";stateFilter.dispatchEvent(new window.Event("change",{bubbles:true}));
-  await waitFor(()=>window.document.querySelectorAll("[data-drive-row]").length===1,"drive error filter");
-  assert.match(window.document.querySelector("[data-drive-row]").textContent,/1 \/ 0 \/ 0/,"Error filter should show the drive with reported errors");
+  await waitFor(()=>window.document.querySelectorAll("[data-drive-row][data-drive-filter-visible='1']").length===1,"drive error filter");
+  assert.match(window.document.querySelector("[data-drive-row][data-drive-filter-visible='1']").textContent,/1 \\/ 0 \\/ 0|0 \\/ 2 \\/ 0/,"Error filter should include a drive with reported errors");
+  window.document.querySelector('[data-drive-sort="path"]').click();
+  assert.equal(window.document.querySelector(".sort-indicator").textContent,"","Only the active sort indicator should be set");
   window.document.querySelector('[data-drive-view="graphs"]').click();
   await waitFor(()=>window.document.querySelector('[data-drive-view="graphs"][aria-selected="true"]'),"return to graphs tab");
   assert.ok(window.document.querySelector("#infra-filesystem-trend"),"Graphs tab should remain available after switching");
-
   await tick();
   await tick();
   console.log("DOM-backed frontend navigation and drive inventory tests passed.");
