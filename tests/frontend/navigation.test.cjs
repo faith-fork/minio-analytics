@@ -144,6 +144,7 @@ async function run() {
   await waitFor(() => window.document.querySelector('[data-drive-node-filter]'), "Drive Inventory tab");
   assert.equal(window.document.querySelectorAll("[data-drive-node-group]").length, 2, "All nodes should be grouped");
   assert.equal(window.document.querySelectorAll("[data-drive-row]").length, 3, "Individual drive rows should render");
+  assert.ok(window.document.querySelector("[data-drive-export]"), "Inventory should provide CSV export");
   assert.match(window.document.querySelector(".drive-inventory-summary").textContent, /3/);
   assert.ok(window.document.querySelector('[data-drive-row][data-drive-status="readonly"]'));
   assert.ok(window.document.querySelector('[data-drive-row][data-drive-error="1"]'));
