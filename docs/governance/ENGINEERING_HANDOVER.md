@@ -469,3 +469,17 @@ No merge or deployment is authorized by this checkpoint.
 - Verify exact PR head, complete diff, backend tests, frontend syntax and CI before requesting merge approval.
 - Review backup retention and cleanup behaviour, including audit failure handling and concurrent operations.
 - No VM deployment is authorized. User-owned browser/runtime validation is required after any later approved deployment.
+
+
+## 22. PR #57 merge checkpoint — 25 November 2026
+
+- PR #57, **Improve General Configuration and database backup management**, was squash-merged after explicit user approval.
+- PR: https://github.com/faith-fork/minio-analytics/pull/57
+- Source head: `3197bf1481588d6c8ce3053bb98545431c66b25a`
+- Merge commit: `9c3544444197d123d1c4f52eabc10bd2120bf137`
+- Verified `feature/prometheus-authentication` points exactly to the merge commit; compare result is identical (0 ahead / 0 behind).
+- CI on the exact PR head passed: 209 Python tests, 1 existing Starlette/httpx deprecation warning; frontend syntax validation passed.
+- PR #57 is closed and merged. No VM deployment has been performed or authorized by this merge approval.
+- Deployment gate remains separate: confirm the lab VM's branch, worktree, remote, current commit and service health before any update. Preserve any local modifications; do not reset or overwrite them.
+- After a separately approved deployment, the user must validate Collection Settings, Database Backups, pagination, backup creation/download, cleanup preview, password rejection/acceptance, stale-preview conflict handling, minimum-five preservation, unverified-file preservation and responsive layouts.
+- JavaScript DOM-backed navigation regression tests remain parked in Issue #56: https://github.com/faith-fork/minio-analytics/issues/56
