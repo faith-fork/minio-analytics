@@ -41,3 +41,13 @@ def test_dashboard_html_uses_asset_version_and_requires_revalidation(tmp_path, m
     assert b"/static/app.css?v=" in response.body
     assert b"/static/app.js?v=" in response.body
     assert response.headers["cache-control"] == "no-cache, must-revalidate"
+
+
+def test_dashboard_root_route_is_registered_to_dashboard_index():
+    root_routes = [
+        route for route in main.app.routes
+        if getattr(route, "path", None) == "/" and "GET" in getattr(route, "methods", set())
+    ]
+
+    assert len(root_routes) == 1
+    assert root_routes[0].endpoint is main.dashboard_index
