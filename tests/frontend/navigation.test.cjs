@@ -64,7 +64,7 @@ async function run() {
   window.eval(fs.readFileSync(path.join(root, "app/static/backfill-jobs.js"), "utf8"));
 
   await waitFor(
-    () => window.document.querySelector("#page-breadcrumb")?.textContent === "OVERVIEW",
+    () => window.document.querySelector("#content .metric-grid") !== null,
     "initial authenticated dashboard render",
   );
 
