@@ -173,7 +173,7 @@ async function run() {
   assert.ok(/1 \/ 0 \/ 0|0 \/ 2 \/ 0/.test(window.document.querySelector("[data-drive-row][data-drive-filter-visible='1']").textContent),"Error filter should include a drive with reported errors");
   search.value="";search.dispatchEvent(new window.Event("input",{bubbles:true}));
   stateFilter.value="all";stateFilter.dispatchEvent(new window.Event("change",{bubbles:true}));
-  nodeFilter.value="all";nodeFilter.dispatchEvent(new window.Event("change",{bubbles:true}));
+  const nodeFilterReset=window.document.querySelector("[data-drive-node-filter]");nodeFilterReset.value="all";nodeFilterReset.dispatchEvent(new window.Event("change",{bubbles:true}));
   await waitFor(()=>window.document.querySelectorAll("[data-drive-row][data-drive-filter-visible='1']").length===3,"reset inventory filters");
   window.document.querySelector('[data-drive-sort="path"]').click();
   assert.match(window.document.querySelector('[data-drive-sort="path"] .sort-indicator').textContent,/▲|▼/,"Selected sort column should show its direction");
