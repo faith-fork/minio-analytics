@@ -517,8 +517,9 @@ No merge or deployment is authorized by this checkpoint.
 - All four assets showed the same fingerprint query value: `0958cb659fb2458b`.
 - Git worktree remained clean after deployment.
 
-### Acceptance boundary / next action
-- Deployment stages 1–3 (preflight, exact fast-forward, restart/runtime verification) are complete and passed based on user-provided terminal evidence.
-- **Browser acceptance remains pending.** User must confirm normal refresh loads the dashboard and validate login, sidebar navigation, Master Configuration tabs (General Configuration, Database Backups, Prometheus Configuration, Historical Backfill), other views, and absence of browser-console errors. Check that asset requests contain `?v=0958cb659fb2458b`.
-- Do not mark full runtime acceptance complete until the user reports browser validation.
-- No further deployment is requested by this checkpoint.
+### Browser acceptance — 25 November 2026
+- User supplied screenshots confirming the dashboard Overview renders; Master Configuration navigation works; General Configuration / Collection Settings renders; Database Backups renders with pagination and backup integrity status; Prometheus Configuration renders with configured endpoint; and Historical Backfill renders.
+- The screenshots also show an authenticated Admin session and the sidebar navigation in the expected state.
+- Combined with deployment-stage 1–3 evidence, **browser functional acceptance is passed for the displayed views**.
+- Browser Console error status and explicit Network-panel verification of fingerprinted asset requests were not included in the evidence; these remain unverified, but do not block the demonstrated navigation/UI acceptance.
+- Deployment/runtime acceptance for PR #59 is therefore recorded as passed for the checks evidenced by terminal output and screenshots. No further deployment is requested by this checkpoint.
