@@ -1099,7 +1099,7 @@ $("#content").addEventListener("change",async e=>{
 });
 $("#content").addEventListener("change",e=>{if(e.target.matches("[data-performance-node]")){const checked=$$("[data-performance-node]:checked",$("#content")).map(el=>el.value);state.performanceSelectedNodes=checked;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));}});
 $("#content").addEventListener("input",e=>{
-  if(e.target.matches("[data-drive-search]")){state.driveInventoryPage=1;applyDriveInventoryTable();return;}
+  if(e.target.matches("[data-drive-search]")){state.driveInventoryPage=1;window.applyDriveInventoryTable();return;}
   if(e.target.matches("[data-drive-page-size]")){state.driveInventoryPage=1;window.applyDriveInventoryTable();return;}
   if(e.target.id==="bucket-filter"){const q=e.target.value.toLowerCase();$("tbody tr",$("#content")).forEach(row=>row.classList.toggle("hidden",!row.textContent.toLowerCase().includes(q)));return;}
   if(e.target.matches("[data-bucket-filter-search]")){
