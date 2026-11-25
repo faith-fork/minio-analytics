@@ -153,7 +153,8 @@ async function run() {
   assert.match(window.document.querySelector(".drive-inventory-summary").textContent, /30/);
   assert.match(window.document.querySelector("[data-drive-page-summary]").textContent,/1–25 of 30/);
   window.document.querySelector("[data-drive-page=next]").click();
-  assert.match(window.document.querySelector("[data-drive-page-summary]").textContent,/26–30 of 30/);\n  window.document.querySelector("[data-drive-page=prev]").click();
+  assert.match(window.document.querySelector("[data-drive-page-summary]").textContent,/26–30 of 30/);
+  window.document.querySelector("[data-drive-page=prev]").click();
   assert.ok(window.document.querySelector('[data-drive-row][data-drive-status="readonly"]'));
   assert.ok(window.document.querySelector('[data-drive-row][data-drive-error="1"]'));
 
