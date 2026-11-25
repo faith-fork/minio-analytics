@@ -1,7 +1,7 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
 if(window.Chart&&window.ChartZoom){Chart.register(ChartZoom);Chart.defaults.plugins.zoom={pan:{enabled:true,mode:"x",modifierKey:"shift"},zoom:{wheel:{enabled:true,speed:0.08},drag:{enabled:true,backgroundColor:"rgba(19,165,139,.12)",borderColor:"#13a58b",borderWidth:1},pinch:{enabled:true},mode:"x"}};}
-const state = { user:null, view:"overview", overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:null };
+const state = { user:null, view:"overview", masterConfigTab:"general", masterGeneralTab:"collection", backupPageSize:10, backupOffset:0, overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:null };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
 const bytes = n => n == null ? "—" : (n/1024**4).toFixed(2)+" TiB";
 const tibValue = n => n == null ? "—" : (n/1024**4).toFixed(2);
@@ -167,7 +167,31 @@ function drawObjectSizeHistogram(data){
   state.charts.push(instance);
   ensureChartControls(instance);
 }
-function setView(view){state.view=view;$$(".nav-link").forEach(b=>b.classList.toggle("active",b.dataset.view===(["bucket-usage-report","raw-capacity-report"].includes(view)?"capacity-report":view)));$("#page-breadcrumb").textContent=(["capacity-report","bucket-usage-report","raw-capacity-report"].includes(view)?"REPORTS":view.replaceAll("-"," ")).toUpperCase();render().catch(e=>toast(e.message,true));}
+function setView(view){
+  if(view==="master-admin"){view="master-config";state.masterConfigTab="general";}
+  else if(view==="prometheus-connections"){view="master-config";state.masterConfigTab="prometheus";}
+  else if(view==="backfill-jobs"){view="master-config";state.masterConfigTab="backfill";}
+  state.view=view;
+  $$(".nav-link").forEach(b=>b.classList.toggle("active",b.dataset.view===(["bucket-usage-report","raw-capacity-report"].includes(view)?"capacity-report":view)));
+  $("#page-breadcrumb").textContent=(["capacity-report","bucket-usage-report","raw-capacity-report"].includes(view)?"REPORTS":view==="master-config"?"MASTER CONFIGURATION":view.replaceAll("-"," ")).toUpperCase();
+  render().catch(e=>toast(e.message,true));
+}
+async function renderMasterConfiguration(){
+  const tabs=[["general","General Configuration"],["prometheus","Prometheus Configuration"],["backfill","Historical Backfill"]];
+  const active=state.masterConfigTab;
+  $("#content").innerHTML=pageHead("Master Configuration","Manage application settings, Prometheus connections and historical collection.")+
+    '<div class="master-config-tabs" role="tablist" aria-label="Master Configuration">'+
+    tabs.map(([key,label])=>'<button type="button" role="tab" class="master-config-tab'+(active===key?' active':'')+'" data-master-config-tab="'+key+'" aria-selected="'+(active===key)+'">'+label+'</button>').join("")+
+    '</div><section id="master-config-panel" class="master-config-panel" role="tabpanel" aria-label="'+tabs.find(([key])=>key===active)[1]+'"><div class="loading-state">Loading configuration…</div></section>';
+  if(active==="general") await renderMasterAdmin();
+  else if(active==="prometheus") await window.renderPrometheusConnections();
+  else if(active==="backfill") await window.renderBackfillJobs();
+}
+function setMasterConfigTab(tab){
+  if(!["general","prometheus","backfill"].includes(tab))return;
+  state.masterConfigTab=tab;
+  renderMasterConfiguration().catch(e=>toast(e.message,true));
+}
 async function loadOverview(){state.overview=await api("/api/analytics/overview");state.clusters=(await api("/api/analytics/clusters")).items;}
 async function render(){
   clearCharts();$("#content").innerHTML='<div class="loading-state">Loading dashboard data…</div>';
@@ -180,8 +204,7 @@ async function render(){
   else if(state.view==="buckets") await renderBuckets();
   else if(state.view==="health") await renderHealth();
   else if(state.view==="users" && state.user.role==="admin") await renderUsers();
-  else if(state.view==="master-admin" && state.user.is_master_admin) await renderMasterAdmin();
-  else if(state.view==="backfill-jobs" && state.user.is_master_admin) await window.renderBackfillJobs();
+  else if(state.view==="master-config" && state.user.is_master_admin) await renderMasterConfiguration();
 }
 async function renderOverview(){
   await loadOverview();const o=state.overview,c=o.capacity_bytes,n=o.nodes;
@@ -325,29 +348,64 @@ async function renderClusters(){
 }
 
 async function renderMasterAdmin(){
-  const [d, backups] = await Promise.all([
+  const [d,backups]=await Promise.all([
     api("/api/master-admin/settings"),
-    api("/api/master-admin/backups")
+    api("/api/master-admin/backups?limit="+state.backupPageSize+"&offset="+state.backupOffset)
   ]);
-  const s=d.settings,u=d.telemetry_usage||{};
-  const backupRows=backups.items.map(b=>`<tr><td><span class="cell-strong">${esc(b.filename)}</span></td><td>${timestampLabel(b.created_at)}</td><td>${fmt(b.size_bytes/1024/1024,2)} MiB</td><td>${pill("success")} Verified</td><td><a class="table-link" href="${esc(b.download_url)}">Download ↓</a></td></tr>`);
-  const telemetryPanel='<section class="panel" style="max-width:100%;margin-bottom:16px"><div class="panel-header"><div><h3>Infrastructure telemetry footprint</h3><p>Current high-frequency sample counts and SQLite storage footprint.</p></div><span class="panel-tag">RETENTION MONITORING</span></div><div class="metric-grid">'+metric("COLLECTION RUNS",fmt(u.collection_runs,0),"Stored node-health snapshots","◷")+metric("NODE SAMPLES",fmt(u.node_samples,0),"Per-node records","⌁")+metric("DRIVE SAMPLES",fmt(u.drive_samples,0),"Per-drive records","▤")+metric("DATABASE SIZE",fmt((u.database_size_bytes||0)/1024/1024,2)+" MiB","Entire analytics database","▣")+"</div><p class=\"cell-muted\">Database size includes reports and configuration data, not only infrastructure telemetry. SQLite reuses freed pages, so the file may not shrink after cleanup. WAL currently uses "+fmt((u.wal_size_bytes||0)/1024/1024,2)+" MiB. Last retention cleanup: "+(u.last_cleanup_at?timestampLabel(u.last_cleanup_at):"Not yet run")+" · "+(u.last_cleanup_status||"Pending")+(u.last_cleanup_error?" · "+esc(u.last_cleanup_error):"")+".</p></section>";
-  $("#content").innerHTML=pageHead("Master Admin","Configure collector cadence and manage verified database backups.")+
-    `<section class="panel" style="max-width:760px;margin-bottom:16px"><div class="panel-header"><div><h3>Collector schedule</h3><p>All times use Asia/Kolkata (IST).</p></div><span class="panel-tag">LIVE SETTINGS</span></div>
-    <form id="master-settings-form" class="form-grid" style="display:grid;gap:14px;max-width:520px">
-      <label>Node, drive health and filesystem interval (minutes)<input class="form-control" type="number" name="node_interval_minutes" min="1" max="60" step="1" value="${s.node_interval_minutes}" required></label>
-      <p class="cell-muted">Default: every 5 minutes. Valid range: 1–60 minutes. Daily capacity, bucket and storage-topology collection remains separate.</p>
-      <label>Detailed infrastructure telemetry retention (days)<input class="form-control" type="number" name="telemetry_retention_days" min="1" max="90" step="1" value="${s.telemetry_retention_days}" required></label>
-      <p class="cell-muted">Default: 3 days. Applies to high-frequency node and drive samples across all configured clusters. Expired samples are removed automatically once per day. Reducing retention deletes older samples at the next cleanup; increasing it cannot restore deleted data.</p>
-      <label>Daily capacity, bucket and pool collection time (IST)<input class="form-control" type="time" name="daily_collection_time" value="${esc(s.daily_collection_time)}" required></label>
-      <label>Confirm your Master Admin password<input class="form-control" type="password" name="current_password" autocomplete="current-password" required></label>
-      <div><button class="primary-button" type="submit">Save collector settings</button></div>
-    </form><p class="cell-muted" style="margin-top:14px">The scheduler checks settings every 60 seconds. Retention cleanup runs daily. Daily reports and storage-topology history are not affected. Scheduled database backups continue at their configured time.</p></section>`+
-    telemetryPanel+
-    `<section class="panel" style="max-width:100%"><div class="panel-header"><div><h3>Database backups</h3><p>Creates a consistent SQLite online backup and verifies it with PRAGMA integrity_check. The dashboard remains available.</p></div><button class="primary-small" data-action="create-backup">Create backup now</button></div><p class="cell-muted" style="margin:0 0 14px">Manual backups use the same backup directory as scheduled backups. Scheduled retention remains 14 days.</p></section>`+
-    table("Backup history",backups.count+" backup file(s)",["FILE","CREATED AT","SIZE","INTEGRITY",""],backupRows,"No database backups found.");
+  const s=d.settings,u=d.telemetry_usage||{},host=$("#master-config-panel")||$("#content");
+  const rows=backups.items.map(b=>'<tr><td><span class="cell-strong">'+esc(b.filename)+'</span></td><td>'+timestampLabel(b.created_at)+'</td><td>'+fmt(b.size_bytes/1024/1024,2)+' MiB</td><td>'+(b.integrity==="verified"?pill("success")+' Verified':pill("failed")+' Check failed')+'</td><td><a class="table-link" href="'+esc(b.download_url)+'">Download ↓</a></td></tr>').join("");
+  const cleanup=u.last_cleanup_status||"Pending";
+  const generalTabs='<div class="general-config-tabs" role="tablist" aria-label="General configuration sections">'+
+    '<button type="button" role="tab" aria-selected="'+(state.masterGeneralTab==="collection")+'" class="general-config-tab '+(state.masterGeneralTab==="collection"?"active":"")+'" data-general-config-tab="collection">Collection Settings</button>'+
+    '<button type="button" role="tab" aria-selected="'+(state.masterGeneralTab==="backups")+'" class="general-config-tab '+(state.masterGeneralTab==="backups"?"active":"")+'" data-general-config-tab="backups">Database Backups</button></div>';
+  const collectionPanel='<section class="config-section"><div class="config-section-heading"><div><span class="config-kicker">01 / COLLECTION POLICY</span><h2>Collection settings</h2><p>Control high-frequency infrastructure collection and daily snapshot timing.</p></div><span class="panel-tag">LIVE SETTINGS</span></div>'+
+    '<div class="config-settings-grid"><form id="master-settings-form" class="panel config-settings-form"><div class="config-field-grid">'+
+    '<label class="config-field"><span>Node, drive and filesystem interval</span><span class="config-input-wrap"><input class="form-control" type="number" name="node_interval_minutes" min="1" max="60" step="1" value="'+s.node_interval_minutes+'" required><small>minutes</small></span><small class="config-help">Default 5 minutes · Valid range 1–60</small></label>'+
+    '<label class="config-field"><span>Detailed telemetry retention</span><span class="config-input-wrap"><input class="form-control" type="number" name="telemetry_retention_days" min="1" max="90" step="1" value="'+s.telemetry_retention_days+'" required><small>days</small></span><small class="config-help">Default 3 days · Valid range 1–90</small></label>'+
+    '<label class="config-field config-field-wide"><span>Daily capacity, bucket and pool collection time</span><span class="config-input-wrap"><input class="form-control" type="time" name="daily_collection_time" value="'+esc(s.daily_collection_time)+'" required><small>IST</small></span><small class="config-help">Daily historical snapshots use Asia/Kolkata time. This is separate from high-frequency node and drive collection.</small></label>'+
+    '</div><div class="config-form-footer"><div><strong>Changes take effect automatically</strong><p>The scheduler checks settings every 60 seconds. Retention cleanup runs daily. Reducing retention removes expired samples at the next cleanup; deleted samples cannot be restored by increasing retention.</p></div><button class="primary-button" type="submit">Review &amp; save settings</button></div></form>'+
+    '<aside class="panel config-footprint"><div class="panel-header"><div><h3>Infrastructure telemetry</h3><p>Current high-frequency data footprint</p></div><span class="panel-tag">RETENTION</span></div><div class="config-stat-list">'+
+    '<div><span>Collection runs</span><strong>'+fmt(u.collection_runs,0)+'</strong></div><div><span>Node samples</span><strong>'+fmt(u.node_samples,0)+'</strong></div><div><span>Drive samples</span><strong>'+fmt(u.drive_samples,0)+'</strong></div><div><span>Database size</span><strong>'+fmt((u.database_size_bytes||0)/1024/1024,2)+' MiB</strong></div></div>'+
+    '<div class="config-cleanup-note"><span class="config-status-dot '+(cleanup==="success"?"is-good":cleanup==="failed"?"is-bad":"")+'"></span><div><strong>Last retention cleanup · '+esc(cleanup)+'</strong><p>'+(u.last_cleanup_at?timestampLabel(u.last_cleanup_at):"Not yet run")+(u.last_cleanup_error?" · "+esc(u.last_cleanup_error):"")+'</p></div></div>'+
+    '<p class="config-footnote">Database size includes configuration and report data. SQLite may reuse freed pages without shrinking the database file. WAL size: '+fmt((u.wal_size_bytes||0)/1024/1024,2)+' MiB.</p></aside></div></section>';
+  const total=Number(backups.total_count??backups.count??0),from=total?state.backupOffset+1:0,to=Math.min(state.backupOffset+state.backupPageSize,total),pages=Math.max(1,Math.ceil(total/state.backupPageSize));
+  const backupPanel='<section class="config-section"><div class="config-section-heading"><div><span class="config-kicker">02 / DATA PROTECTION</span><h2>Database backups</h2><p>Create, verify, download and safely clean up application database backups.</p></div><button class="primary-small" data-action="create-backup">Create backup now</button></div>'+
+    '<div class="panel config-backup-panel"><div class="config-backup-summary"><div class="config-backup-icon">▣</div><div><strong>'+total+' backup file(s)</strong><p>Automatic retention: 14 days · Keep at least 5 latest verified backups.</p></div><span class="config-verified-tag">Integrity checks enabled</span></div>'+
+    '<div class="backup-table-toolbar"><label>Rows per page <select id="backup-page-size" class="form-control"><option value="10" '+(state.backupPageSize===10?"selected":"")+'>10</option><option value="25" '+(state.backupPageSize===25?"selected":"")+'>25</option><option value="50" '+(state.backupPageSize===50?"selected":"")+'>50</option><option value="100" '+(state.backupPageSize===100?"selected":"")+'>100</option></select></label><span>Showing '+from+'–'+to+' of '+total+'</span></div>'+
+    '<div class="table-scroll"><table class="config-backup-table"><thead><tr><th>BACKUP FILE</th><th>CREATED</th><th>SIZE</th><th>INTEGRITY</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="5" class="empty-state">No database backups found.</td></tr>')+'</tbody></table></div>'+
+    '<div class="backup-pagination"><span>Page '+Math.min(Math.floor(state.backupOffset/state.backupPageSize)+1,pages)+' of '+pages+'</span><div><button type="button" class="secondary-button" data-action="backup-page-prev" '+(state.backupOffset===0?"disabled":"")+'>Previous</button><button type="button" class="secondary-button" data-action="backup-page-next" '+(to>=total?"disabled":"")+'>Next</button></div></div>'+
+    '<p class="config-footnote">Backups use SQLite online backup and are verified with PRAGMA integrity_check. Cleanup only considers application-managed backups, never follows symbolic links, and preserves unverified files for investigation.</p></div></section>'+
+    '<section class="config-section backup-cleanup-section"><div class="config-section-heading"><div><span class="config-kicker">03 / BACKUP HOUSEKEEPING</span><h2>Cleanup old backups</h2><p>Preview eligible backups before deleting anything. Unverified files are never automatically removed.</p></div></div>'+
+    '<div class="panel backup-cleanup-panel"><div class="backup-cleanup-fields"><label class="config-field"><span>Delete backups older than</span><span class="config-input-wrap"><input id="backup-retention-days" class="form-control" type="number" min="1" max="365" value="14" required><small>days</small></span></label>'+
+    '<label class="config-field"><span>Preserve at least</span><span class="config-input-wrap"><input id="backup-minimum-keep" class="form-control" type="number" min="1" max="100" value="5" required><small>verified backups</small></span></label></div>'+
+    '<div class="backup-cleanup-footer"><p>Cleanup requires Master Admin password confirmation. The latest verified backups are protected even when older than the selected retention period.</p><button type="button" class="secondary-button" data-action="review-backup-cleanup">Review eligible backups</button></div></div></section>';
+  host.innerHTML=pageHead("General Configuration","Manage collection schedules, telemetry retention and database protection.")+generalTabs+(state.masterGeneralTab==="collection"?collectionPanel:backupPanel);
 }
 
+async function reviewBackupCleanup(){
+  const retentionDays=Number($("#backup-retention-days")?.value||14),minimumKeep=Number($("#backup-minimum-keep")?.value||5);
+  if(!Number.isInteger(retentionDays)||retentionDays<1||retentionDays>365||!Number.isInteger(minimumKeep)||minimumKeep<1||minimumKeep>100){toast("Enter valid retention and minimum backup values.",true);return;}
+  try{
+    const preview=await api("/api/master-admin/backups/cleanup/preview",{method:"POST",body:JSON.stringify({retention_days:retentionDays,minimum_keep:minimumKeep})});
+    const candidates=preview.candidates||[],preserved=preview.preserved||[],unverified=preview.unverified||[];
+    const names=candidates.map(item=>'<li><strong>'+esc(item.filename)+'</strong><span>'+fmt(item.size_bytes/1024/1024,2)+' MiB</span></li>').join("");
+    $("#modal-root").innerHTML='<div class="modal-backdrop config-confirm-backdrop"><section class="modal config-confirm-dialog backup-cleanup-dialog" role="dialog" aria-modal="true" aria-labelledby="backup-cleanup-title"><div class="modal-header"><div><h2 id="backup-cleanup-title">Review backup cleanup</h2><p>Only the verified, expired application backups listed below will be deleted.</p></div><button type="button" class="modal-close" data-action="close-modal" aria-label="Close">×</button></div>'+
+      '<div class="backup-cleanup-preview-stats"><div><strong>'+candidates.length+'</strong><span>Eligible files</span></div><div><strong>'+fmt((preview.eligible_size_bytes||0)/1024/1024,2)+' MiB</strong><span>Potential space reclaimed</span></div><div><strong>'+preserved.length+'</strong><span>Verified backups preserved</span></div></div>'+
+      (candidates.length?'<ul class="backup-cleanup-candidate-list">'+names+'</ul>':'<div class="backup-cleanup-empty">No backups meet the selected cleanup criteria.</div>')+
+      '<p class="backup-cleanup-safety">'+preserved.length+' verified backup(s) will be preserved, including the newest '+minimumKeep+'. '+unverified.length+' unverified backup(s) will not be deleted.</p>'+
+      (candidates.length?'<form id="backup-cleanup-confirm-form"><label class="config-field"><span>Confirm with Master Admin password</span><input class="form-control" type="password" name="current_password" autocomplete="current-password" required></label><p class="form-error" id="backup-cleanup-error" role="alert"></p><div class="form-actions"><button type="button" class="secondary-button" data-action="close-modal">Cancel</button><button class="danger-button" type="submit">Confirm cleanup</button></div></form>':'<div class="form-actions"><button type="button" class="secondary-button" data-action="close-modal">Close</button></div>')+
+      '</section></div>';
+    const form=$("#backup-cleanup-confirm-form");
+    if(form)form.addEventListener("submit",async event=>{
+      event.preventDefault();const button=form.querySelector("button[type=submit]");button.disabled=true;button.textContent="Cleaning up…";
+      try{
+        const result=await api("/api/master-admin/backups/cleanup",{method:"POST",body:JSON.stringify({retention_days:retentionDays,minimum_keep:minimumKeep,preview_token:preview.preview_token,current_password:new FormData(form).get("current_password")})});
+        $("#modal-root").innerHTML="";toast("Backup cleanup completed: "+result.deleted_count+" file(s), "+fmt(result.deleted_size_bytes/1024/1024,2)+" MiB reclaimed.");state.backupOffset=0;await renderMasterAdmin();
+      }catch(err){$("#backup-cleanup-error").textContent=err.message;button.disabled=false;button.textContent="Confirm cleanup";}
+    });
+    form?.querySelector("input[name=current_password]")?.focus();
+  }catch(err){toast(err.message,true);}
+}
 function rangeControl(days,kind,id,attribution="current") {
   const options=[[7,"Last 7 days"],[30,"Last 30 days"],[60,"Last 60 days"],[90,"Last 90 days"],[180,"Last 6 months"],[365,"Last 12 months"]];
   return '<div class="toolbar trend-controls"><label for="trend-range" class="cell-muted">Trend period</label><select id="trend-range" class="form-control" data-trend-kind="'+kind+'" data-trend-id="'+esc(id)+'" data-trend-attribution="'+attribution+'">'+options.map(([value,label])=>'<option value="'+value+'" '+(Number(days)===value?'selected':'')+'>'+label+'</option>').join('')+'<option value="custom">Custom range</option></select><label class="trend-date-label" for="trend-start">From</label><input type="date" id="trend-start" class="form-control" aria-label="Start date"><label class="trend-date-label" for="trend-end">To</label><input type="date" id="trend-end" class="form-control" aria-label="End date"><button class="secondary-button" data-action="apply-trend-dates" data-trend-kind="'+kind+'" data-trend-id="'+esc(id)+'" data-trend-attribution="'+attribution+'">Apply</button></div>';
@@ -777,6 +835,8 @@ document.addEventListener("click",async e=>{
     if(mode==="graph"){const instance=state.charts.find(item=>item.canvas?.id==="object-size-histogram");if(instance)instance.resize();}
     return;
   }
+  const generalConfigTab=e.target.closest("[data-general-config-tab]");if(generalConfigTab){state.masterGeneralTab=generalConfigTab.dataset.generalConfigTab;state.backupOffset=0;renderMasterAdmin().catch(err=>toast(err.message,true));return;}
+  const masterConfigTab=e.target.closest("[data-master-config-tab]");if(masterConfigTab){setMasterConfigTab(masterConfigTab.dataset.masterConfigTab);return;}
   const reportView=e.target.closest("[data-report-view]");if(reportView){setView(reportView.dataset.reportView);return;}
   const view=e.target.closest("[data-view]");if(view){e.preventDefault();setView(view.dataset.view);return;}
   const cluster=e.target.closest("[data-cluster]");if(cluster){try{await showCluster(cluster.dataset.cluster);}catch(err){toast(err.message,true);}return;}
@@ -846,6 +906,9 @@ document.addEventListener("click",async e=>{
     const run=kind==="cluster"||kind==="cluster-snapshots"?(kind==="cluster-snapshots"?showClusterSnapshots(id,90,start,end):showCluster(id,90,start,end)):kind==="tenant"||kind==="tenant-snapshots"?(kind==="tenant-snapshots"?showTenantSnapshots(Number(id),mode,90,start,end):showTenant(Number(id),mode,90,start,end)):kind==="bucket-snapshots"?showBucketSnapshots(Number(id),90,start,end):showBucket(Number(id),90,start,end);
     run.catch(err=>toast(err.message,true));
   }
+  if(action==="backup-page-prev"){state.backupOffset=Math.max(0,state.backupOffset-state.backupPageSize);renderMasterAdmin().catch(err=>toast(err.message,true));return;}
+  if(action==="backup-page-next"){state.backupOffset+=state.backupPageSize;renderMasterAdmin().catch(err=>toast(err.message,true));return;}
+  if(action==="review-backup-cleanup"){reviewBackupCleanup();return;}
   if(action==="create-backup"){
     const button=e.target.closest("[data-action='create-backup']");
     if(button){button.disabled=true;button.textContent="Creating backup…";}
@@ -869,12 +932,18 @@ $("#logout-button").addEventListener("click",async()=>{try{await api("/api/auth/
 $("#refresh-button").addEventListener("click",()=>render().catch(e=>toast(e.message,true)));
 $("#content").addEventListener("submit",async e=>{
   if(e.target.id!=="master-settings-form")return;
-  e.preventDefault();const f=new FormData(e.target);
-  try{
-    await api("/api/master-admin/settings",{method:"PUT",body:JSON.stringify({node_interval_minutes:Number(f.get("node_interval_minutes")),telemetry_retention_days:Number(f.get("telemetry_retention_days")),daily_collection_time:f.get("daily_collection_time"),current_password:f.get("current_password")})});
-    toast("Collector cadence and telemetry retention settings saved.");
-    await renderMasterAdmin();
-  }catch(err){toast(err.message,true);}
+  e.preventDefault();const form=e.target;if(!form.reportValidity())return;
+  const values={node_interval_minutes:Number(form.elements.node_interval_minutes.value),telemetry_retention_days:Number(form.elements.telemetry_retention_days.value),daily_collection_time:form.elements.daily_collection_time.value};
+  $("#modal-root").innerHTML='<div class="modal-backdrop config-confirm-backdrop"><section class="modal config-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="config-confirm-title"><div class="modal-header"><div><h2 id="config-confirm-title">Confirm configuration changes</h2><p>Enter your Master Admin password to save these settings.</p></div><button type="button" class="modal-close" data-action="close-modal" aria-label="Close">×</button></div><form id="master-settings-confirm-form"><label class="config-field"><span>Master Admin password</span><input class="form-control" type="password" name="current_password" autocomplete="current-password" required autofocus></label><p class="form-error" id="config-confirm-error" role="alert"></p><div class="form-actions"><button type="button" class="secondary-button" data-action="close-modal">Cancel</button><button class="primary-small" type="submit">Confirm &amp; save</button></div></form></section></div>';
+  const confirmForm=$("#master-settings-confirm-form");
+  confirmForm.addEventListener("submit",async event=>{
+    event.preventDefault();const button=confirmForm.querySelector("button[type=submit]");button.disabled=true;button.textContent="Saving…";
+    try{
+      await api("/api/master-admin/settings",{method:"PUT",body:JSON.stringify({...values,current_password:new FormData(confirmForm).get("current_password")})});
+      $("#modal-root").innerHTML="";toast("Collection settings saved successfully.");await renderMasterAdmin();
+    }catch(err){$("#config-confirm-error").textContent=err.message;button.disabled=false;button.textContent="Confirm & save";}
+  });
+  confirmForm.querySelector("input[name=current_password]").focus();
 });
 $("#content").addEventListener("submit",async e=>{
   if(e.target.id!=="capacity-factors-form")return;
@@ -886,6 +955,7 @@ $("#content").addEventListener("submit",async e=>{
   }catch(err){toast(err.message,true);if(button){button.disabled=false;button.textContent="Save & recalculate";}}
 });
 $("#content").addEventListener("change",async e=>{
+  if(e.target.id==="backup-page-size"){state.backupPageSize=Number(e.target.value)||10;state.backupOffset=0;renderMasterAdmin().catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-bucket-filter-option]")){
     const key=e.target.dataset.bucketFilterOption,value=e.target.value,selected=new Set(state.bucketUsageFilterDraft[key]||[]);
     if(e.target.checked)selected.add(value);else selected.delete(value);

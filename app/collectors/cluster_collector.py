@@ -69,7 +69,8 @@ def collect_cluster_snapshot(
     """
     own_client = client is None
     prom = client or PrometheusClient(
-        location.prometheus_url, verify_tls=location.verify_tls
+        location.prometheus_url, verify_tls=location.verify_tls,
+        auth_header=location.auth_header
     )
     collected_at = datetime.now(timezone.utc)
     timestamp = int(snapshot_ts.timestamp())

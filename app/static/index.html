@@ -8,13 +8,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/app.css?v=__ASSET_VERSION__">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js" defer></script>
-  <script src="/static/app.js" defer></script>
-  <script src="/static/prometheus-connections.js" defer></script>
-  <script src="/static/backfill-jobs.js" defer></script>
+  <script src="/static/app.js?v=__ASSET_VERSION__" defer></script>
+  <script src="/static/prometheus-connections.js?v=__ASSET_VERSION__" defer></script>
+  <script src="/static/backfill-jobs.js?v=__ASSET_VERSION__" defer></script>
 </head>
 <body>
   <main id="login-screen" class="login-screen">
@@ -58,10 +58,8 @@
         <button class="nav-link" data-view="tenants"><span>◇</span> Tenants</button>
         <button class="nav-link" data-view="buckets"><span>▤</span> Buckets</button>
         <button class="nav-link" data-view="health"><span>⌁</span> Collection health</button>
-        <button class="nav-link admin-only hidden" data-view="users"><span>♙</span> User administration</button>
-        <button class="nav-link master-admin-only hidden" data-view="master-admin"><span>⚙</span> Master Admin</button>
-        <button class="nav-link master-admin-only hidden" data-view="prometheus-connections"><span>⌁</span> Prometheus connections</button>
-        <button class="nav-link master-admin-only hidden" data-view="backfill-jobs"><span>◷</span> Historical backfill</button>
+        <button class="nav-link admin-only hidden" data-view="users"><span>♙</span> User Administration</button>
+        <button class="nav-link master-admin-only hidden" data-view="master-config"><span>⚙</span> Master Configuration</button>
       </nav>
       <div class="sidebar-bottom">
         <div class="side-label">SESSION</div>

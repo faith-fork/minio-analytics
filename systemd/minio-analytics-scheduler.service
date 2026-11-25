@@ -11,6 +11,7 @@ Group=root
 WorkingDirectory=/opt/minio-analytics
 Environment=PYTHONUNBUFFERED=1
 Environment=MINIO_ANALYTICS_CONFIG=/opt/minio-analytics/config/locations.yaml
+EnvironmentFile=/etc/minio-analytics/web.env
 Environment=MINIO_ANALYTICS_DB=/data/minio-analytics/database/minio_analytics.db
 ExecStart=/opt/minio-analytics/.venv/bin/python -m scripts.scheduler_tick
 UMask=0077

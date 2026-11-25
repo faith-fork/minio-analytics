@@ -30,7 +30,7 @@ See [ADR-001: Telemetry Sources and Collection Architecture](docs/architecture/d
 - HTML, CSS, and vanilla JavaScript
 - Chart.js
 - Prometheus HTTP API
-- systemd service/timer for scheduled collection
+- systemd dynamic scheduler timer for recurring collection jobs
 
 ## Deployment paths
 
@@ -152,17 +152,20 @@ Prometheus retention must cover the requested dates. The cluster growth calculat
 
 ## Scheduled collection and SQLite backups
 
-Systemd unit files are provided under `systemd/`:
+Scheduled work is driven by the dynamic scheduler. The repository provides these systemd units under `systemd/`:
 
-- `minio-analytics-collect.timer`: daily at 00:15 Asia/Kolkata; collection queries Prometheus at midnight IST for the current local date.
+- `minio-analytics-scheduler.timer`: invokes the scheduler tick every minute.
+- `minio-analytics-scheduler.service`: reads collection settings from SQLite and runs due jobs. The daily collection time is controlled by the `daily_collection_time` application setting (default `00:15` Asia/Kolkata); the daily snapshot is taken at 00:00 IST for that calendar date. Node-health collection follows the configured `node_interval_minutes` setting. The scheduler also processes one eligible historical-backfill day per tick and performs telemetry-retention cleanup when due.
 - `minio-analytics-backup.timer`: daily at 00:45 Asia/Kolkata; creates a consistent SQLite online backup and retains the latest 14 days by age.
+- `minio-analytics-collect.service`: retained as an operator-invoked oneshot for controlled/manual daily collection. It is not paired with or enabled by a daily collector timer; normal scheduled daily collection runs inside the dynamic scheduler.
 
 Install on the lab VM after pulling the repository:
 
 ```bash
 install -d -m 0750 /data/minio-analytics/{database,backups,logs,exports}
+install -m 0600 systemd/minio-analytics-scheduler.service /etc/systemd/system/
+install -m 0644 systemd/minio-analytics-scheduler.timer /etc/systemd/system/
 install -m 0600 systemd/minio-analytics-collect.service /etc/systemd/system/
-install -m 0644 systemd/minio-analytics-collect.timer /etc/systemd/system/
 install -m 0600 systemd/minio-analytics-backup.service /etc/systemd/system/
 install -m 0644 systemd/minio-analytics-backup.timer /etc/systemd/system/
 systemctl daemon-reload
@@ -171,17 +174,17 @@ systemctl daemon-reload
 Validate the units before enabling timers:
 
 ```bash
-systemd-analyze verify /etc/systemd/system/minio-analytics-collect.service /etc/systemd/system/minio-analytics-collect.timer /etc/systemd/system/minio-analytics-backup.service /etc/systemd/system/minio-analytics-backup.timer
+systemd-analyze verify /etc/systemd/system/minio-analytics-scheduler.service /etc/systemd/system/minio-analytics-scheduler.timer /etc/systemd/system/minio-analytics-collect.service /etc/systemd/system/minio-analytics-backup.service /etc/systemd/system/minio-analytics-backup.timer
 ```
 
-Enable both schedules only after a successful manual run and backup test:
+Enable the dynamic scheduler and backup schedules only after validating the application configuration and a successful backup test:
 
 ```bash
-systemctl enable --now minio-analytics-collect.timer minio-analytics-backup.timer
+systemctl enable --now minio-analytics-scheduler.timer minio-analytics-backup.timer
 systemctl list-timers --all | grep minio-analytics
 ```
 
-Inspect executions with `journalctl -u minio-analytics-collect.service` and `journalctl -u minio-analytics-backup.service`. The collection service runs as root because the current lab deployment and protected local configuration are root-owned; adjust `User`, `Group`, file ownership, and directory permissions together if a dedicated service account is introduced.
+Do not install, enable, or recreate a `minio-analytics-collect.timer`. The scheduler is the sole owner of recurring collection cadence. The standalone collector service is available only for deliberate operator-triggered execution. Inspect scheduled jobs with `journalctl -u minio-analytics-scheduler.service` and backups with `journalctl -u minio-analytics-backup.service`. Services run as root in the current lab deployment to match the protected environment file and data-directory ownership; adjust `User`, `Group`, file ownership, and directory permissions together if a dedicated service account is introduced.
 
 
 ## Web API authentication foundation

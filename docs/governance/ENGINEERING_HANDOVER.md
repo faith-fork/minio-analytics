@@ -374,3 +374,152 @@ The user confirmed that Prometheus endpoints may be configured as reachable IP a
 - Fix commits: 6e2290518f0e93810c88586111a9a85f9cd257e8 (policy) and 4fe6a851ce3842af9658d21ad9ee6a0ab9012c7f (tests).
 - CI must rerun against the resulting exact PR head before the fix can be considered validated.
 - No merge or deployment is authorized by this checkpoint.
+
+
+## 19. Master Configuration workspace — 24 November 2026
+
+### Product decision and navigation
+- Consolidate the former Master Admin, Prometheus Connections and Historical Backfill entry points into one **Master Configuration** workspace.
+- The workspace contains three tabs: **General Configuration**, **Prometheus Configuration** and **Historical Backfill**.
+- **User Administration remains a separate sidebar item** and retains its existing admin-role visibility. It is not part of the Master Admin-only workspace.
+- Preserve existing validated workflows, role checks, APIs, connection/discovery behaviour, credential lifecycle, backfill jobs and stored history.
+
+### PR #52 — implementation under review
+- URL: https://github.com/faith-fork/minio-analytics/pull/52
+- Branch: `feature/master-configuration-workspace`
+- Base: `feature/prometheus-authentication`
+- Base SHA: `12883b12bafd3de5cc34fb7e4937bde324ad56d5` (PR #51 merge commit).
+- Current head at initial CI verification: `7c3bb432f2d39cabf33553a70e1bfb6aec56b856`.
+- Branch comparison: 6 commits ahead, 0 behind; merge base equals the PR #51 merge commit.
+- Changed files: `app/static/index.html`, `app/static/app.js`, `app/static/app.css`, `app/static/prometheus-connections.js`, `app/static/backfill-jobs.js`, and new `tests/test_master_configuration_navigation.py`.
+- Scope: frontend navigation/rendering and focused regression tests. No API contract, database schema, collector, scheduler, dependency, credential-storage or VM changes.
+- Existing view identifiers are mapped to their corresponding new tabs for compatibility.
+- Prometheus and backfill renderers are reused within the shared tab panel; General Configuration reuses the existing settings and backup implementation.
+
+### CI and review
+- GitHub Actions run [45420575644](https://github.com/faith-fork/minio-analytics/actions/runs/45420575644) on exact head `7c3bb432f2d39cabf33553a70e1bfb6aec56b856` completed successfully.
+- Python 3.12 regression suite: **194 passed, 1 non-blocking Starlette TestClient/httpx deprecation warning**.
+- Frontend JavaScript syntax validation: **passed**.
+- Complete PR patch reviewed. GitHub reported mergeable; no review submissions or inline review threads were present at the check.
+- PR remains Draft/open and unmerged. No merge approval or deployment approval is implied by this handover.
+- VM deployment and browser validation have not been performed. User owns runtime validation and acceptance.
+
+### Required next validation
+- Verify Master Configuration is visible only to Master Admin.
+- Verify the three tabs render and switch correctly.
+- Verify General Configuration save and backup history.
+- Verify Prometheus connection list, add/test, authentication and cluster discovery workflows.
+- Verify Historical Backfill job creation, progress and actions.
+- Verify User Administration remains separately visible to Admin users and retains its existing role controls.
+- Verify normal navigation, reports, cluster pages and Collection Health remain unaffected.
+
+### Integration note
+The Charter designates `feature/auth-foundation` as the integration branch. PR #52 is intentionally based on `feature/prometheus-authentication` because it depends on the newer PR #51 integration containing the Prometheus connection and backfill experiences being reorganized. Do not retarget or merge it to the older integration branch without first reconciling the prerequisite feature stack and verifying the complete ancestry.
+
+This section records the PR #52 checkpoint only. It does not supersede the Charter's merge, deployment or runtime-acceptance gates.
+
+
+## 20. General Configuration and Historical Backfill UI refinement — 24 November 2026
+
+### Approved design direction
+- Balanced enterprise dashboard layout for both General Configuration and Historical Backfill.
+- General Configuration: two-column collection settings and telemetry footprint, compact backup management and history, contextual explanations, and password confirmation at save time.
+- Historical Backfill: distinct job-creation and execution-monitoring sections, cluster selection, date presets, visible range constraints, summary counters, progress cards, outcome counts and grouped job actions.
+
+### Implementation checkpoint
+- Feature branch: feature/configuration-ui-refinement
+- Base: current deployed feature/prometheus-authentication head 37065f982040062064a2fb843c4b262f4c83bc19, including merged Master Configuration navigation regression fix PR #53.
+- Scope: frontend presentation and focused regression tests only.
+- Existing API routes, authorization, settings validation, scheduler behaviour, retention policy, backup integrity verification, backfill lifecycle, 60-day limit and stored history are preserved.
+- No schema migration, API contract change, dependency change or VM modification is included.
+- Automated tests, exact-head CI, complete patch review and browser validation remain pending.
+
+No merge or deployment is authorized by this checkpoint.
+
+
+## 21. General Configuration and database backup management — 24 November 2026
+
+### Approved product direction
+- Split General Configuration into two secondary workspaces: **Collection Settings** and **Database Backups**.
+- Keep the existing top-level Master Configuration tabs: General Configuration, Prometheus Configuration and Historical Backfill.
+- Show 10 backup records by default, with page sizes 10, 25, 50 and 100.
+- Add administrator-reviewed cleanup of old backups with a preview, password confirmation and an audit trail.
+- Preserve the latest configurable number of verified backups (default 5), including when older than the retention window.
+- Unverified files must be preserved for investigation; cleanup must never follow symlinks or remove files outside the application-managed backup naming pattern.
+- Automatic retention and manual cleanup must apply the same age and minimum-keep safeguards.
+
+### PR #57 — implementation checkpoint
+- URL: https://github.com/faith-fork/minio-analytics/pull/57
+- Branch: `feature/backup-management-workspace`
+- Base: `feature/prometheus-authentication` at `850ff98e80855a0dd2981f26f17292ce6e78a255` (merged PR #55).
+- Application/test head reviewed and validated: `d9d5034025f082dfcf5680d9571b99359d0c58bc`. This checkpoint update is documentation-only; verify the live PR head and CI again after it is committed.
+- Compare at PR creation: 16 commits ahead, 0 behind; merge base equals the deployed PR #55 commit.
+- Changed files at PR creation: `app/api/master_admin.py`, `app/static/app.css`, `app/static/app.js`, `scripts/backup_database.py`, `tests/test_backup_management.py`, and `tests/test_master_configuration_navigation.py`.
+- No database schema migration or dependency change is intended.
+- Existing settings, backup creation and download routes remain; cleanup preview and execution routes are additive.
+- Backup cleanup audit records are written to `/data/minio-analytics/logs/backup-cleanup-audit.jsonl` with restrictive file permissions.
+- Draft PR created for review. GitHub Actions run [45453807552](https://github.com/faith-fork/minio-analytics/actions/runs/45453807552) on exact application/test head `d9d5034025f082dfcf5680d9571b99359d0c58bc` passed: **209 Python tests passed, 1 existing Starlette/httpx deprecation warning; frontend syntax validation passed**. Complete diff reviewed; PR is mergeable, with no review comments submitted. Browser/runtime validation remains pending. No merge or deployment approval is given.
+
+### Explicitly deferred navigation-test improvement
+- GitHub Issue #56: https://github.com/faith-fork/minio-analytics/issues/56
+- Scope: add executable DOM-backed JavaScript navigation tests for `setView`, Master Configuration tab switching, legacy view aliases and selector/DOM assumptions; run them in CI.
+- This is intentionally separate from PR #57 to keep backup-management scope focused.
+
+### Release and safety gates
+- Verify exact PR head, complete diff, backend tests, frontend syntax and CI before requesting merge approval.
+- Review backup retention and cleanup behaviour, including audit failure handling and concurrent operations.
+- No VM deployment is authorized. User-owned browser/runtime validation is required after any later approved deployment.
+
+
+## 22. PR #57 merge checkpoint — 25 November 2026
+
+- PR #57, **Improve General Configuration and database backup management**, was squash-merged after explicit user approval.
+- PR: https://github.com/faith-fork/minio-analytics/pull/57
+- Source head: `3197bf1481588d6c8ce3053bb98545431c66b25a`
+- Merge commit: `9c3544444197d123d1c4f52eabc10bd2120bf137`
+- Verified `feature/prometheus-authentication` points exactly to the merge commit; compare result is identical (0 ahead / 0 behind).
+- CI on the exact PR head passed: 209 Python tests, 1 existing Starlette/httpx deprecation warning; frontend syntax validation passed.
+- PR #57 is closed and merged. No VM deployment has been performed or authorized by this merge approval.
+- Deployment gate remains separate: confirm the lab VM's branch, worktree, remote, current commit and service health before any update. Preserve any local modifications; do not reset or overwrite them.
+- After a separately approved deployment, the user must validate Collection Settings, Database Backups, pagination, backup creation/download, cleanup preview, password rejection/acceptance, stale-preview conflict handling, minimum-five preservation, unverified-file preservation and responsive layouts.
+- JavaScript DOM-backed navigation regression tests remain parked in Issue #56: https://github.com/faith-fork/minio-analytics/issues/56
+
+
+## 23. PR #59 frontend cache invalidation and DOM navigation tests — 25 November 2026
+
+### Implementation and integration
+- PR #59: https://github.com/faith-fork/minio-analytics/pull/59 — **Prevent stale frontend assets and test navigation in a DOM**.
+- Feature branch: `feature/frontend-cache-and-navigation-tests`.
+- Reviewed PR head: `53a49991faa713f6ae2d09a6342b31b563cd08c8`.
+- Squash merge commit: `55d7940ce32e1c76bb80ee7627bbacc2c5ce0feb`.
+- Integration branch `feature/prometheus-authentication` was verified to match the merge commit exactly (0 ahead / 0 behind).
+- PR #59 addresses the parked navigation-testing follow-up from Issue #56.
+
+### Scope
+- Dashboard HTML uses a content-derived fingerprint for the four first-party CSS/JavaScript assets.
+- HTML response uses `Cache-Control: no-cache, must-revalidate` so browsers re-check the document and obtain the current fingerprinted URLs.
+- CI runs DOM-backed navigation tests using jsdom for sidebar navigation, Master Configuration tab routing and legacy aliases, alongside syntax and Python tests.
+- Added regression coverage for root-route registration and asset-version substitution/cache headers.
+- No database schema, collector, scheduler, metrics, or persistent data changes.
+
+### CI and review
+- Exact PR-head CI passed: **212 Python tests passed**, with one existing non-blocking Starlette/httpx deprecation warning; JavaScript syntax checks and DOM-backed navigation tests passed.
+- Complete patch reviewed; the root-route decorator placement regression found during review was corrected and covered by a test before merge.
+- PR #59 was merged after explicit user approval. Merge commit: `55d7940ce32e1c76bb80ee7627bbacc2c5ce0feb`.
+
+### Lab deployment evidence — 25 November 2026
+- User completed preflight and fast-forward deployment on the lab VM `minio-analytics` at `/opt/minio-analytics`.
+- VM branch: `feature/prometheus-authentication`; worktree clean; remote is the expected repository.
+- VM HEAD verified at the exact merge commit `55d7940ce32e1c76bb80ee7627bbacc2c5ce0feb`.
+- `minio-analytics-web.service` restarted successfully and is `active (running)`.
+- `/healthz` returned HTTP 200 with `{"status":"ok","database":"ok"}`.
+- Dashboard root returned HTTP 200 and `Cache-Control: no-cache, must-revalidate`.
+- All four assets showed the same fingerprint query value: `0958cb659fb2458b`.
+- Git worktree remained clean after deployment.
+
+### Browser acceptance — 25 November 2026
+- User supplied screenshots confirming the dashboard Overview renders; Master Configuration navigation works; General Configuration / Collection Settings renders; Database Backups renders with pagination and backup integrity status; Prometheus Configuration renders with configured endpoint; and Historical Backfill renders.
+- The screenshots also show an authenticated Admin session and the sidebar navigation in the expected state.
+- Combined with deployment-stage 1–3 evidence, **browser functional acceptance is passed for the displayed views**.
+- Browser Console error status and explicit Network-panel verification of fingerprinted asset requests were not included in the evidence; these remain unverified, but do not block the demonstrated navigation/UI acceptance.
+- Deployment/runtime acceptance for PR #59 is therefore recorded as passed for the checks evidenced by terminal output and screenshots. No further deployment is requested by this checkpoint.
