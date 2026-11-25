@@ -502,7 +502,7 @@ async function showClusterTopology(id, section="infra-overview"){
         '<td><span class="cell-strong">'+esc(v.drive_path)+'</span></td>'+
         '<td>'+esc(v.mountpoint||"—")+'</td>'+
         '<td>'+esc(v.filesystem_type||v.filesystem||"—")+'</td>'+
-        '<td>'+bytes(total||null)+'</td><td>'+bytes(used||null)+'</td><td>'+bytes(total?free:null)+'</td>'+
+        '<td>'+bytes(total||null)+'</td><td>'+bytes(used)+'</td><td>'+bytes(total?free:null)+'</td>'+
         '<td>'+bar+'</td><td>'+pill(statusLabel)+'</td>'+
         '<td class="drive-error-counts"><span class="'+(Number(errors[0])>0?'has-error':'')+'">'+errors[0]+'</span> / <span class="'+(Number(errors[1])>0?'has-error':'')+'">'+errors[1]+'</span> / <span class="'+(Number(errors[2])>0?'has-error':'')+'">'+errors[2]+'</span></td></tr>';
     }).join("");
