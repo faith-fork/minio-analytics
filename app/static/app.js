@@ -1,7 +1,7 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
 if(window.Chart&&window.ChartZoom){Chart.register(ChartZoom);Chart.defaults.plugins.zoom={pan:{enabled:true,mode:"x",modifierKey:"shift"},zoom:{wheel:{enabled:true,speed:0.08},drag:{enabled:true,backgroundColor:"rgba(19,165,139,.12)",borderColor:"#13a58b",borderWidth:1},pinch:{enabled:true},mode:"x"}};}
-const state = { user:null, view:"overview", masterConfigTab:"general", masterGeneralTab:"collection", backupPageSize:10, backupOffset:0, overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:null };
+const state = { user:null, view:"overview", masterConfigTab:"general", masterGeneralTab:"collection", backupPageSize:10, backupOffset:0, overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:null,driveView:"graphs",driveNodeFilter:"all",driveFsFilter:"all" };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
 const bytes = n => n == null ? "—" : (n/1024**4).toFixed(2)+" TiB";
 const tibValue = n => n == null ? "—" : (n/1024**4).toFixed(2);
@@ -469,12 +469,49 @@ async function showClusterTopology(id, section="infra-overview"){
     const mem=n.memory_total_bytes&&n.memory_used_bytes!=null?n.memory_used_bytes/n.memory_total_bytes*100:null;
     return '<tr><td><span class="cell-strong">'+esc(n.node_name)+'</span></td><td>'+pill(ne?'Online':n.node_exporter_up===0?'Offline':'Unknown')+'</td><td>'+pill(ms?'Reachable':n.minio_scrape_up===0?'Unreachable':'Unknown')+'</td><td>'+(n.cpu_utilization_pct==null?'—':fmt(n.cpu_utilization_pct,1)+'%')+'</td><td>'+(mem==null?'—':fmt(mem,1)+'%')+'</td><td>'+(n.load1==null?'—':fmt(n.load1,2))+'</td><td>'+(n.drives_online??'—')+'</td><td>'+(n.drives_offline??'—')+'</td></tr>';
   });
-  const driveRows=drives.map(v=>{
-    const minioPct=v.total_bytes&&v.used_bytes!=null?v.used_bytes/v.total_bytes*100:null;
-    const fsPct=v.filesystem_used_pct;
-    const readonly=v.filesystem_readonly===1;
-    return '<tr><td><span class="cell-strong">'+esc(v.node_name)+'</span></td><td>'+esc(v.drive_path)+'</td><td>'+bytes(v.total_bytes)+'</td><td>'+bytes(v.used_bytes)+'</td><td>'+(minioPct==null?'—':fmt(minioPct,1)+'%')+'</td><td>'+(fsPct==null?'—':fmt(fsPct,1)+'%')+'</td><td>'+pill(readonly?'Read-only':v.filesystem_readonly===0?'Writable':'Unknown')+'</td><td>'+(v.availability_errors??'—')+' / '+(v.io_errors??'—')+' / '+(v.timeout_errors??'—')+'</td></tr>';
-  });
+  const driveState=v=>v.filesystem_readonly===1?"readonly":v.filesystem_readonly===0?"writable":"unknown";
+  const driveHasErrors=v=>Number(v.availability_errors||0)>0||Number(v.io_errors||0)>0||Number(v.timeout_errors||0)>0;
+  const driveGroups=[...new Set([...drives.map(v=>v.node_name),...nodes.map(n=>n.node_name)])].sort((a,b)=>a.localeCompare(b));
+  const selectedDriveRows=drives.filter(v=>state.driveNodeFilter==="all"||v.node_name===state.driveNodeFilter);
+  const selectedNodeRows=nodes.filter(n=>state.driveNodeFilter==="all"||n.node_name===state.driveNodeFilter);
+  const driveInventorySummary={
+    total:selectedDriveRows.length,
+    online:selectedNodeRows.length&&selectedNodeRows.every(n=>n.drives_online!=null)?selectedNodeRows.reduce((sum,n)=>sum+n.drives_online,0):null,
+    offline:selectedNodeRows.length&&selectedNodeRows.every(n=>n.drives_offline!=null)?selectedNodeRows.reduce((sum,n)=>sum+n.drives_offline,0):null,
+    fsReported:selectedDriveRows.filter(v=>v.filesystem_used_pct!=null).length,
+    readonly:selectedDriveRows.filter(v=>v.filesystem_readonly===1).length,
+    errors:selectedDriveRows.filter(driveHasErrors).length,
+    fsUsed:selectedDriveRows.reduce((sum,v)=>sum+(Number(v.filesystem_used_bytes)||0),0),
+    fsTotal:selectedDriveRows.reduce((sum,v)=>sum+(Number(v.filesystem_total_bytes)||0),0)
+  };
+  const driveInventoryHtml=()=>{
+    const filteredGroups=driveGroups.filter(name=>state.driveNodeFilter==="all"||name===state.driveNodeFilter);
+    const nodeOptions=driveGroups.map(name=>'<option value="'+esc(name)+'" '+(state.driveNodeFilter===name?'selected':'')+'>'+esc(name)+'</option>').join("");
+    const groupHtml=filteredGroups.map((name,index)=>{
+      const group=drives.filter(v=>v.node_name===name);
+      const filtered=group.filter(v=>state.driveFsFilter==="all"||(state.driveFsFilter==="errors"?driveHasErrors(v):driveState(v)===state.driveFsFilter));
+      const errorCount=group.filter(driveHasErrors).length,readonlyCount=group.filter(v=>v.filesystem_readonly===1).length;
+      const rows=filtered.map(v=>{
+        const minioPct=v.total_bytes&&v.used_bytes!=null?v.used_bytes/v.total_bytes*100:null;
+        const fsPct=v.filesystem_used_pct,readonly=v.filesystem_readonly===1;
+        const status=driveState(v),errors=[v.availability_errors??0,v.io_errors??0,v.timeout_errors??0];
+        const searchText=[v.node_name,v.drive_path,v.mountpoint].join(" ").toLowerCase();
+        return '<tr data-drive-row data-drive-status="'+status+'" data-drive-error="'+(driveHasErrors(v)?'1':'0')+'" data-drive-search="'+esc(searchText)+'"><td><span class="cell-strong">'+esc(v.drive_path)+'</span></td><td>'+esc(v.mountpoint||"—")+'</td><td>'+bytes(v.total_bytes)+'</td><td>'+bytes(v.used_bytes)+'</td><td>'+(minioPct==null?'—':fmt(minioPct,1)+'%')+'</td><td>'+(fsPct==null?'—':fmt(fsPct,1)+'%')+'</td><td>'+pill(readonly?'Read-only':v.filesystem_readonly===0?'Writable':'Unknown')+'</td><td>'+errors.join(" / ")+'</td></tr>';
+      }).join("");
+      return '<details class="drive-node-group" data-drive-node-group '+(state.driveNodeFilter!=="all"||index===0?'open':'')+'><summary><span class="drive-node-title">'+esc(name)+'</span><span class="drive-node-summary">'+group.length+' drives · '+readonlyCount+' read-only · '+errorCount+' with errors</span></summary><div class="table-scroll"><table class="drive-inventory-table"><thead><tr><th>MINIO DRIVE</th><th>MOUNTPOINT</th><th>MINIO CAPACITY</th><th>MINIO USED</th><th>MINIO USED %</th><th>FILESYSTEM USED %</th><th>FILESYSTEM STATE</th><th>ERRORS A / I / T</th></tr></thead><tbody>'+(rows||'<tr data-drive-empty><td colspan="8" class="empty-state">No drives match the selected filters for this node.</td></tr>')+'</tbody></table></div></details>';
+    }).join("");
+    const weightedFsPct=driveInventorySummary.fsTotal>0?driveInventorySummary.fsUsed/driveInventorySummary.fsTotal*100:null;
+    const selectionLabel=state.driveNodeFilter==="all"?"All nodes":state.driveNodeFilter;
+    return '<div class="drive-inventory-workspace"><div class="metric-grid drive-inventory-summary">'+
+      metric("TOTAL DRIVES",fmt(driveInventorySummary.total,0),selectionLabel,"▤")+
+      metric("ONLINE DRIVES",driveInventorySummary.online==null?"—":fmt(driveInventorySummary.online,0),"MinIO-reported node counts","✓",driveInventorySummary.online!=null&&driveInventorySummary.offline===0)+
+      metric("OFFLINE DRIVES",driveInventorySummary.offline==null?"—":fmt(driveInventorySummary.offline,0),"MinIO-reported node counts","!")+
+      metric("FS UTILIZATION",weightedFsPct==null?"—":fmt(weightedFsPct,1)+"%",driveInventorySummary.fsReported+" drives with filesystem data","◉")+
+      metric("READ-ONLY FS",fmt(driveInventorySummary.readonly,0),"Filesystem state","◈")+
+      metric("DRIVES WITH ERRORS",fmt(driveInventorySummary.errors,0),"Any availability / I/O / timeout errors","!",driveInventorySummary.errors===0)+'</div>'+
+      '<section class="panel drive-inventory-filter-panel"><div class="drive-inventory-filters"><label>NODE<select class="form-control" data-drive-node-filter><option value="all" '+(state.driveNodeFilter==="all"?'selected':'')+'>All nodes</option>'+nodeOptions+'</select></label><label>FILESYSTEM STATE<select class="form-control" data-drive-state-filter><option value="all" '+(state.driveFsFilter==="all"?'selected':'')+'>All drives</option><option value="writable" '+(state.driveFsFilter==="writable"?'selected':'')+'>Writable</option><option value="readonly" '+(state.driveFsFilter==="readonly"?'selected':'')+'>Read-only</option><option value="unknown" '+(state.driveFsFilter==="unknown"?'selected':'')+'>Unknown</option><option value="errors" '+(state.driveFsFilter==="errors"?'selected':'')+'>With errors</option></select></label><label class="drive-inventory-search">SEARCH<input class="form-control" type="search" data-drive-search placeholder="Drive path, mountpoint or node"></label></div></section>'+
+      '<section class="panel drive-inventory-node-list"><div class="panel-header"><div><h3>Node-wise drive inventory</h3><p>Expand a node to inspect its individual MinIO drives and filesystem metrics.</p></div><span class="panel-tag">'+filteredGroups.length+' node(s)</span></div>'+(groupHtml||'<div class="chart-empty-state"><strong>No drive inventory found</strong><p>No drive records are available for this cluster snapshot.</p></div>')+'<div class="chart-empty-state drive-search-empty hidden"><strong>No matching drives</strong><p>Adjust the search term to see drive inventory.</p></div></section></div>';
+  };
   const poolRows=pools.map(p=>'<tr><td>'+esc(p.pool_id)+'</td><td>'+p.erasure_set_count+'</td><td>'+(p.online_drives??'—')+'</td><td>'+(p.healing_drives??'—')+'</td></tr>');
   const setRows=sets.map(s=>'<tr><td>'+esc(s.pool_id)+'</td><td>'+esc(s.set_id)+'</td><td>'+(s.status_value??'—')+'</td><td>'+(s.online_drives??'—')+'</td><td>'+(s.healing_drives??'—')+'</td><td>'+(s.read_quorum??'—')+'</td><td>'+(s.write_quorum??'—')+'</td></tr>');
 
@@ -581,11 +618,13 @@ async function showClusterTopology(id, section="infra-overview"){
     trendPanel("Node Exporter availability","Percentage of nodes reporting successfully","infra-node-availability")+
     trendPanel("MinIO scrape availability","Percentage of MinIO node targets reporting","infra-minio-availability")+
     '</div>'+nodeHealthBody:nodeSubsection==="performance"?nodePerformanceBody:nodeSubsection==="collection"?nodeCollectionBody:nodeReportsBody);
-  if(section==="drives") body=trendControls+'<div class="health-infra-trend-grid">'+
-    trendPanel("Drive availability","Online and offline drive counts across the cluster","infra-drive-availability")+
+  const driveSubTabs='<div class="tabs drives-subtabs" role="tablist" aria-label="Drives and filesystems views"><button type="button" role="tab" aria-selected="'+(state.driveView==="graphs")+'" class="tab '+(state.driveView==="graphs"?"active":"")+'" data-drive-view="graphs">Graphs</button><button type="button" role="tab" aria-selected="'+(state.driveView==="inventory")+'" class="tab '+(state.driveView==="inventory"?"active":"")+'" data-drive-view="inventory">Drive Inventory</button></div>';
+  const driveGraphs=trendControls+'<div class="health-infra-trend-grid">'+
+    trendPanel("Drive availability","MinIO-reported online and offline drive counts across the cluster","infra-drive-availability")+
     trendPanel("Drive error counters","Cumulative availability, I/O and timeout errors reported by drives","infra-drive-errors")+
     trendPanel("Filesystem utilization","Weighted utilization across monitored MinIO data filesystems","infra-filesystem-trend")+
-    '</div>'+table("Drive health","MinIO drive metrics and matching Linux filesystem mount metrics. Error columns: availability / I/O / timeout.",["NODE","MINIO DRIVE","MINIO TOTAL","MINIO USED","MINIO USED %","FILESYSTEM USED %","FILESYSTEM","ERRORS A / I / T"],driveRows);
+    '</div>';
+  if(section==="drives") body=driveSubTabs+(state.driveView==="graphs"?driveGraphs:driveInventoryHtml());
   if(section==="storage-overview") body=storageOverview;
   if(section==="pools") body=table("Storage pools","Pool capacity is not inferred where no pool-level capacity metric was discovered.",["POOL","ERASURE SETS","ONLINE DRIVES","HEALING DRIVES"],poolRows);
   if(section==="sets") body=table("Erasure sets","Status is shown as the raw MinIO metric value; quorum values are not interpreted as a health enum.",["POOL","SET","STATUS VALUE","ONLINE DRIVES","HEALING DRIVES","READ QUORUM","WRITE QUORUM"],setRows);
@@ -855,6 +894,7 @@ document.addEventListener("click",async e=>{
   const bucket=e.target.closest("[data-bucket]");if(bucket){try{await showBucket(bucket.dataset.bucket);}catch(err){toast(err.message,true);}return;}
   const assign=e.target.closest("[data-assign]");if(assign){assignBucketModal(Number(assign.dataset.assign));return;}
   const topologyTab=e.target.closest("[data-topology-tab]");if(topologyTab){showClusterTopology(state.topologyClusterId,topologyTab.dataset.topologyTab).catch(err=>toast(err.message,true));return;}
+  const driveViewTab=e.target.closest("[data-drive-view]");if(driveViewTab){state.driveView=driveViewTab.dataset.driveView;showClusterTopology(state.topologyClusterId,"drives").catch(err=>toast(err.message,true));return;}
   const nodeSubTab=e.target.closest("[data-node-subtab]");if(nodeSubTab){state.nodeSubsection=nodeSubTab.dataset.nodeSubtab;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   const nodeHours=e.target.closest("[data-node-hours]");if(nodeHours){state.nodePerformanceHours=Number(nodeHours.dataset.nodeHours);showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   const performanceHours=e.target.closest("[data-performance-hours]");if(performanceHours){state.performanceRangeHours=Number(performanceHours.dataset.performanceHours);state.performanceStart="";state.performanceEnd="";showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
@@ -964,6 +1004,8 @@ $("#content").addEventListener("submit",async e=>{
   }catch(err){toast(err.message,true);if(button){button.disabled=false;button.textContent="Save & recalculate";}}
 });
 $("#content").addEventListener("change",async e=>{
+  if(e.target.matches("[data-drive-node-filter]")){state.driveNodeFilter=e.target.value;showClusterTopology(state.topologyClusterId,"drives").catch(err=>toast(err.message,true));return;}
+  if(e.target.matches("[data-drive-state-filter]")){state.driveFsFilter=e.target.value;showClusterTopology(state.topologyClusterId,"drives").catch(err=>toast(err.message,true));return;}
   if(e.target.id==="backup-page-size"){state.backupPageSize=Number(e.target.value)||10;state.backupOffset=0;renderMasterAdmin().catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-bucket-filter-option]")){
     const key=e.target.dataset.bucketFilterOption,value=e.target.value,selected=new Set(state.bucketUsageFilterDraft[key]||[]);
@@ -1013,6 +1055,7 @@ $("#content").addEventListener("change",async e=>{
 });
 $("#content").addEventListener("change",e=>{if(e.target.matches("[data-performance-node]")){const checked=$$("[data-performance-node]:checked",$("#content")).map(el=>el.value);state.performanceSelectedNodes=checked;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));}});
 $("#content").addEventListener("input",e=>{
+  if(e.target.matches("[data-drive-search]")){const q=e.target.value.trim().toLowerCase();let total=0;$("#content").querySelectorAll("[data-drive-node-group]").forEach(group=>{let visible=0;group.querySelectorAll("[data-drive-row]").forEach(row=>{const show=row.dataset.driveSearch.includes(q);row.classList.toggle("hidden",!show);if(show){visible++;total++;}});group.classList.toggle("hidden",visible===0);});$("#content").querySelector(".drive-search-empty")?.classList.toggle("hidden",total>0);return;}
   if(e.target.id==="bucket-filter"){const q=e.target.value.toLowerCase();$("tbody tr",$("#content")).forEach(row=>row.classList.toggle("hidden",!row.textContent.toLowerCase().includes(q)));return;}
   if(e.target.matches("[data-bucket-filter-search]")){
     const q=e.target.value.trim().toLowerCase(),group=e.target.closest("[data-bucket-filter-group]");
