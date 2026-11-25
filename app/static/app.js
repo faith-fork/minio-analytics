@@ -551,6 +551,7 @@ async function showClusterTopology(id, section="infra-overview"){
     table.querySelectorAll("[data-drive-sort]").forEach(button=>button.querySelector(".sort-indicator").textContent=button.dataset.driveSort===sortKey?(direction===1?"▲":"▼"):"");
     rows.forEach(row=>row.dataset.driveFilterVisible=filtered.includes(row)?"1":"0");
   };
+  window.applyDriveInventoryTable=applyDriveInventoryTable;
   const poolRows=pools.map(p=>'<tr><td>'+esc(p.pool_id)+'</td><td>'+p.erasure_set_count+'</td><td>'+(p.online_drives??'—')+'</td><td>'+(p.healing_drives??'—')+'</td></tr>');
   const setRows=sets.map(s=>'<tr><td>'+esc(s.pool_id)+'</td><td>'+esc(s.set_id)+'</td><td>'+(s.status_value??'—')+'</td><td>'+(s.online_drives??'—')+'</td><td>'+(s.healing_drives??'—')+'</td><td>'+(s.read_quorum??'—')+'</td><td>'+(s.write_quorum??'—')+'</td></tr>');
 
@@ -936,8 +937,8 @@ document.addEventListener("click",async e=>{
   const topologyTab=e.target.closest("[data-topology-tab]");if(topologyTab){showClusterTopology(state.topologyClusterId,topologyTab.dataset.topologyTab).catch(err=>toast(err.message,true));return;}
   const driveViewTab=e.target.closest("[data-drive-view]");if(driveViewTab){state.driveView=driveViewTab.dataset.driveView;showClusterTopology(state.topologyClusterId,"drives").catch(err=>toast(err.message,true));return;}
   const driveExport=e.target.closest("[data-drive-export]");if(driveExport){const rows=[...$("#content").querySelectorAll("[data-drive-row][data-drive-filter-visible='1']")];if(!rows.length){toast("No matching drive rows to export.",true);return;}const csvCell=value=>'"'+String(value??"").replace(/"/g,'""')+'"';const headers=["Node","Drive / Path","Mountpoint","Filesystem","Capacity","Used","Free","Utilization","State","Availability Errors","I/O Errors","Timeout Errors"];const data=rows.map(row=>{const cells=[...row.cells].map(cell=>cell.textContent.replace(/\s+/g," ").trim());const errorParts=(cells[9]||"").split("/").map(value=>value.trim());return [...cells.slice(0,9),...errorParts];});const csv="\uFEFF"+[headers,...data].map(row=>row.map(csvCell).join(",")).join("\r\n");const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"}),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="drive-inventory-"+new Date().toISOString().slice(0,10)+".csv";document.body.append(link);link.click();link.remove();URL.revokeObjectURL(url);toast("Drive inventory CSV exported.");return;}
-  const driveSort=e.target.closest("[data-drive-sort]");if(driveSort){if(state.driveSortKey===driveSort.dataset.driveSort)state.driveSortDirection*=-1;else{state.driveSortKey=driveSort.dataset.driveSort;state.driveSortDirection=1;}applyDriveInventoryTable();return;}
-  const drivePage=e.target.closest("[data-drive-page]");if(drivePage){state.driveInventoryPage=Math.max(1,(state.driveInventoryPage||1)+(drivePage.dataset.drivePage==="next"?1:-1));applyDriveInventoryTable();return;}
+  const driveSort=e.target.closest("[data-drive-sort]");if(driveSort){if(state.driveSortKey===driveSort.dataset.driveSort)state.driveSortDirection*=-1;else{state.driveSortKey=driveSort.dataset.driveSort;state.driveSortDirection=1;}window.applyDriveInventoryTable();return;}
+  const drivePage=e.target.closest("[data-drive-page]");if(drivePage){state.driveInventoryPage=Math.max(1,(state.driveInventoryPage||1)+(drivePage.dataset.drivePage==="next"?1:-1));window.applyDriveInventoryTable();return;}
   const nodeSubTab=e.target.closest("[data-node-subtab]");if(nodeSubTab){state.nodeSubsection=nodeSubTab.dataset.nodeSubtab;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   const nodeHours=e.target.closest("[data-node-hours]");if(nodeHours){state.nodePerformanceHours=Number(nodeHours.dataset.nodeHours);showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   const performanceHours=e.target.closest("[data-performance-hours]");if(performanceHours){state.performanceRangeHours=Number(performanceHours.dataset.performanceHours);state.performanceStart="";state.performanceEnd="";showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
@@ -1048,7 +1049,7 @@ $("#content").addEventListener("submit",async e=>{
 });
 $("#content").addEventListener("change",async e=>{
   if(e.target.matches("[data-drive-node-filter]")){state.driveNodeFilter=e.target.value;state.driveInventoryPage=1;showClusterTopology(state.topologyClusterId,"drives").catch(err=>toast(err.message,true));return;}
-  if(e.target.matches("[data-drive-state-filter]")){state.driveFsFilter=e.target.value;state.driveInventoryPage=1;applyDriveInventoryTable();return;}
+  if(e.target.matches("[data-drive-state-filter]")){state.driveFsFilter=e.target.value;state.driveInventoryPage=1;window.applyDriveInventoryTable();return;}
   if(e.target.id==="backup-page-size"){state.backupPageSize=Number(e.target.value)||10;state.backupOffset=0;renderMasterAdmin().catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-bucket-filter-option]")){
     const key=e.target.dataset.bucketFilterOption,value=e.target.value,selected=new Set(state.bucketUsageFilterDraft[key]||[]);
@@ -1099,7 +1100,7 @@ $("#content").addEventListener("change",async e=>{
 $("#content").addEventListener("change",e=>{if(e.target.matches("[data-performance-node]")){const checked=$$("[data-performance-node]:checked",$("#content")).map(el=>el.value);state.performanceSelectedNodes=checked;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));}});
 $("#content").addEventListener("input",e=>{
   if(e.target.matches("[data-drive-search]")){state.driveInventoryPage=1;applyDriveInventoryTable();return;}
-  if(e.target.matches("[data-drive-page-size]")){state.driveInventoryPage=1;applyDriveInventoryTable();return;}
+  if(e.target.matches("[data-drive-page-size]")){state.driveInventoryPage=1;window.applyDriveInventoryTable();return;}
   if(e.target.id==="bucket-filter"){const q=e.target.value.toLowerCase();$("tbody tr",$("#content")).forEach(row=>row.classList.toggle("hidden",!row.textContent.toLowerCase().includes(q)));return;}
   if(e.target.matches("[data-bucket-filter-search]")){
     const q=e.target.value.trim().toLowerCase(),group=e.target.closest("[data-bucket-filter-group]");
