@@ -60,7 +60,7 @@ function exportTableCsv(button){
     const cells=new Map([...row.querySelectorAll("td[data-report-column-key]")].map(cell=>[cell.dataset.reportColumnKey,cell]));
     return visibleKeys.map(key=>{
       const cell=cells.get(key);
-      return cell&&!cell.hidden&&getComputedStyle(cell).display!=="none"?cell.innerText.replace(/\s+/g," ").trim():"";
+      return cell&&!cell.hidden&&getComputedStyle(cell).display!=="none"?cell.textContent.replace(/\s+/g," ").trim():"";
     });
   });
   if(!visibleKeys.length||!rows.length){toast("There is no visible table data to export.",true);return;}
