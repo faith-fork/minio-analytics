@@ -541,6 +541,7 @@ async function showClusterTopology(id, section="infra-overview"){
     const pageSize=Number($("#content [data-drive-page-size]")?.value||25),pageCount=Math.max(1,Math.ceil(filtered.length/pageSize));
     state.driveInventoryPage=Math.min(Math.max(1,state.driveInventoryPage||1),pageCount);
     rows.forEach(row=>row.classList.add("hidden"));
+    filtered.forEach(row=>table.querySelector("tbody").append(row));
     const start=(state.driveInventoryPage-1)*pageSize;
     filtered.slice(start,start+pageSize).forEach(row=>row.classList.remove("hidden"));
     $("#content [data-drive-page-summary]").textContent=filtered.length?"Showing "+(start+1)+"–"+Math.min(start+pageSize,filtered.length)+" of "+filtered.length+" drives":"Showing 0 drives";
