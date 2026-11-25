@@ -83,7 +83,6 @@ def health() -> dict[str, str]:
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
-@app.get("/", include_in_schema=False)
 def _static_asset_version() -> str:
     """Return a content-derived version for first-party browser assets."""
     digest = hashlib.sha256()
