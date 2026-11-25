@@ -120,6 +120,7 @@ async function run() {
   assert.match(appSource, /CPU & Memory Trends/);
   assert.match(appSource, /infra-overview-cpu/);
   assert.match(appSource, /infra-overview-memory/);
+  assert.match(appSource, /performanceTrendPanel/);
   assert.match(appSource, /section==="nodes"\|\|section==="infra-overview"/);
 
   await tick();
