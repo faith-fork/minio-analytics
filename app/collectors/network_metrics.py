@@ -24,6 +24,9 @@ def _escape(value: str) -> str:
 
 
 def _host(instance: str) -> str:
+    # Prometheus commonly formats IPv6 targets as [address]:port.
+    if instance.startswith("[") and "]:" in instance:
+        return instance[1:instance.rfind("]")]
     return instance.rsplit(":", 1)[0] if instance.count(":") == 1 else instance
 
 
@@ -59,7 +62,10 @@ def collect_network_metrics(
                 metric_values[field] = {}
                 errors.append(f"{metric}: {exc}")
     finally:
-        prom.close()
+        try:
+            prom.close()
+        except Exception as exc:
+            errors.append(f"Prometheus client close: {exc}")
 
     keys = set().union(*(set(values) for values in metric_values.values()))
     rows: list[dict[str, Any]] = []
