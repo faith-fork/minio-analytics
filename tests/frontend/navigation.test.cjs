@@ -87,8 +87,8 @@ async function run() {
   // Exercise the real delegated sidebar click and the multi-element nav selector.
   window.document.querySelector('.nav-link[data-view="master-config"]').click();
   await waitFor(
-    () => window.document.querySelector('[data-master-config-tab="general"]'),
-    "Master Configuration General tab",
+    () => window.document.querySelector('[data-general-config-tab="collection"]'),
+    "Master Configuration General tab content",
   );
   assert.equal(
     window.document.querySelector('.nav-link[data-view="master-config"]').classList.contains("active"),
