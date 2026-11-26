@@ -87,13 +87,25 @@ async function run() {
   // Exercise the real delegated sidebar click and the multi-element nav selector.
   window.document.querySelector('.nav-link[data-view="master-config"]').click();
   await waitFor(
-    () => window.document.querySelector('[data-master-config-tab="general"]'),
-    "Master Configuration General tab",
+    () => window.document.querySelector('[data-general-config-tab="collection"]'),
+    "Master Configuration General tab content",
   );
   assert.equal(
     window.document.querySelector('.nav-link[data-view="master-config"]').classList.contains("active"),
     true,
     "Master Configuration sidebar item should become active",
+  );
+
+  // Exercise the nested General Configuration tab and ensure its active state updates.
+  window.document.querySelector('[data-general-config-tab="backups"]').click();
+  await waitFor(
+    () => window.document.querySelector('[data-general-config-tab="backups"][aria-selected="true"]') !== null,
+    "Database Backups tab",
+  );
+  window.document.querySelector('[data-general-config-tab="collection"]').click();
+  await waitFor(
+    () => window.document.querySelector('[data-general-config-tab="collection"][aria-selected="true"]') !== null,
+    "Collection Settings tab",
   );
 
   // Exercise the actual top-level tab click handler.
@@ -102,11 +114,21 @@ async function run() {
     () => window.document.querySelector("#pc-list"),
     "Prometheus Configuration renderer",
   );
+  assert.equal(
+    window.document.querySelector('[data-master-config-tab="prometheus"].active') !== null,
+    true,
+    "Prometheus tab should be active",
+  );
 
   window.document.querySelector('[data-master-config-tab="backfill"]').click();
   await waitFor(
     () => window.document.querySelector("#bf-list"),
     "Historical Backfill renderer",
+  );
+  assert.equal(
+    window.document.querySelector('[data-master-config-tab="backfill"].active') !== null,
+    true,
+    "Backfill tab should be active",
   );
 
   // Legacy view aliases must route to their corresponding workspace tabs.
