@@ -191,6 +191,20 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
         c.execute("INSERT INTO schema_version(version) VALUES (12)")
 
 
+    migration_v13 = c.execute("SELECT 1 FROM schema_version WHERE version=13").fetchone()
+    if not migration_v13:
+        connection_cols = {
+            row["name"] for row in c.execute("PRAGMA table_info(prometheus_connections)")
+        }
+        if "auth_type" not in connection_cols:
+            c.execute(
+                "ALTER TABLE prometheus_connections ADD COLUMN auth_type TEXT NOT NULL DEFAULT 'none' "
+                "CHECK(auth_type IN ('none','basic','bearer'))"
+            )
+        if "auth_secret_encrypted" not in connection_cols:
+            c.execute("ALTER TABLE prometheus_connections ADD COLUMN auth_secret_encrypted TEXT")
+        c.execute("INSERT INTO schema_version(version) VALUES (13)")
+
     migration_v14 = c.execute("SELECT 1 FROM schema_version WHERE version=14").fetchone()
     if not migration_v14:
         _execute_sql_script(c, """
@@ -217,20 +231,6 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
             ON network_health_metrics(cluster_id, node_name, interface_name);
         """)
         c.execute("INSERT INTO schema_version(version) VALUES (14)")
-
-    migration_v13 = c.execute("SELECT 1 FROM schema_version WHERE version=13").fetchone()
-    if not migration_v13:
-        connection_cols = {
-            row["name"] for row in c.execute("PRAGMA table_info(prometheus_connections)")
-        }
-        if "auth_type" not in connection_cols:
-            c.execute(
-                "ALTER TABLE prometheus_connections ADD COLUMN auth_type TEXT NOT NULL DEFAULT 'none' "
-                "CHECK(auth_type IN ('none','basic','bearer'))"
-            )
-        if "auth_secret_encrypted" not in connection_cols:
-            c.execute("ALTER TABLE prometheus_connections ADD COLUMN auth_secret_encrypted TEXT")
-        c.execute("INSERT INTO schema_version(version) VALUES (13)")
 
 def initialize_database() -> None:
     c=get_connection()
