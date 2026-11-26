@@ -61,3 +61,23 @@ def test_empty_metric_families_are_reported_as_partial(monkeypatch):
         datetime(2026, 1, 1, tzinfo=timezone.utc))
     assert rows == []
     assert error and "no interface samples" in error
+
+
+def test_ipv6_instance_host_is_normalized():
+    assert network_metrics._host("[2001:db8::10]:9100") == "2001:db8::10"
+    assert network_metrics._host("2001:db8::10") == "2001:db8::10"
+
+
+def test_client_close_error_is_family_isolated(monkeypatch):
+    class CloseErrorProm(FakePrometheus):
+        def close(self):
+            raise RuntimeError("cleanup failed")
+
+    fake = CloseErrorProm()
+    monkeypatch.setattr(network_metrics, "PrometheusClient", lambda *a, **kw: fake)
+    location, cluster = _configs()
+    rows, error = network_metrics.collect_network_metrics(
+        location, cluster, datetime(2026, 1, 1, tzinfo=timezone.utc)
+    )
+    assert rows and rows[0]["rx_bytes_per_second"] == 10.0
+    assert error and "Prometheus client close: cleanup failed" in error
