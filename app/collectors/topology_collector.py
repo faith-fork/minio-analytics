@@ -30,6 +30,9 @@ def _host(value: str | None) -> str | None:
     if not value:
         return None
     # Exporters use different ports for MinIO and node_exporter.
+    # Bracketed IPv6 instances include the port after the closing bracket.
+    if value.startswith("[") and "]:" in value:
+        return value[1:value.rfind("]")]
     return value.rsplit(":", 1)[0] if value.count(":") == 1 else value
 
 
