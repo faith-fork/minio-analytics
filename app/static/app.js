@@ -465,7 +465,7 @@ function renderNetworkWorkspace(data){
     return '<option value="'+esc(key)+'" '+(selected&&key===state.networkSelectedInterface?'selected':'')+'>'+esc(x.node_name+' / '+x.interface_name)+'</option>';
   }).join("");
   const nodeOptions='<option value="all">All nodes</option>'+nodes.map(n=>'<option value="'+esc(n)+'" '+(state.networkNodeFilter===n?'selected':'')+'>'+esc(n)+'</option>').join("");
-  const hourOptions=[2,6,12,24,48,72].map(h=>'<button class="tab '+(state.networkHours===h?'active':'')+'" data-network-hours="'+h+'">'+h+'h</button>').join("");
+  const hourOptions=[2,6,12,24,48,72].filter(h=>h<=(Number(data.retention_days||3)*24)).map(h=>'<button class="tab '+(state.networkHours===h?'active':'')+'" data-network-hours="'+h+'">'+h+'h</button>').join("");
   const stats=data.statistics||[];
   const filteredStats=stats.filter(x=>state.networkNodeFilter==="all"||x.node_name===state.networkNodeFilter);
   const fmtRate=v=>v==null?'—':bytes(v)+'/s';
