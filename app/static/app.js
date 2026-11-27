@@ -486,7 +486,7 @@ function renderNetworkWorkspace(data){
     '<div class="network-filter-row"><label>Node<select data-network-node-filter>'+nodeOptions+'</select></label><label>Interface<select data-network-interface-filter>'+selectOptions+'</select></label></div>'+
     '<p class="muted">Samples: '+fmt(data.sample_count,0)+' · Collection interval: '+fmt(data.interval_minutes,0)+' min · Range: '+esc(timestampLabel(data.start_ts))+' to '+esc(timestampLabel(data.end_ts))+'</p></section>'+
     (data.truncated?'<div class="detail-card"><strong>Data limited to 20,000 samples</strong><p class="muted">Statistics are based on the returned subset. Select a node/interface to narrow the query.</p></div>':'')+
-    (selected?charts:'')+
+    (filtered.length?charts:'')+
     '<section class="panel table-panel"><div class="panel-header"><div><h3>Interface summary</h3><p>Average rates across the selected range; missing metric values remain unavailable.</p></div></div>'+
     '<div class="table-wrap"><table><thead><tr><th>Node</th><th>Interface</th><th>RX avg</th><th>TX avg</th><th>RX packets</th><th>TX packets</th><th>Errors/s RX / TX</th><th>Drops/s RX / TX</th><th>Samples</th></tr></thead><tbody>'+
     (rows||'<tr><td colspan="9" class="muted">No samples found.</td></tr>')+'</tbody></table></div></section>'+
