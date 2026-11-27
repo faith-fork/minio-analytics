@@ -1556,7 +1556,7 @@ def network_performance_series(
         "series": series,
         "statistics": list(grouped.values()),
         "sample_count": len(series),
-        "truncated": False,
+        "truncated": truncated,\n        "data_warning": "Sample limit reached; statistics reflect the returned subset. Select a node/interface to narrow the query." if truncated else None,
         "supported_metrics": list(metrics),
         "aggregation": "per-interface only; no cross-interface aggregation",
     }
