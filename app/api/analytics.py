@@ -364,6 +364,36 @@ def cluster_analytics(
             """,
             (cluster_id, start, end),
         ).fetchall()
+        latest_bucket_date = connection.execute(
+            "SELECT MAX(snapshot_date) FROM bucket_daily_metrics WHERE cluster_id = ?",
+            (cluster_id,),
+        ).fetchone()[0]
+        active_bucket_count = connection.execute(
+            "SELECT COUNT(*) FROM buckets WHERE cluster_id = ? AND is_active = 1",
+            (cluster_id,),
+        ).fetchone()[0]
+        latest_bucket_summary_row = connection.execute(
+            """SELECT COUNT(*) AS snapshot_bucket_count,
+                      SUM(CASE WHEN metrics_available=1 AND object_count IS NOT NULL THEN 1 ELSE 0 END) AS objects_coverage,
+                      SUM(CASE WHEN metrics_available=1 AND version_count IS NOT NULL THEN 1 ELSE 0 END) AS versions_coverage,
+                      SUM(CASE WHEN metrics_available=1 AND delete_marker_count IS NOT NULL THEN 1 ELSE 0 END) AS delete_markers_coverage,
+                      SUM(object_count) AS objects_sum,
+                      SUM(version_count) AS versions_sum,
+                      SUM(delete_marker_count) AS delete_markers_sum
+               FROM bucket_daily_metrics WHERE cluster_id=? AND snapshot_date=?""",
+            (cluster_id, latest_bucket_date),
+        ).fetchone() if latest_bucket_date else None
+        latest_bucket_summary = _dict(latest_bucket_summary_row)
+        latest_bucket_summary.update({
+            "snapshot_date": latest_bucket_date,
+            "active_bucket_count": active_bucket_count,
+            "objects": (0 if active_bucket_count == 0 else latest_bucket_summary.get("objects_sum"))
+                if active_bucket_count == 0 or (latest_bucket_summary.get("snapshot_bucket_count") == active_bucket_count and latest_bucket_summary.get("objects_coverage") == active_bucket_summary.get("snapshot_bucket_count")) else None,
+            "versions": (0 if active_bucket_summary.get("snapshot_bucket_count") == 0 else latest_bucket_summary.get("versions_sum"))
+                if latest_bucket_summary.get("snapshot_bucket_count") == active_bucket_count and latest_bucket_summary.get("versions_coverage") == active_bucket_summary.get("snapshot_bucket_count") else None,
+            "delete_markers": (0 if active_bucket_summary.get("snapshot_bucket_count") == 0 else latest_bucket_summary.get("delete_markers_sum"))
+                if latest_bucket_summary.get("snapshot_bucket_count") == active_bucket_count and latest_bucket_summary.get("delete_markers_coverage") == active_bucket_summary.get("snapshot_bucket_count") else None,
+        })
         bucket_rows = connection.execute(
             """
             SELECT snapshot_date,
@@ -385,12 +415,24 @@ def cluster_analytics(
                             AND SUM(CASE WHEN metrics_available = 1
                                          AND object_count IS NOT NULL THEN 1 ELSE 0 END) = COUNT(*)
                        THEN SUM(object_count) ELSE NULL
-                   END AS bucket_object_count
+                   END AS bucket_object_count,
+                   SUM(CASE WHEN metrics_available=1 AND version_count IS NOT NULL THEN 1 ELSE 0 END) AS version_bucket_count,
+                   CASE
+                       WHEN COUNT(*) = (SELECT COUNT(*) FROM buckets WHERE cluster_id=? AND is_active=1)
+                            AND SUM(CASE WHEN metrics_available=1 AND version_count IS NOT NULL THEN 1 ELSE 0 END)=COUNT(*)
+                       THEN SUM(version_count) ELSE NULL
+                   END AS bucket_version_count,
+                   SUM(CASE WHEN metrics_available=1 AND delete_marker_count IS NOT NULL THEN 1 ELSE 0 END) AS delete_marker_bucket_count,
+                   CASE
+                       WHEN COUNT(*) = (SELECT COUNT(*) FROM buckets WHERE cluster_id=? AND is_active=1)
+                            AND SUM(CASE WHEN metrics_available=1 AND delete_marker_count IS NOT NULL THEN 1 ELSE 0 END)=COUNT(*)
+                       THEN SUM(delete_marker_count) ELSE NULL
+                   END AS bucket_delete_marker_count
             FROM bucket_daily_metrics
             WHERE cluster_id = ? AND snapshot_date BETWEEN ? AND ?
             GROUP BY snapshot_date
             """,
-            (cluster_id, cluster_id, cluster_id, cluster_id, start, end),
+            (cluster_id, cluster_id, cluster_id, cluster_id, cluster_id, cluster_id, start, end),
         ).fetchall()
         bucket_by_date = {row["snapshot_date"]: dict(row) for row in bucket_rows}
         rows = [
@@ -398,13 +440,18 @@ def cluster_analytics(
              "active_bucket_count": bucket_by_date.get(row["snapshot_date"], {}).get("active_bucket_count"),
              "quota_bucket_count": bucket_by_date.get(row["snapshot_date"], {}).get("quota_bucket_count"),
              "bucket_quota_bytes": bucket_by_date.get(row["snapshot_date"], {}).get("bucket_quota_bytes"),
-             "bucket_object_count": bucket_by_date.get(row["snapshot_date"], {}).get("bucket_object_count")}
+             "bucket_object_count": bucket_by_date.get(row["snapshot_date"], {}).get("bucket_object_count"),
+             "version_bucket_count": bucket_by_date.get(row["snapshot_date"], {}).get("version_bucket_count"),
+             "bucket_version_count": bucket_by_date.get(row["snapshot_date"], {}).get("bucket_version_count"),
+             "delete_marker_bucket_count": bucket_by_date.get(row["snapshot_date"], {}).get("delete_marker_bucket_count"),
+             "bucket_delete_marker_count": bucket_by_date.get(row["snapshot_date"], {}).get("bucket_delete_marker_count")}
             for row in rows
         ]
 
     return {
         "cluster": _dict(cluster),
         "latest": _dict(latest) if latest else None,
+        "latest_bucket_summary": latest_bucket_summary,
         "days": days,
         "start_date": start,
         "end_date": end,
