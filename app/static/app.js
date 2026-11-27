@@ -608,6 +608,15 @@ async function showClusterTopology(id, section="infra-overview"){
     if(state.networkNodeFilter!=="all")networkParams.set("node_name",state.networkNodeFilter);
     if(state.networkSelectedInterface){const selectedParts=state.networkSelectedInterface.split("|");if(selectedParts.length===2){networkParams.set("node_name",selectedParts[0]);networkParams.set("interface_name",selectedParts[1]);}}
     networkData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/network/performance-series?"+networkParams.toString());
+    if(networkData.truncated&&!state.networkSelectedInterface){
+      const firstInterface=(networkData.available_interfaces||[]).find(x=>state.networkNodeFilter==="all"||x.node_name===state.networkNodeFilter);
+      if(firstInterface){
+        state.networkSelectedInterface=firstInterface.node_name+"|"+firstInterface.interface_name;
+        networkParams.set("node_name",firstInterface.node_name);
+        networkParams.set("interface_name",firstInterface.interface_name);
+        networkData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/network/performance-series?"+networkParams.toString());
+      }
+    }
   }
   if(section==="nodes"&&nodeSubsection==="health"){
     const trendParams=new URLSearchParams();
