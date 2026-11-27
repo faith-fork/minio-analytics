@@ -1,6 +1,6 @@
 # D1 — Global Time Range & Interface Selection Standardization
 
-**Status:** Design checkpoint / audit completed; implementation not started  
+**Status:** D1 implementation in progress — shared time model and timestamp API contract implemented; validation underway  
 **Base branch:** `feature/auth-foundation`  
 **Design branch:** `design/global-time-range-d1`  
 **Scope:** Cross-workspace historical time controls and Network interface selection
@@ -182,9 +182,19 @@ Implemented on the design branch:
 - Changing the selected node resets interface selection to All interfaces.
 - Node Performance historical series uses the same quick-range preset and timestamp query contract; custom absolute range remains supported there.
 
-### Known remaining D1 work
+### D1 continuation — shared time model and timestamp API
 
-- Audit/migrate Drive & Filesystem and Collection/Availability historical trend charts. Their current API is date/day-oriented and requires a resolution/API review before exposing short ranges.
-- Add a custom absolute range control to Network.
-- Validate retention messaging, bounded response behavior, and empty-range behavior.
-- Complete automated tests/CI and lab validation.
+- Added a normalized relative/absolute time-range model with explicit IST context.
+- A single shared picker serves Network, Node Availability, Node Performance and Drive/Filesystem historical chart workspaces.
+- All four chart paths consume shared UTC timestamp bounds; custom inputs are interpreted in IST.
+- The topology trends API supports timezone-aware absolute timestamp bounds while preserving its legacy IST calendar-date parameters for existing callers. It enforces configured retention and reports the configured node telemetry cadence/retention.
+- Network's selected Prometheus instance is applied to both returned samples and available-interface choices. All-interface series remain distinct, with no cross-interface sums.
+- Collection Health interval-outcome reporting, node summary averaging, inventory and daily snapshot/report date selection remain separate by design.
+
+### Remaining before D1 can be declared complete
+
+- Run and pass Python and frontend regression checks on the latest PR head.
+- Verify chart dataset identity across All interfaces and test interface/node filtering and reset behavior.
+- Verify absolute IST-to-UTC conversion, retention/future/inverted range validation and empty-range behavior.
+- Verify the 20,000-sample boundary and ensure no hidden interface auto-selection.
+- Complete CI and user lab runtime/visual validation.

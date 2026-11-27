@@ -54,9 +54,11 @@ const topologyPayload = {
   pools:[],erasure_sets:[],family_errors:{}
 };
 
+window.__requests = [];
 window.fetch = async (url) => {
   const key = String(url);
-  if (key.includes("/api/analytics/clusters/test-cluster/topology/trends")) return {ok:true,status:200,json:async()=>({sample_count:1,samples:[{snapshot_ts:"2026-11-25T10:00:00Z",drives_online:3,drives_offline:1,availability_errors:1,io_errors:2,timeout_errors:0,filesystem_used_pct:46,filesystem_weighted_used_pct:46}]})};
+  window.__requests.push(key);
+  if (key.includes("/api/analytics/clusters/test-cluster/topology/trends")) return {ok:true,status:200,json:async()=>({sample_count:1,retention_days:3,interval_minutes:5,samples:[{snapshot_ts:"2026-11-25T10:00:00Z",drives_online:3,drives_offline:1,availability_errors:1,io_errors:2,timeout_errors:0,filesystem_used_pct:46,filesystem_weighted_used_pct:46}]})};
   if (key.includes("/api/analytics/clusters/test-cluster/network/performance-series")) return {ok:true,status:200,json:async()=>({
     cluster:{id:"test-cluster",name:"Test Cluster"},start_ts:"2026-11-27T08:00:00Z",end_ts:"2026-11-27T14:00:00Z",hours:6,retention_days:3,interval_minutes:5,selected_node:null,selected_interface:null,
     available_interfaces:[{node_name:"node01",instance:"node01:9100",interface_name:"ens3"},{node_name:"node01",instance:"node01:9100",interface_name:"ens4"},{node_name:"node02",instance:"node02:9100",interface_name:"ens3"}],
@@ -64,7 +66,7 @@ window.fetch = async (url) => {
       {snapshot_ts:"2026-11-27T13:55:00Z",node_name:"node01",instance:"node01:9100",interface_name:"ens3",rx_bytes_per_second:100,tx_bytes_per_second:50,rx_packets_per_second:10,tx_packets_per_second:5,rx_errors_per_second:0,tx_errors_per_second:0,rx_drops_per_second:0,tx_drops_per_second:0},
       {snapshot_ts:"2026-11-27T14:00:00Z",node_name:"node01",instance:"node01:9100",interface_name:"ens3",rx_bytes_per_second:200,tx_bytes_per_second:100,rx_packets_per_second:20,tx_packets_per_second:10,rx_errors_per_second:0,tx_errors_per_second:0,rx_drops_per_second:0,tx_drops_per_second:0},
     ],
-    statistics:[{node_name:"node01",instance:"node01:9100",interface_name:"ens3",sample_count:2,metrics:{rx_bytes_per_second:{average:150,minimum:100,maximum:200,latest:200,sample_count:2},tx_bytes_per_second:{average:75,minimum:50,maximum:100,latest:100,sample_count:2},rx_packets_per_second:{average:15,minimum:10,maximum:20,latest:20,sample_count:2},tx_packets_per_second:{average:7.5,minimum:5,maximum:10,latest:10,sample_count:2},rx_errors_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2},tx_errors_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2},rx_drops_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2},tx_drops_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2}}}],
+    statistics:[{node_name:"node01",instance:"node01:9100",interface_name:"ens3",sample_count:2,metrics:{rx_bytes_per_second:{average:150,minimum:100,maximum:200,latest:200,sample_count:2},tx_bytes_per_second:{average:75,minimum:50,maximum:100,latest:100,sample_count:2},rx_packets_per_second:{average:15,minimum:10,maximum:20,latest:20,sample_count:2},tx_packets_per_second:{average:7.5,minimum:5,maximum:10,latest:10,sample_count:2},rx_errors_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2},tx_errors_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2},rx_drops_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2},tx_drops_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2}}},{node_name:"node01",instance:"node01:9100",interface_name:"ens4",sample_count:1,metrics:{rx_bytes_per_second:{average:55,minimum:55,maximum:55,latest:55,sample_count:1},tx_bytes_per_second:{average:25,minimum:25,maximum:25,latest:25,sample_count:1}}}],
     sample_count:2,truncated:false,supported_metrics:[],aggregation:"per-interface only"
   })};
   if (key.includes("/api/analytics/clusters/test-cluster/topology")) return {ok:true,status:200,json:async()=>topologyPayload};
@@ -235,9 +237,56 @@ async function run() {
   assert.ok(window.document.querySelector("#network-drops-chart"), "Drops chart should render");
   assert.match(window.document.querySelector(".table-panel").textContent, /ens3/);
 
+
+  // D1: the shared selector drives all timestamp-based Node Infrastructure charts.
+  await window.showClusterTopology("test-cluster","network");
+  assert.ok(window.document.querySelector("[data-historical-picker='network']"),"Network should use the shared time picker");
+  assert.ok(window.document.querySelector("[data-historical-range='1h']"),"Shared quick ranges should render");
+  assert.equal(window.document.querySelector("[data-network-range]"),null,"Network-local range buttons should not remain");
+  assert.match(window.document.querySelector(".historical-time-picker").textContent,/5 min cadence/);
+  window.document.querySelector("[data-historical-range='6h']").click();
+  await waitFor(()=>window.document.querySelector("[data-historical-range='6h'].active"),"shared 6h range");
+  assert.ok(window.__requests.some(url=>url.includes("/network/performance-series")&&url.includes("start_ts=")),"Network requests should use timestamps");
+
+  const iface=window.document.querySelector("[data-network-interface-filter]");
+  assert.equal(iface.options[0].value,"all","All interfaces must be the default selection");
+  assert.ok([...window.document.querySelectorAll(".table-panel tbody tr")].some(row=>row.textContent.includes("ens4")),"All interfaces view must show ens4 in the summary table");
+  iface.value="node01|ens3|node01:9100";
+  iface.dispatchEvent(new window.Event("change",{bubbles:true}));
+  await waitFor(()=>[...window.document.querySelectorAll(".table-panel tbody tr")].some(row=>row.textContent.includes("ens3")),"single interface summary");
+  assert.equal([...window.document.querySelectorAll(".table-panel tbody tr")].filter(row=>row.textContent.includes("ens4")).length,0,"Selecting one interface filters out the others");
+  const nodeSelect=window.document.querySelector("[data-network-node-filter]");
+  nodeSelect.value="node02";
+  nodeSelect.dispatchEvent(new window.Event("change",{bubbles:true}));
+  await waitFor(()=>window.document.querySelector("[data-network-interface-filter]")?.value==="all","node change resets interface to All interfaces");
+
+  const customFrom=window.document.querySelector("[data-historical-start]");
+  const customTo=window.document.querySelector("[data-historical-end]");
+  customFrom.value="2026-11-27T10:00";
+  customTo.value="2026-11-27T11:00";
+  window.document.querySelector("[data-action='apply-historical-range']").click();
+  await waitFor(()=>window.document.querySelector("[data-historical-picker='network']"),"custom absolute range");
+  assert.ok(window.__requests.some(url=>url.includes("/network/performance-series")&&url.includes("start_ts=2026-11-27T04%3A30%3A00.000Z")),"IST range should be normalized to UTC");
+
+  await window.showClusterTopology("test-cluster","nodes");
+  assert.ok(window.document.querySelector("[data-historical-picker='availability']"),"Availability trends should use shared range");
+  assert.equal(window.document.querySelector("[data-action='apply-infra-trends']"),null,"Legacy date controls should be removed");
+  window.document.querySelector("[data-node-subtab='performance']").click();
+  await waitFor(()=>window.document.querySelector("[data-historical-picker='performance']"),"Node Performance picker");
+  assert.equal(window.document.querySelector("[data-dashboard-range]"),null,"Node Performance should not contain a duplicate picker");
+  window.document.querySelector("[data-node-subtab='collection']").click();
+  await waitFor(()=>window.document.querySelector("[data-node-subtab='collection']"),"Collection Health tab");
+  assert.equal(window.document.querySelector("[data-historical-picker]"),null,"Collection Health collection-window controls remain independent");
+
+  await window.showClusterTopology("test-cluster","drives");
+  assert.ok(window.document.querySelector("[data-historical-picker='drives']"),"Drive/Filesystem charts should use shared range");
+  window.document.querySelector("[data-drive-view='inventory']").click();
+  await waitFor(()=>window.document.querySelector("[data-drive-view='inventory'][aria-selected='true']"),"Drive Inventory");
+  assert.equal(window.document.querySelector("[data-historical-picker]"),null,"Current inventory is not filtered by chart range");
+
   await tick();
   await tick();
-  console.log("DOM-backed frontend navigation and drive inventory tests passed.");
+  console.log("DOM-backed frontend navigation, interface and time-range tests passed.");
   dom.window.close();
 }
 

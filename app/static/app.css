@@ -502,6 +502,17 @@
 .drive-inventory-pagination button:disabled{opacity:.4;cursor:not-allowed}
 @media(max-width:760px){.drive-inventory-pagination{align-items:flex-start;flex-direction:column}.drive-inventory-pagination>div{width:100%;justify-content:space-between}.drive-inventory-pagination label{width:100%;justify-content:space-between}}
 
+/* Shared historical time-range picker */
+.historical-time-picker{margin:14px 0}
+.historical-time-picker-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.historical-time-picker-heading>div{display:flex;flex-direction:column;gap:3px}
+.historical-time-picker-heading strong{font-size:11px;letter-spacing:.08em;color:var(--muted)}
+.historical-time-picker-heading>div span{font-size:12px;color:var(--muted)}
+.historical-time-presets{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}
+.historical-time-custom{display:flex;align-items:end;gap:10px;flex-wrap:wrap}
+.historical-time-custom label{display:flex;flex-direction:column;gap:5px;font-size:11px;color:var(--muted)}
+.historical-time-custom input{min-width:190px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--white);color:var(--ink);font:inherit}
+@media(max-width:700px){.historical-time-custom label,.historical-time-custom input{width:100%;min-width:0}.historical-time-custom button{flex:1}}
 /* Network observability workspace */
 .network-filter-row{display:flex;flex-wrap:wrap;gap:14px;align-items:end;margin:12px 0}
 .network-filter-row label{display:flex;flex-direction:column;gap:6px;min-width:220px;font-size:12px;color:var(--muted)}
