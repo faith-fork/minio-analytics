@@ -457,16 +457,12 @@ function renderNetworkWorkspace(data){
   const nodes=[...new Set(available.map(x=>x.node_name))].sort((a,b)=>a.localeCompare(b));
   if(state.networkNodeFilter!=="all"&&!nodes.includes(state.networkNodeFilter))state.networkNodeFilter="all";
   const filtered=available.filter(x=>state.networkNodeFilter==="all"||x.node_name===state.networkNodeFilter);
-  const selectedKey=state.networkSelectedInterface;
-  const selected=filtered.find(x=>x.node_name+"|"+x.interface_name+"|"+x.instance===selectedKey)||filtered[0]||null;
-  if(selected)state.networkSelectedInterface=selected.node_name+"|"+selected.interface_name+"|"+selected.instance;
-  const selectOptions=filtered.map(x=>{
-    const key=x.node_name+"|"+x.interface_name+"|"+x.instance;
-    return '<option value="'+esc(key)+'" '+(selected&&key===state.networkSelectedInterface?'selected':'')+'>'+esc(x.node_name+' / '+x.interface_name+' / '+x.instance)+'</option>';
-  }).join("");
+  const selectedKey=state.networkSelectedInterface||"all";
+  const selected=selectedKey==="all"?null:filtered.find(x=>x.node_name+"|"+x.interface_name+"|"+x.instance===selectedKey)||null;
+  const selectOptions='<option value="all" '+(selectedKey==="all"?'selected':'')+'>All interfaces</option>'+filtered.map(x=>{const key=x.node_name+"|"+x.interface_name+"|"+x.instance;return '<option value="'+esc(key)+'" '+(key===selectedKey?'selected':'')+'>'+esc(x.interface_name+' · '+x.node_name+' · '+x.instance)+'</option>';}).join("");
   const nodeOptions='<option value="all">All nodes</option>'+nodes.map(n=>'<option value="'+esc(n)+'" '+(state.networkNodeFilter===n?'selected':'')+'>'+esc(n)+'</option>').join("");
-  const hourOptions=[2,6,12,24,48,72].filter(h=>h<=(Number(data.retention_days||3)*24)).map(h=>'<button class="tab '+(state.networkHours===h?'active':'')+'" data-network-hours="'+h+'">'+h+'h</button>').join("");
-  const stats=data.statistics||[];
+  const presets=[["5m","Last 5m"],["15m","15m"],["30m","30m"],["1h","1h"],["3h","3h"],["6h","6h"],["12h","12h"],["24h","24h"],["2d","2d"],["7d","7d"],["30d","30d"]];
+  const hourOptions=presets.map(([v,label])=>'<button class="tab '+((state.networkRangePreset||"1h")===v?'active':'')+'" data-network-range="'+v+'">'+label+'</button>').join("");  const stats=data.statistics||[];
   const filteredStats=stats.filter(x=>state.networkNodeFilter==="all"||x.node_name===state.networkNodeFilter);
   const fmtRate=v=>v==null?'—':bytes(v)+'/s';
   const metricStat=(m,k)=>m&&m[k]!=null?fmtRate(m[k]):'—';
