@@ -28,6 +28,19 @@ The approved direction is a compact, modern, Grafana-style toolbar:
 
 This refinement is a visual/interaction standard. It does not couple daily snapshot report filters, collection-health outcome windows, inventory filters, or other semantically independent controls to the high-frequency telemetry time-range model.
 
+## UX refinement — contextual graph toolbar consolidation
+
+Lab review of the compact selector identified one remaining vertical-space issue: the time control and secondary graph-view controls were still rendered on separate rows in some sections.
+
+The contextual toolbar standard is now:
+- Left side: section-specific graph tabs, filters, and concise telemetry context.
+- Right side: shared historical time-range selector.
+- Network: node and interface filters on the left, time range on the right.
+- Drives & Filesystems (Graphs): Graphs/Drive Inventory tabs and trend context on the left; time range on the right. The time picker is omitted from current-state Drive Inventory.
+- Node Health: compact historical trend context on the left and time range on the right.
+- Node Performance: metric tabs on the left and time range on the right.
+- Responsive wrapping is permitted only when viewport width requires it.
+
 ## Goals
 
 1. Standardize historical time-range selection across dashboard workspaces and chart groups.
