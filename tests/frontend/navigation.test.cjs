@@ -164,7 +164,7 @@ async function run() {
   // from collection reliability so CPU/memory telemetry stays in Node Infrastructure.
   const appSource = fs.readFileSync(path.join(root, "app/static/app.js"), "utf8");
   assert.match(appSource, /Node Health & Performance/);
-  assert.match(appSource, /Drives & Filesystems/);\n  assert.match(appSource, /Network/);\n  assert.match(appSource, /network-performance-series/);
+  assert.match(appSource, /Drives & Filesystems/);\n  assert.match(appSource, /Network/);\n  assert.match(appSource, /network\\/performance-series/);
   assert.match(appSource, /CPU & Memory Trends/);
   assert.match(appSource, /infra-overview-cpu/);
   assert.match(appSource, /infra-overview-memory/);
@@ -182,7 +182,7 @@ async function run() {
   assert.equal(window.document.querySelectorAll("[data-drive-row]").length, 30, "All drives should be rows");
   assert.ok(window.document.querySelector("[data-drive-export]"), "Inventory should provide CSV export");
   assert.ok(window.document.querySelector("[data-drive-page-size]"), "Inventory should provide page-size selection");
-  assert.ok(window.document.querySelector("[data-drive-sort=capacity]"), "Capacity should be sortable");\n  // Network workspace is a peer Node Infrastructure section and renders per-interface telemetry.\n  await window.showClusterTopology("test-cluster", "network");\n  await waitFor(() => window.document.querySelector("[data-network-node-filter]"), "Network workspace");\n  assert.ok(window.document.querySelector("[data-network-interface-filter]"), "Network interface selector should render");\n  assert.ok(window.document.querySelector("#network-throughput-chart"), "Throughput chart should render");\n  assert.ok(window.document.querySelector("#network-packets-chart"), "Packets chart should render");\n  assert.ok(window.document.querySelector("#network-errors-chart"), "Errors chart should render");\n  assert.ok(window.document.querySelector("#network-drops-chart"), "Drops chart should render");\n  assert.match(window.document.querySelector(".table-panel").textContent, /ens3/);\n
+  assert.ok(window.document.querySelector("[data-drive-sort=capacity]"), "Capacity should be sortable");\n
   assert.match(window.document.querySelector(".drive-inventory-summary").textContent, /30/);
   assert.match(window.document.querySelector("[data-drive-page-summary]").textContent,/1–25 of 30/);
   window.document.querySelector("[data-drive-page=next]").click();
@@ -221,7 +221,7 @@ async function run() {
   assert.match(window.document.querySelector(".drive-inventory-flat tbody tr:not(.hidden) td:nth-child(6)").textContent,/1.0 GiB/,"Used space should use adaptive GiB units");
   window.document.querySelector('[data-drive-view="graphs"]').click();
   await waitFor(()=>window.document.querySelector('[data-drive-view="graphs"][aria-selected="true"]'),"return to graphs tab");
-  assert.ok(window.document.querySelector("#infra-filesystem-trend"),"Graphs tab should remain available after switching");
+  assert.ok(window.document.querySelector("#infra-filesystem-trend"),"Graphs tab should remain available after switching");\n  // Network workspace is a peer Node Infrastructure section and renders per-interface telemetry.\n  await window.showClusterTopology("test-cluster", "network");\n  await waitFor(() => window.document.querySelector("[data-network-node-filter]"), "Network workspace");\n  assert.ok(window.document.querySelector("[data-network-interface-filter]"), "Network interface selector should render");\n  assert.ok(window.document.querySelector("#network-throughput-chart"), "Throughput chart should render");\n  assert.ok(window.document.querySelector("#network-packets-chart"), "Packets chart should render");\n  assert.ok(window.document.querySelector("#network-errors-chart"), "Errors chart should render");\n  assert.ok(window.document.querySelector("#network-drops-chart"), "Drops chart should render");\n  assert.match(window.document.querySelector(".table-panel").textContent, /ens3/);\n
   await tick();
   await tick();
   console.log("DOM-backed frontend navigation and drive inventory tests passed.");
