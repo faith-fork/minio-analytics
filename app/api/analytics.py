@@ -388,11 +388,11 @@ def cluster_analytics(
             "snapshot_date": latest_bucket_date,
             "active_bucket_count": active_bucket_count,
             "objects": (0 if active_bucket_count == 0 else latest_bucket_summary.get("objects_sum"))
-                if active_bucket_count == 0 or (latest_bucket_summary.get("snapshot_bucket_count") == active_bucket_count and latest_bucket_summary.get("objects_coverage") == active_bucket_summary.get("snapshot_bucket_count")) else None,
-            "versions": (0 if active_bucket_summary.get("snapshot_bucket_count") == 0 else latest_bucket_summary.get("versions_sum"))
-                if latest_bucket_summary.get("snapshot_bucket_count") == active_bucket_count and latest_bucket_summary.get("versions_coverage") == active_bucket_summary.get("snapshot_bucket_count") else None,
-            "delete_markers": (0 if active_bucket_summary.get("snapshot_bucket_count") == 0 else latest_bucket_summary.get("delete_markers_sum"))
-                if latest_bucket_summary.get("snapshot_bucket_count") == active_bucket_count and latest_bucket_summary.get("delete_markers_coverage") == active_bucket_summary.get("snapshot_bucket_count") else None,
+                if active_bucket_count == 0 or (latest_bucket_summary.get("snapshot_bucket_count") == active_bucket_count and latest_bucket_summary.get("objects_coverage") == latest_bucket_summary.get("snapshot_bucket_count")) else None,
+            "versions": (0 if latest_bucket_summary.get("snapshot_bucket_count") == 0 else latest_bucket_summary.get("versions_sum"))
+                if latest_bucket_summary.get("snapshot_bucket_count") == active_bucket_count and latest_bucket_summary.get("versions_coverage") == latest_bucket_summary.get("snapshot_bucket_count") else None,
+            "delete_markers": (0 if latest_bucket_summary.get("snapshot_bucket_count") == 0 else latest_bucket_summary.get("delete_markers_sum"))
+                if latest_bucket_summary.get("snapshot_bucket_count") == active_bucket_count and latest_bucket_summary.get("delete_markers_coverage") == latest_bucket_summary.get("snapshot_bucket_count") else None,
         })
         bucket_rows = connection.execute(
             """
