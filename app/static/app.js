@@ -765,7 +765,7 @@ async function showClusterTopology(id, section="infra-overview"){
   const pageTitle=storageView?"Storage Topology":"Node Infrastructure";
   const pageSubtitle=storageView?"MinIO storage pools, erasure sets and quorum topology":"Node availability, compute resources, drive health, filesystem and network telemetry";
   const pageSnapshot='<span class="page-heading-snapshot">'+(section==="network"?"Latest network sample ":"Snapshot ")+esc(snapshotTimestampLabel(storageView?d.topology_snapshot_ts:section==="network"?(networkData.series||[]).at(-1)?.snapshot_ts:d.node_snapshot_ts))+'</span>';
-  const timePickerContext=section==="network"?"network":section==="drives"&&state.driveView==="graphs"?"drives":section==="nodes"&&nodeSubsection==="health"?"availability":section==="nodes"&&nodeSubsection==="performance"?"performance":null;
+  const timePickerContext=section==="network"?"network":section==="drives"&&body.includes("__HIST_PICKER__")?"drives":section==="nodes"&&nodeSubsection==="health"&&body.includes("__HIST_PICKER__")?"availability":section==="nodes"&&nodeSubsection==="performance"&&body.includes("__HIST_PICKER__")?"performance":null;
   const timePickerRetention=networkData?.retention_days||trendData?.retention_days||performanceSeriesData?.retention_days||3;
   const timePickerInterval=networkData?.interval_minutes||trendData?.interval_minutes||performanceSeriesData?.interval_minutes||5;
   state.historicalTimeRetentionDays=timePickerRetention;
