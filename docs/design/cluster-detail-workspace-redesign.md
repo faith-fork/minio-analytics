@@ -144,3 +144,28 @@ Replace the bottom-of-dashboard link/card with a dedicated workspace tab/section
 ## 11. Delivery approach
 
 Implement on this feature branch, starting from the verified integration commit. Keep schema changes additive and migration-safe. Review the complete diff and test on CI. Provide exact lab deployment instructions only after implementation, review and CI gates pass. The user performs VM deployment and browser/runtime validation.
+
+
+## 12. Implementation checkpoint — 27 November 2026
+
+- Implemented the four workspace tabs and grouped 18 KPI cards in Infrastructure Status.
+- Replaced the old Cluster Health panel with the KPI groups; Node Infrastructure and Storage Topology entry points remain below.
+- Capacity & Forecast preserves capacity, quota, growth and days-to-full charts and moves the top-level capacity summary into that workspace.
+- Object & Bucket Analysis includes object, versions and delete-marker trends plus date-selectable object-size distribution.
+- The object-size API supports exact snapshot dates and returns an unavailable result for dates with no data rather than silently falling back.
+- Daily Snapshots is a dedicated workspace with historical metrics, including versions and delete markers.
+- Replication-enabled bucket count remains explicitly unavailable: no secure bucket replication-configuration API integration is present in the current architecture. Prometheus activity is not used as a proxy.
+- Frontend DOM regression tests cover workspace navigation, the 18-card KPI layout, all chart tabs, exact-date histogram selection and the snapshot history table.
+- Python tests cover collector version/delete-marker metrics, aggregate coverage, and exact-date distribution behaviour.
+
+### Current validation checkpoint
+
+- Feature branch: `feature/cluster-detail-workspace`
+- Base: `feature/auth-foundation` at `50a610f879c97cb008ecc2e9d16a20c66a4bad04`
+- Latest implementation head: `b386c45f68e9dbf05d4e6d1897c0a469df0cc83a`
+- GitHub Actions run: [46047896562](https://github.com/faith-fork/minio-analytics/actions/runs/46047896562)
+- Frontend syntax and DOM regression tests: **passed**
+- Python 3.12 tests: **passed**
+- CI is green on the implementation head. A final documentation commit and its CI run remain pending.
+- Complete patch review and lab browser/runtime acceptance remain required.
+- This PR is not merged; no VM deployment is authorized by this checkpoint.
