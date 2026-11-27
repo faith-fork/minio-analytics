@@ -541,6 +541,11 @@ def test_cluster_analytics_exposes_complete_version_and_delete_marker_trends(
 
     with transaction() as connection:
         connection.execute(
+            """INSERT INTO cluster_daily_metrics
+               (snapshot_date,cluster_id,snapshot_ts,collected_at,metrics_available)
+               VALUES ('2026-01-01','cluster-1','2026-01-01T00:00:00Z','2026-01-01T00:05:00Z',1)"""
+        )
+        connection.execute(
             "UPDATE bucket_daily_metrics SET version_count=?, delete_marker_count=? WHERE bucket_id=1",
             (12, 2),
         )
@@ -572,6 +577,11 @@ def test_cluster_analytics_withholds_incomplete_version_totals(
     from app.database.database import transaction
 
     with transaction() as connection:
+        connection.execute(
+            """INSERT INTO cluster_daily_metrics
+               (snapshot_date,cluster_id,snapshot_ts,collected_at,metrics_available)
+               VALUES ('2026-01-01','cluster-1','2026-01-01T00:00:00Z','2026-01-01T00:05:00Z',1)"""
+        )
         connection.execute(
             "UPDATE bucket_daily_metrics SET version_count=7, delete_marker_count=1 WHERE bucket_id=1"
         )
