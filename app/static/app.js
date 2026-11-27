@@ -463,7 +463,7 @@ function renderNetworkWorkspace(data){
   const nodeOptions='<option value="all">All nodes</option>'+nodes.map(n=>'<option value="'+esc(n)+'" '+(state.networkNodeFilter===n?'selected':'')+'>'+esc(n)+'</option>').join("");
   const presets=[["5m","Last 5m"],["15m","15m"],["30m","30m"],["1h","1h"],["3h","3h"],["6h","6h"],["12h","12h"],["24h","24h"],["2d","2d"],["7d","7d"],["30d","30d"]];
   const hourOptions=presets.map(([v,label])=>'<button class="tab '+((state.dashboardTimeRangePreset||"1h")===v?'active':'')+'" data-network-range="'+v+'">'+label+'</button>').join("");  const stats=data.statistics||[];
-  const filteredStats=stats.filter(x=>state.networkNodeFilter==="all"||x.node_name===state.networkNodeFilter);
+  const filteredStats=stats.filter(x=>(state.networkNodeFilter==="all"||x.node_name===state.networkNodeFilter)&&(state.networkSelectedInterface==="all"||!state.networkSelectedInterface||(x.node_name+"|"+x.interface_name+"|"+x.instance)===state.networkSelectedInterface));
   const fmtRate=v=>v==null?'—':bytes(v)+'/s';
   const metricStat=(m,k)=>m&&m[k]!=null?fmtRate(m[k]):'—';
   const rows=filteredStats.map(s=>{
