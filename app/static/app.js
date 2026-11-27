@@ -476,35 +476,113 @@ function quotaPanelBody(series){
   const incomplete=series.some(r=>r.bucket_quota_bytes==null);
   return (incomplete?'<div class="chart-note"><strong>Incomplete quota coverage:</strong> Some snapshots do not have quota metrics for every active bucket. Gaps are left blank rather than treating missing values as zero.</div>':"")+'<div class="chart-wrap"><canvas id="cluster-quota-chart"></canvas></div>';
 }
-async function showCluster(id,days=90,startDate=null,endDate=null){
-  state.snapshotClusterId=id;state.snapshotRange={days,startDate,endDate};
-  const [d,hist]=await Promise.all([api("/api/analytics/clusters/"+encodeURIComponent(id)+"?"+trendQuery(days,startDate,endDate)),api("/api/analytics/object-size-distribution/cluster/"+encodeURIComponent(id))]),x=d.latest||{},series=d.series||[];
+function clusterDetailTabs(active){
+  const tabs=[["infra","Infrastructure Status"],["capacity","Capacity & Forecast"],["objects","Object & Bucket Analysis"],["snapshots","Daily Snapshots"]];
+  return '<nav class="cluster-detail-tabs" role="tablist">'+tabs.map(([key,label])=>'<button type="button" role="tab" class="'+(key===active?'active':'')+'" data-cluster-detail-tab="'+key+'" aria-selected="'+(key===active?'true':'false')+'">'+label+'</button>').join("")+'</nav>';
+}
+function clusterKpiCard(label,value,hint,tone="neutral"){
+  return '<article class="cluster-kpi-card '+tone+'"><small>'+esc(label)+'</small><strong>'+value+'</strong><span>'+esc(hint||"")+'</span></article>';
+}
+function clusterKpiGroup(title,cards){
+  return '<section class="cluster-kpi-group"><h3>'+title+'</h3><div class="cluster-kpi-grid">'+cards.join("")+'</div></section>';
+}
+function clusterQuorumHint(topology){
+  const sets=topology?.erasure_sets||[];
+  if(!sets.length)return "Erasure-set quorum metrics unavailable";
+  const read=sets.map(x=>x.read_quorum),write=sets.map(x=>x.write_quorum);
+  if(read.every(x=>x!=null)&&write.every(x=>x!=null)&&new Set(read).size===1&&new Set(write).size===1)
+    return "Read / write quorum "+read[0]+" / "+write[0]+" · data/parity layout not exposed";
+  return "Read/write quorum varies by erasure set · data/parity layout not exposed";
+}
+async function showCluster(id,days=90,startDate=null,endDate=null,tab=state.clusterDetailTab||"infra"){
+  state.snapshotClusterId=id;state.snapshotRange={days,startDate,endDate};state.clusterDetailTab=tab;
+  const d=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"?"+trendQuery(days,startDate,endDate));
+  const x=d.latest||{},series=d.series||[],bucket=d.latest_bucket_summary||{};
+  let topology=null,hist=null;
+  if(tab==="infra")topology=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/topology").catch(()=>null);
+  if(tab==="objects"){
+    const chosen=state.clusterHistogramDate&&((d.series||[]).some(r=>r.snapshot_date===state.clusterHistogramDate))?state.clusterHistogramDate:null;
+    const url="/api/analytics/object-size-distribution/cluster/"+encodeURIComponent(id)+(chosen?"?snapshot_date="+encodeURIComponent(chosen):"");
+    hist=await api(url);
+    state.clusterHistogramDate=hist.snapshot_date||null;
+  }
   clearCharts();
-  const section=(title,subtitle,content,tag="")=>'<section class="analytics-section"><div class="analytics-section-heading"><div><h2>'+title+'</h2><p>'+subtitle+'</p></div>'+(tag?'<span class="panel-tag">'+tag+'</span>':'')+'</div>'+content+'</section>';
-  const healthBody='<div class="capacity-list"><div class="capacity-row"><span>Online nodes</span><strong>'+(x.nodes_online??"—")+'</strong></div><div class="capacity-row"><span>Offline nodes</span><strong>'+(x.nodes_offline??"—")+'</strong></div><div class="capacity-row"><span>30-day estimated growth</span><strong>'+(x.growth_bytes_per_day==null?"—":fmt(x.growth_bytes_per_day/1024**3)+" GiB/day")+'</strong></div><div class="capacity-row"><span>Snapshot date</span><strong>'+dateLabel(x.snapshot_date)+'</strong></div><div class="capacity-row"><span>Metrics</span><strong>'+pill(!!x.metrics_available)+'</strong></div></div>';
+  const section=(title,subtitle,content,toolbar="")=>'<section class="analytics-section"><div class="analytics-section-heading"><div><h2>'+title+'</h2><p>'+subtitle+'</p></div>'+toolbar+'</div>'+content+'</section>';
+  const pageHeader=pageHead(esc(d.cluster.name),"Cluster · "+esc(d.cluster.location_name)+" · "+esc(id),'<button class="subtle-button" data-view="clusters">← All clusters</button>')+clusterDetailTabs(tab);
   const topologyBody='<div class="cluster-experience-links"><article class="cluster-experience-card"><div class="cluster-action-icon">⌁</div><div><strong>Node Infrastructure</strong><p>Monitor node availability, CPU, memory, drive health, filesystem utilisation and network performance over time.</p><button class="primary-small" data-action="open-node-infrastructure">Explore infrastructure →</button></div></article><article class="cluster-experience-card"><div class="cluster-action-icon">▦</div><div><strong>Storage Topology</strong><p>Inspect storage pools, erasure sets, drive distribution and read/write quorum.</p><button class="primary-small" data-action="open-storage-topology">Explore topology →</button></div></article></div>';
-  $("#content").innerHTML=pageHead(esc(d.cluster.name),"Cluster · "+esc(d.cluster.location_name)+" · "+esc(id),'<button class="subtle-button" data-view="clusters">← All clusters</button>')+
-    `<div class="detail-grid"><div class="detail-card"><small>RAW CAPACITY</small><strong>${bytes(x.raw_total_bytes)}</strong></div><div class="detail-card"><small>RAW FREE</small><strong>${bytes(x.raw_free_bytes)}</strong></div><div class="detail-card"><small>PROJECTED DAYS TO FULL</small><strong>${x.days_to_full==null||x.days_to_full<=0?"N/A":fmt(x.days_to_full,0)+" days"}</strong></div></div>`+
-    section("Infrastructure status","See cluster availability first, then drill into nodes, drives, pools and erasure sets.",'<div class="panel-grid cluster-health-grid">'+
-      panel("Cluster health","Latest infrastructure snapshot",healthBody,"LATEST SNAPSHOT")+
-      '<section class="panel cluster-action-panel">'+topologyBody+'</section></div>')+
-    section("Capacity & forecast","Understand raw capacity, bucket quota, growth velocity and projected exhaustion.",rangeControl(days,"cluster",id)+'<div class="panel-grid cluster-chart-grid">'+
+  if(tab==="infra"){
+    const nodes=topology?.nodes||[];
+    const driveCoverage=nodes.length>0&&nodes.every(n=>n.drives_online!=null&&n.drives_offline!=null);
+    const drivesOnline=driveCoverage?nodes.reduce((sum,n)=>sum+Number(n.drives_online||0),0):null;
+    const drivesOffline=driveCoverage?nodes.reduce((sum,n)=>sum+Number(n.drives_offline||0),0):null;
+    const used=x.raw_total_bytes!=null&&x.raw_free_bytes!=null?Math.max(0,x.raw_total_bytes-x.raw_free_bytes):null;
+    const usage=x.raw_total_bytes>0&&used!=null?used/x.raw_total_bytes*100:null;
+    const status=x.metrics_available===true?(x.nodes_offline===0?"ONLINE":x.nodes_offline>0?"DEGRADED":"UNKNOWN"):"UNKNOWN";
+    const statusTone=status==="ONLINE"?"good":status==="DEGRADED"?"warning":"neutral";
+    const kpi1=[
+      clusterKpiCard("STATUS",status,x.metrics_available?"Latest cluster snapshot":"Cluster metrics unavailable",statusTone),
+      clusterKpiCard("BACKEND","MinIO / Erasure","MinIO object storage","neutral"),
+      clusterKpiCard("BUCKETS",fmt(bucket.active_bucket_count,0),bucket.snapshot_date?"Bucket snapshot "+dateLabel(bucket.snapshot_date):"Inventory count","neutral"),
+      clusterKpiCard("OBJECTS",bucket.objects==null?"—":fmt(bucket.objects,0),bucket.objects==null?"Incomplete bucket metric coverage":"Across cluster buckets","neutral"),
+      clusterKpiCard("TOTAL USAGE",bytes(used),"Raw capacity consumed","neutral"),
+      clusterKpiCard("EC DATA / PARITY","N/A",clusterQuorumHint(topology),"neutral")
+    ];
+    const kpi2=[
+      clusterKpiCard("DISKS ONLINE",drivesOnline==null?"—":fmt(drivesOnline,0),driveCoverage?"Sum of node drive metrics":"Drive health coverage incomplete",drivesOnline!=null?"good":"neutral"),
+      clusterKpiCard("DISKS OFFLINE",drivesOffline==null?"—":fmt(drivesOffline,0),driveCoverage?"Sum of node drive metrics":"Drive health coverage incomplete",drivesOffline===0?"good":drivesOffline>0?"warning":"neutral"),
+      clusterKpiCard("TOTAL CAPACITY",bytes(x.raw_total_bytes),"Raw capacity","neutral"),
+      clusterKpiCard("USED",bytes(used),"Raw used capacity","neutral"),
+      clusterKpiCard("AVAILABLE",bytes(x.raw_free_bytes),"Raw free capacity","good"),
+      clusterKpiCard("USAGE",usage==null?"—":fmt(usage,1)+"%",usage==null?"Utilization unavailable":usage>=80?"High capacity utilization":usage>=70?"Capacity utilization warning":"Raw capacity utilization",usage>=80?"warning":"good")
+    ];
+    const growth=x.growth_bytes_per_day==null?null:x.growth_bytes_per_day*30;
+    const kpi3=[
+      clusterKpiCard("VERSIONS",bucket.versions==null?"—":fmt(bucket.versions,0),"Includes delete markers",bucket.versions==null?"neutral":"neutral"),
+      clusterKpiCard("DELETE MARKERS",bucket.delete_markers==null?"—":fmt(bucket.delete_markers,0),"Separate from version count","neutral"),
+      clusterKpiCard("REPLICATION RULES", "N/A","Requires read-only bucket replication configuration access","neutral"),
+      clusterKpiCard("NODES ONLINE",x.nodes_online==null?"—":fmt(x.nodes_online,0),"Latest cluster snapshot",x.nodes_online!=null?"good":"neutral"),
+      clusterKpiCard("NODES OFFLINE",x.nodes_offline==null?"—":fmt(x.nodes_offline,0),"Latest cluster snapshot",x.nodes_offline===0?"good":x.nodes_offline>0?"warning":"neutral"),
+      clusterKpiCard("30-DAY EST. GROWTH",growth==null?"—":bytes(growth),x.growth_bytes_per_day==null?"Growth estimate unavailable":fmt(x.growth_bytes_per_day/1024**3,2)+" GiB/day estimated rate","neutral")
+    ];
+    const groups=clusterKpiGroup("Cluster & object summary",kpi1)+clusterKpiGroup("Capacity & drive health",kpi2)+clusterKpiGroup("Storage metadata & availability",kpi3);
+    $("#content").innerHTML=pageHeader+
+      section("Infrastructure status","Current cluster state and key storage signals. Missing telemetry is shown as unavailable, not zero.",'<div class="cluster-infrastructure-kpis">'+groups+'</div>')+
+      section("Infrastructure workspaces","Drill into detailed node telemetry and storage layout.",'<section class="panel cluster-action-panel">'+topologyBody+'</section>');
+    return;
+  }
+  if(tab==="capacity"){
+    const toolbar=rangeControl(days,"cluster",id);
+    $("#content").innerHTML=pageHeader+
+      section("Capacity & forecast","Analyze capacity consumption, quota, growth and projected exhaustion.",'<div class="detail-grid cluster-capacity-summary"><div class="detail-card"><small>RAW CAPACITY</small><strong>'+bytes(x.raw_total_bytes)+'</strong></div><div class="detail-card"><small>RAW FREE</small><strong>'+bytes(x.raw_free_bytes)+'</strong></div><div class="detail-card"><small>PROJECTED DAYS TO FULL</small><strong>'+((x.days_to_full==null||x.days_to_full<=0)?"N/A":fmt(x.days_to_full,0)+" days")+'</strong></div></div><div class="panel-grid cluster-chart-grid">'+
       panel("Capacity trend","Daily raw used, free and total capacity",'<div class="chart-wrap"><canvas id="cluster-chart"></canvas></div>',days+" DAYS")+
       panel("Bucket quota trend","Sum of bucket quotas across active buckets",quotaPanelBody(series))+
       panel("Growth trend","30-day estimated growth rate · GiB/day",'<div class="chart-wrap"><canvas id="cluster-growth-chart"></canvas></div>')+
-      panel("Days to full trend","30-day net consumption forecast · only projections up to 1,825 days (5 years) are shown",series.some(r=>r.days_to_full!=null&&r.days_to_full>0)?'<div class="chart-wrap"><canvas id="cluster-days-full-chart"></canvas></div>':'<div class="chart-empty-state"><strong>No reliable planning forecast</strong><p>A forecast requires at least 14 daily observations, declining free capacity and an estimated time to full within 5 years. Longer projections are hidden to avoid false confidence.</p></div>')+'</div>')+
-    section("Object & bucket analytics","Track object growth and understand the distribution of object sizes.",'<div class="panel-grid cluster-chart-grid">'+
+      panel("Days to full trend","Only projections up to 1,825 days (5 years) are shown",series.some(r=>r.days_to_full!=null&&r.days_to_full>0)?'<div class="chart-wrap"><canvas id="cluster-days-full-chart"></canvas></div>':'<div class="chart-empty-state"><strong>No reliable planning forecast</strong><p>A forecast requires at least 14 daily observations, declining free capacity and an estimated time to full within 5 years.</p></div>')+'</div>',toolbar);
+    const labels=series.map(r=>dateLabel(r.snapshot_date));
+    chart("cluster-chart",labels,[{label:"Used TiB",data:series.map(r=>r.raw_total_bytes==null||r.raw_free_bytes==null?null:(r.raw_total_bytes-r.raw_free_bytes)/1024**4,color:"#13a58b"},{label:"Free TiB",data:series.map(r=>r.raw_free_bytes==null?null:r.raw_free_bytes/1024**4,color:"#4779d8"},{label:"Total TiB",data:series.map(r=>r.raw_total_bytes==null?null:r.raw_total_bytes/1024**4,color:"#d9922e",dash:true}],"line",null," TiB");
+    chart("cluster-growth-chart",labels,[{label:"Estimated growth GiB/day",data:series.map(r=>r.growth_bytes_per_day==null?null:r.growth_bytes_per_day/1024**3,color:"#d9922e"}]);
+    if(series.some(r=>r.days_to_full!=null&&r.days_to_full>0))chart("cluster-days-full-chart",labels,[{label:"Projected days to full",data:series.map(r=>r.days_to_full==null||r.days_to_full<=0?null:r.days_to_full,color:"#4779d8"}],"line",0," days");
+    chart("cluster-quota-chart",labels,[{label:"Bucket quota TiB",data:series.map(r=>r.bucket_quota_bytes==null?null:r.bucket_quota_bytes/1024**4,color:"#d9922e"}]);
+    return;
+  }
+  if(tab==="objects"){
+    const labels=series.map(r=>dateLabel(r.snapshot_date));
+    const objectTrend=series.map(r=>r.bucket_object_count);
+    const versionTrend=series.map(r=>r.bucket_version_count);
+    const deleteTrend=series.map(r=>r.bucket_delete_marker_count);
+    const note='<div class="chart-note">Daily trend values are withheld when bucket metric coverage is incomplete. Version totals include delete markers; delete markers are also shown separately.</div>';
+    $("#content").innerHTML=pageHeader+
+      section("Object & bucket analysis","Understand object growth, versioning, delete markers and object-size distribution.",note+'<div class="panel-grid cluster-chart-grid">'+
       panel("Object trend","Total objects across active buckets when metrics are complete",'<div class="chart-wrap"><canvas id="cluster-object-chart"></canvas></div>')+
-      objectSizeHistogram(hist,"Cluster object size distribution")+'</div>')+
-    '<div class="snapshot-link-panel"><div><strong>Daily snapshots</strong><p>Browse the complete daily history and collection status for this cluster.</p></div><button class="primary-small" data-action="open-cluster-snapshots">View daily snapshots →</button></div>';
-  const trendLabels=series.map(r=>dateLabel(r.snapshot_date));
-  chart("cluster-chart",trendLabels,[{label:"Used TiB",data:series.map(r=>r.raw_total_bytes==null||r.raw_free_bytes==null?null:(r.raw_total_bytes-r.raw_free_bytes)/1024**4),color:"#13a58b"},{label:"Free TiB",data:series.map(r=>r.raw_free_bytes==null?null:r.raw_free_bytes/1024**4),color:"#4779d8"},{label:"Total TiB",data:series.map(r=>r.raw_total_bytes==null?null:r.raw_total_bytes/1024**4),color:"#d9922e",dash:true}],"line",null," TiB");
-  chart("cluster-growth-chart",trendLabels,[{label:"Estimated growth GiB/day",data:series.map(r=>r.growth_bytes_per_day==null?null:r.growth_bytes_per_day/1024**3),color:"#d9922e"}]);
-  if(series.some(r=>r.days_to_full!=null&&r.days_to_full>0))chart("cluster-days-full-chart",trendLabels,[{label:"Projected days to full",data:series.map(r=>r.days_to_full==null||r.days_to_full<=0?null:r.days_to_full),color:"#4779d8"}],"line",0," days");
-  chart("cluster-quota-chart",series.map(r=>dateLabel(r.snapshot_date)),[{label:"Bucket quota TiB",data:series.map(r=>r.bucket_quota_bytes==null?null:r.bucket_quota_bytes/1024**4),color:"#d9922e"}]);
-  chart("cluster-object-chart",series.map(r=>dateLabel(r.snapshot_date)),[{label:"Objects",data:series.map(r=>r.bucket_object_count),color:"#4779d8"}]);drawObjectSizeHistogram(hist);
+      panel("Version count trend","Total object versions including delete markers",'<div class="chart-wrap"><canvas id="cluster-version-chart"></canvas></div>')+
+      panel("Delete marker trend","Delete markers across all buckets",'<div class="chart-wrap"><canvas id="cluster-delete-marker-chart"></canvas></div>')+
+      objectSizeHistogram(hist,"Object size distribution")+'</div>',toolbar);
+    chart("cluster-object-chart",labels,[{label:"Objects",data:objectTrend,color:"#4779d8"}]);
+    chart("cluster-version-chart",labels,[{label:"Versions",data:versionTrend,color:"#13a58b"}]);
+    chart("cluster-delete-marker-chart",labels,[{label:"Delete markers",data:deleteTrend,color:"#d9922e"}]);
+    drawObjectSizeHistogram(hist);
+  }
 }
-
 function renderNetworkWorkspace(data){
   const available=data.available_interfaces||[];
   const nodes=[...new Set(available.map(x=>x.node_name))].sort((a,b)=>a.localeCompare(b));
