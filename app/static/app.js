@@ -614,7 +614,8 @@ async function showClusterTopology(id, section="infra-overview"){
       if(firstInterface){
         state.networkSelectedInterface=firstInterface.node_name+"|"+firstInterface.interface_name+"|"+firstInterface.instance;
         networkParams.set("node_name",firstInterface.node_name);
-        networkParams.set("interface_name",firstInterface.interface_name);\n        networkParams.set("instance",firstInterface.instance);
+        networkParams.set("interface_name",firstInterface.interface_name);
+        networkParams.set("instance",firstInterface.instance);
         networkData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/network/performance-series?"+networkParams.toString());
       }
     }
