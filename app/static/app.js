@@ -496,6 +496,7 @@ function renderNetworkWorkspace(data){
     (data.sample_count===0?'<div class="chart-empty-state"><strong>No samples available</strong><p>Try a longer time range or wait for the next collection.</p></div>':'');
 }
 async function showClusterTopology(id, section="infra-overview"){
+  if(section==="network"&&state.topologyClusterId!==id){state.networkNodeFilter="all";state.networkSelectedInterface="";}
   const d=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/topology");
   state.topologyClusterId=id;state.topologySection=section;
   const storageView=section==="storage-overview"||section==="pools"||section==="sets";
