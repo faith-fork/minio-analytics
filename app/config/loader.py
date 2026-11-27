@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -13,6 +13,7 @@ class ClusterConfig:
     id: str
     name: str
     prometheus_label_value: str
+    identity_label_name: str = "cluster"
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,8 @@ class LocationConfig:
     name: str
     prometheus_url: str
     clusters: tuple[ClusterConfig, ...]
+    verify_tls: bool = True
+    auth_header: str | None = field(default=None, repr=False)
 
 
 def _required_string(data: dict, key: str, context: str) -> str:

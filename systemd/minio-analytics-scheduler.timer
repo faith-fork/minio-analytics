@@ -1,0 +1,11 @@
+[Unit]
+Description=Check MinIO Analytics collector schedules every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+Persistent=true
+RandomizedDelaySec=0
+Unit=minio-analytics-scheduler.service
+
+[Install]
+WantedBy=timers.target

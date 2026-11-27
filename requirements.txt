@@ -1,6 +1,9 @@
 fastapi
 uvicorn[standard]
 requests
+urllib3>=2.0,<3
 PyYAML
 python-dotenv
 pydantic-settings
+itsdangerous
+cryptography>=42,<47
