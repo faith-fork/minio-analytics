@@ -458,11 +458,11 @@ function renderNetworkWorkspace(data){
   if(state.networkNodeFilter!=="all"&&!nodes.includes(state.networkNodeFilter))state.networkNodeFilter="all";
   const filtered=available.filter(x=>state.networkNodeFilter==="all"||x.node_name===state.networkNodeFilter);
   const selectedKey=state.networkSelectedInterface;
-  const selected=filtered.find(x=>x.node_name+"|"+x.interface_name===selectedKey)||filtered[0]||null;
-  if(selected)state.networkSelectedInterface=selected.node_name+"|"+selected.interface_name;
+  const selected=filtered.find(x=>x.node_name+"|"+x.interface_name+"|"+x.instance===selectedKey)||filtered[0]||null;
+  if(selected)state.networkSelectedInterface=selected.node_name+"|"+selected.interface_name+"|"+selected.instance;
   const selectOptions=filtered.map(x=>{
-    const key=x.node_name+"|"+x.interface_name;
-    return '<option value="'+esc(key)+'" '+(selected&&key===state.networkSelectedInterface?'selected':'')+'>'+esc(x.node_name+' / '+x.interface_name)+'</option>';
+    const key=x.node_name+"|"+x.interface_name+"|"+x.instance;
+    return '<option value="'+esc(key)+'" '+(selected&&key===state.networkSelectedInterface?'selected':'')+'>'+esc(x.node_name+' / '+x.interface_name+' / '+x.instance)+'</option>';
   }).join("");
   const nodeOptions='<option value="all">All nodes</option>'+nodes.map(n=>'<option value="'+esc(n)+'" '+(state.networkNodeFilter===n?'selected':'')+'>'+esc(n)+'</option>').join("");
   const hourOptions=[2,6,12,24,48,72].filter(h=>h<=(Number(data.retention_days||3)*24)).map(h=>'<button class="tab '+(state.networkHours===h?'active':'')+'" data-network-hours="'+h+'">'+h+'h</button>').join("");
@@ -607,14 +607,14 @@ async function showClusterTopology(id, section="infra-overview"){
   if(section==="network"){
     const networkParams=new URLSearchParams({hours:String(state.networkHours||6)});
     if(state.networkNodeFilter!=="all")networkParams.set("node_name",state.networkNodeFilter);
-    if(state.networkSelectedInterface){const selectedParts=state.networkSelectedInterface.split("|");if(selectedParts.length===2){networkParams.set("node_name",selectedParts[0]);networkParams.set("interface_name",selectedParts[1]);}}
+    if(state.networkSelectedInterface){const selectedParts=state.networkSelectedInterface.split("|");if(selectedParts.length===3){networkParams.set("node_name",selectedParts[0]);networkParams.set("interface_name",selectedParts[1]);networkParams.set("instance",selectedParts[2]);}}
     networkData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/network/performance-series?"+networkParams.toString());
     if(networkData.truncated&&!state.networkSelectedInterface){
       const firstInterface=(networkData.available_interfaces||[]).find(x=>state.networkNodeFilter==="all"||x.node_name===state.networkNodeFilter);
       if(firstInterface){
-        state.networkSelectedInterface=firstInterface.node_name+"|"+firstInterface.interface_name;
+        state.networkSelectedInterface=firstInterface.node_name+"|"+firstInterface.interface_name+"|"+firstInterface.instance;
         networkParams.set("node_name",firstInterface.node_name);
-        networkParams.set("interface_name",firstInterface.interface_name);
+        networkParams.set("interface_name",firstInterface.interface_name);\n        networkParams.set("instance",firstInterface.instance);
         networkData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/network/performance-series?"+networkParams.toString());
       }
     }
@@ -761,7 +761,7 @@ async function showClusterTopology(id, section="infra-overview"){
   }
   if(networkData&&section==="network"&&state.networkSelectedInterface){
     const selectedKey=state.networkSelectedInterface.split("|");
-    const selectedRows=(networkData.series||[]).filter(x=>x.node_name===selectedKey[0]&&x.interface_name===selectedKey[1]);
+    const selectedRows=(networkData.series||[]).filter(x=>x.node_name===selectedKey[0]&&x.interface_name===selectedKey[1]&&x.instance===selectedKey[2]);
     const labels=selectedRows.map(x=>timestampLabel(x.snapshot_ts));
     chart("network-throughput-chart",labels,[{label:"RX bytes/s",data:selectedRows.map(x=>x.rx_bytes_per_second),color:"#16a085"},{label:"TX bytes/s",data:selectedRows.map(x=>x.tx_bytes_per_second),color:"#4776c7"}],"line",0,"bytes/s");
     chart("network-packets-chart",labels,[{label:"RX packets/s",data:selectedRows.map(x=>x.rx_packets_per_second),color:"#16a085"},{label:"TX packets/s",data:selectedRows.map(x=>x.tx_packets_per_second),color:"#4776c7"}],"line",0,"packets/s");
