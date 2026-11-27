@@ -665,6 +665,36 @@ def test_topology_trends_rejects_invalid_timestamp_bounds(viewer_client):
     assert "future" in future_response.json()["detail"].lower()
 
 
+
+def test_timestamp_bounds_accept_small_future_skew_and_clamp_to_server_time(viewer_client):
+    start = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    end = (datetime.now(timezone.utc) + timedelta(seconds=30)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    endpoints = [
+        f"/api/analytics/clusters/cluster-1/topology/trends?start_ts={start}&end_ts={end}",
+        f"/api/analytics/clusters/cluster-1/nodes/performance-series?start_ts={start}&end_ts={end}",
+        f"/api/analytics/clusters/cluster-1/network/performance-series?start_ts={start}&end_ts={end}",
+    ]
+    for endpoint in endpoints:
+        response = viewer_client.get(endpoint)
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        returned_end = datetime.fromisoformat(payload["end_ts"].replace("Z", "+00:00"))
+        assert returned_end <= datetime.now(timezone.utc) + timedelta(seconds=2)
+
+
+def test_timestamp_bounds_reject_future_skew_beyond_tolerance(viewer_client):
+    start = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    end = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    endpoints = [
+        f"/api/analytics/clusters/cluster-1/topology/trends?start_ts={start}&end_ts={end}",
+        f"/api/analytics/clusters/cluster-1/nodes/performance-series?start_ts={start}&end_ts={end}",
+        f"/api/analytics/clusters/cluster-1/network/performance-series?start_ts={start}&end_ts={end}",
+    ]
+    for endpoint in endpoints:
+        response = viewer_client.get(endpoint)
+        assert response.status_code == 422
+        assert "future" in response.json()["detail"].lower()
+
 def test_topology_trends_enforces_configured_retention(viewer_client):
     with transaction() as connection:
         connection.execute(
