@@ -766,7 +766,8 @@ async function showClusterTopology(id, section="infra-overview"){
   const timePickerInterval=networkData?.interval_minutes||trendData?.interval_minutes||performanceSeriesData?.interval_minutes||5;
   state.historicalTimeRetentionDays=timePickerRetention;
   const sharedTimePicker=timePickerContext?historicalRangePicker(timePickerRetention,timePickerInterval,timePickerContext):"";
-  const networkToolbar=section==="network"?body.slice(0,body.indexOf('<div class="panel-grid network-chart-grid">')>=0?body.indexOf('<div class="panel-grid network-chart-grid">'):body.indexOf('<div class="chart-empty-state">')):"";
+  const networkToolbarEnd=[body.indexOf('<div class="detail-card">'),body.indexOf('<div class="panel-grid network-chart-grid">'),body.indexOf('<div class="chart-empty-state">')].filter(index=>index>=0).sort((a,b)=>a-b)[0];
+  const networkToolbar=section==="network"?body.slice(0,networkToolbarEnd):"";
   const networkContent=section==="network"?body.slice(networkToolbar.length):body;
   const toolbarHtml=section==="network"?' <div class="infra-compact-toolbar">'+sharedTimePicker+networkToolbar+'</div>':sharedTimePicker;
   $("#content").innerHTML=pageHead(esc(d.cluster.name)+" — "+pageTitle,pageSubtitle+pageSnapshot,'<button class="subtle-button" data-action="back-to-cluster-overview">← Back to cluster</button>')+errors+tabHtml+toolbarHtml+networkContent;
