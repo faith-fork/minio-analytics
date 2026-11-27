@@ -1,6 +1,6 @@
 # D1 — Global Time Range & Interface Selection Standardization
 
-**Status:** D1 implementation in lab validation — shared time model, timestamp API contract, and bounded future-clock-skew handling implemented; CI and runtime validation underway  
+**Status:** D1 implementation in lab validation — shared time model, timestamp API contract, bounded future-clock-skew handling, and compact global toolbar refinement implemented; CI and runtime validation underway  
 **Base branch:** `feature/auth-foundation`  
 **Design branch:** `design/global-time-range-d1`  
 **Scope:** Cross-workspace historical time controls and Network interface selection
@@ -10,6 +10,23 @@
 **Going forward, wherever historical time-series visualization makes it appropriate, MinIO Analytics should use a common Grafana-style time-range selector.** This is a product-wide design standard, not limited to the current D1 implementation. Apply it to new chart workspaces and retrofit existing applicable workspaces as opportunities arise. Preserve separate date/filter controls when their semantics are not time-series exploration (for example, daily snapshot/report date selection).
 
 The common selector should offer quick relative ranges, custom absolute/relative ranges, clear timezone context, and consistent application to related charts. The specific range options may be adapted to the data retention and collection resolution, but interaction patterns should remain consistent.
+
+## UX refinement — compact global toolbar
+
+The initial D1 lab experience showed the time-range selector as a large standalone panel with preset buttons and permanently visible custom date inputs. This consumes too much vertical space and separates controls from the charts they govern.
+
+The approved direction is a compact, modern, Grafana-style toolbar:
+
+- Time range appears as one compact dropdown control with a clear selected label.
+- Presets and custom start/end fields are contained in an on-demand popover.
+- Retention and cadence context remain available inside the popover.
+- Network node and interface filters share the same compact toolbar row as the time selector.
+- Daily snapshot trend controls use the same visual dropdown/popover pattern while preserving their distinct day-based semantics.
+- Controls should not create standalone cards or oversized filter sections.
+- Charts and operational data remain the visual priority.
+- Responsive layouts may wrap controls only when necessary.
+
+This refinement is a visual/interaction standard. It does not couple daily snapshot report filters, collection-health outcome windows, inventory filters, or other semantically independent controls to the high-frequency telemetry time-range model.
 
 ## Goals
 
