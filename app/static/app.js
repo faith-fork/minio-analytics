@@ -497,6 +497,7 @@ function clusterQuorumHint(topology){
   return "Read/write quorum varies by erasure set · data/parity layout not exposed";
 }
 async function showCluster(id,days=90,startDate=null,endDate=null,tab=state.clusterDetailTab||"infra"){
+  if(state.snapshotClusterId&&state.snapshotClusterId!==id)state.clusterHistogramDate=null;
   state.snapshotClusterId=id;state.snapshotRange={days,startDate,endDate};state.clusterDetailTab=tab;
   const d=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"?"+trendQuery(days,startDate,endDate));
   const x=d.latest||{},series=d.series||[],bucket=d.latest_bucket_summary||{};
