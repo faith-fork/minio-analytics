@@ -527,9 +527,7 @@ function renderNetworkWorkspace(data){
     panel("Errors","Receive and transmit · errors/sec",'<div class="chart-wrap"><canvas id="network-errors-chart"></canvas></div>')+
     panel("Drops","Receive and transmit · drops/sec",'<div class="chart-wrap"><canvas id="network-drops-chart"></canvas></div>')+'</div>':
     '<div class="chart-empty-state"><strong>No network interfaces in this range</strong><p>Network telemetry has not been recorded for the selected range or node.</p></div>';
-  return '<section class="panel network-filter-panel"><div class="panel-header"><div><h3>Network filters</h3><p>Historical per-interface telemetry · no cross-interface aggregation</p></div></div>'+
-    '<div class="network-filter-row"><label>Node<select data-network-node-filter>'+nodeOptions+'</select></label><label>Interface<select data-network-interface-filter>'+selectOptions+'</select></label></div>'+
-    '<p class="muted">Samples: '+fmt(data.sample_count,0)+' · Collection interval: '+fmt(data.interval_minutes,0)+' min · Range: '+esc(timestampLabel(data.start_ts))+' to '+esc(timestampLabel(data.end_ts))+'</p></section>'+
+  return '<div class="network-filter-toolbar"><label>Node<select data-network-node-filter>'+nodeOptions+'</select></label><label>Interface<select data-network-interface-filter>'+selectOptions+'</select></label><span class="network-filter-meta">Samples '+fmt(data.sample_count,0)+' · '+fmt(data.interval_minutes,0)+' min cadence · '+esc(timestampLabel(data.start_ts))+' – '+esc(timestampLabel(data.end_ts))+'</span></div>'+
     (data.truncated?'<div class="detail-card"><strong>Data limited to 20,000 samples</strong><p class="muted">Statistics are based on the returned subset. Select a node/interface to narrow the query.</p></div>':'')+
     (filtered.length?charts:'')+
     '<section class="panel table-panel"><div class="panel-header"><div><h3>Interface summary</h3><p>Average rates across the selected range; missing metric values remain unavailable.</p></div></div>'+
@@ -768,7 +766,10 @@ async function showClusterTopology(id, section="infra-overview"){
   const timePickerInterval=networkData?.interval_minutes||trendData?.interval_minutes||performanceSeriesData?.interval_minutes||5;
   state.historicalTimeRetentionDays=timePickerRetention;
   const sharedTimePicker=timePickerContext?historicalRangePicker(timePickerRetention,timePickerInterval,timePickerContext):"";
-  $("#content").innerHTML=pageHead(esc(d.cluster.name)+" — "+pageTitle,pageSubtitle+pageSnapshot,'<button class="subtle-button" data-action="back-to-cluster-overview">← Back to cluster</button>')+errors+tabHtml+sharedTimePicker+body;
+  const networkToolbar=section==="network"?body.slice(0,body.indexOf('<div class="panel-grid network-chart-grid">')>=0?body.indexOf('<div class="panel-grid network-chart-grid">'):body.indexOf('<div class="chart-empty-state">')):"";
+  const networkContent=section==="network"?body.slice(networkToolbar.length):body;
+  const toolbarHtml=section==="network"?' <div class="infra-compact-toolbar">'+sharedTimePicker+networkToolbar+'</div>':sharedTimePicker;
+  $("#content").innerHTML=pageHead(esc(d.cluster.name)+" — "+pageTitle,pageSubtitle+pageSnapshot,'<button class="subtle-button" data-action="back-to-cluster-overview">← Back to cluster</button>')+errors+tabHtml+toolbarHtml+networkContent;
   if(section==="drives"&&state.driveView==="inventory")applyDriveInventoryTable();
   if(performanceData?.samples?.length&&section==="infra-overview"){
     const overviewLabels=performanceData.samples.map(x=>snapshotTimestampLabel(x.snapshot_ts));
