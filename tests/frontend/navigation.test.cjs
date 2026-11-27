@@ -268,12 +268,9 @@ async function run() {
   const utcToIstInput=value=>new Date(value.getTime()+5.5*60*60*1000).toISOString().slice(0,16);
   customFrom.value=utcToIstInput(customStartUtc);
   customTo.value=utcToIstInput(customEndUtc);
-  const customBefore=customFrom.value+" -> "+customTo.value;
   window.document.querySelector("[data-action='apply-historical-range']").click();
-  await tick();
-  console.log("D1 custom range debug",customBefore,window.__requests.slice(-3),window.document.querySelector("#toast-root")?.textContent);
   await waitFor(()=>window.__requests.some(url=>url.includes("/network/performance-series")&&url.includes("start_ts=")),"custom absolute range query");
-  const expectedStart=customStartUtc.toISOString();
+  const expectedStart=new Date(customFrom.value+":00+05:30").toISOString();
   assert.ok(window.__requests.some(url=>new window.URL(url,"http://localhost").searchParams.get("start_ts")===expectedStart),"IST range should be normalized to the expected UTC timestamp");
 
   await window.showClusterTopology("test-cluster","nodes");
