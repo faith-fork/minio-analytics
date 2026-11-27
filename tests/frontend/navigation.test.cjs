@@ -272,7 +272,7 @@ async function run() {
   await waitFor(()=>window.__requests.some(url=>url.includes("/network/performance-series")&&url.includes("start_ts=")),"custom absolute range query");
   const expectedStartMs=Date.parse(customFrom.value+":00+05:30");
   const actualStarts=window.__requests.filter(url=>url.includes("/network/performance-series")).map(url=>new window.URL(url,"http://localhost").searchParams.get("start_ts"));
-  assert.ok(actualStarts.some(value=>Date.parse(value)===expectedStartMs),"IST range should be normalized to the expected UTC timestamp; received "+JSON.stringify(actualStarts)+" expected "+new Date(expectedStartMs).toISOString());
+  assert.ok(actualStarts.some(value=>Date.parse(value)===expectedStartMs),"IST range should be normalized to the entered minute; received "+JSON.stringify(actualStarts)+" expected "+new Date(expectedStartMs).toISOString());
 
   await window.showClusterTopology("test-cluster","nodes");
   assert.ok(window.document.querySelector("[data-historical-picker='availability']"),"Availability trends should use shared range");
