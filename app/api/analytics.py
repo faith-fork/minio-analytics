@@ -1504,8 +1504,9 @@ def network_performance_series(
             sql += " AND n.interface_name=?"
             params.append(interface_name.strip())
         rows = connection.execute(sql + " ORDER BY r.snapshot_ts,n.node_name,n.interface_name LIMIT ?", params + [max_samples + 1]).fetchall()
-        if len(rows) > max_samples:
-            raise HTTPException(status_code=413, detail=f"Selected range returns more than {max_samples} samples; narrow the node or interface filter")
+        truncated = len(rows) > max_samples
+        if truncated:
+            rows = rows[:max_samples]
         available_rows = connection.execute(
             """
             SELECT DISTINCT n.node_name,n.interface_name
