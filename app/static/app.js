@@ -601,7 +601,7 @@ async function showClusterTopology(id, section="infra-overview"){
 
   let trendData=null,performanceData=null;
   const trendFilter=state.topologyTrendFilters?.[id]||{startDate:"",endDate:""};
-  let networkData=null;\n  if(section==="network"){\n    const networkParams=new URLSearchParams({hours:String(state.networkHours||6)});\n    networkData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/network/performance-series?"+networkParams.toString());\n  }\n  if(section==="nodes"&&nodeSubsection==="health"){
+  let networkData=null;\n  if(section==="network"){\n    const networkParams=new URLSearchParams({hours:String(state.networkHours||6)});\n    if(state.networkNodeFilter!=="all")networkParams.set("node_name",state.networkNodeFilter);\n    if(state.networkSelectedInterface){const selectedParts=state.networkSelectedInterface.split("|");if(selectedParts.length===2)networkParams.set("interface_name",selectedParts[1]);}\n    networkData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/network/performance-series?"+networkParams.toString());\n  }\n  if(section==="nodes"&&nodeSubsection==="health"){
     const trendParams=new URLSearchParams();
     if(trendFilter.startDate)trendParams.set("start_date",trendFilter.startDate);
     if(trendFilter.endDate)trendParams.set("end_date",trendFilter.endDate);
