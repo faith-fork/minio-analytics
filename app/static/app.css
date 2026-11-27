@@ -589,7 +589,7 @@
 .cluster-capacity-summary .detail-card{min-height:82px}
 .histogram-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px}
 .histogram-date-control{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:10px}
-.histogram-date-control select{min-width:145px;height:31px;font-size:10px;padding:5px 8px}
+.histogram-date-control input{min-width:145px;height:31px;font-size:10px;padding:5px 8px}
 .cluster-chart-grid .histogram-toolbar .tenant-chart-controls{margin-left:auto}
 @media(max-width:1200px){.cluster-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:900px){.cluster-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cluster-detail-tabs button{padding:11px 10px}}
