@@ -1003,19 +1003,48 @@ def collection_health_trends(
     cluster_id: str,
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),
+    start_ts: str | None = Query(default=None),
+    end_ts: str | None = Query(default=None),
     _: dict = Depends(get_current_user),
 ) -> dict:
-    """Return historical node and drive telemetry from persisted four-hour samples."""
-    today_ist = datetime.now(ZoneInfo("Asia/Kolkata")).date()
-    end = end_date or today_ist
-    start = start_date or (end - timedelta(days=29))
-    if start > end:
-        raise HTTPException(status_code=422, detail="start_date must be on or before end_date")
-    ist = ZoneInfo("Asia/Kolkata")
-    start_utc = datetime.combine(start, datetime.min.time(), tzinfo=ist).astimezone(timezone.utc)
-    end_utc = datetime.combine(end + timedelta(days=1), datetime.min.time(), tzinfo=ist).astimezone(timezone.utc)
-    start_text = start_utc.isoformat(timespec="seconds").replace("+00:00", "Z")
-    end_text = end_utc.isoformat(timespec="seconds").replace("+00:00", "Z")
+    """Return historical node and drive telemetry for a bounded timestamp window.
+
+    The default range remains the last 30 IST calendar days for backward
+    compatibility. Timestamp bounds provide precise filtering for shared
+    dashboard time ranges and are constrained by configured telemetry retention.
+    """
+    if bool(start_ts) != bool(end_ts):
+        raise HTTPException(status_code=422, detail="start_ts and end_ts must be supplied together")
+    now = datetime.now(timezone.utc)
+    if start_ts and end_ts:
+        try:
+            start_utc = datetime.fromisoformat(start_ts.replace("Z", "+00:00"))
+            end_utc = datetime.fromisoformat(end_ts.replace("Z", "+00:00"))
+            if start_utc.tzinfo is None or end_utc.tzinfo is None:
+                raise ValueError("Timezone offset is required")
+            start_utc = start_utc.astimezone(timezone.utc)
+            end_utc = end_utc.astimezone(timezone.utc)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Custom timestamps must be valid ISO-8601 values with timezone") from exc
+        if end_utc <= start_utc:
+            raise HTTPException(status_code=422, detail="end_ts must be later than start_ts")
+        if end_utc > now:
+            raise HTTPException(status_code=422, detail="end_ts cannot be in the future")
+        start_text = start_utc.isoformat(timespec="seconds").replace("+00:00", "Z")
+        end_text = end_utc.isoformat(timespec="seconds").replace("+00:00", "Z")
+        start = start_utc.astimezone(ZoneInfo("Asia/Kolkata")).date()
+        end = end_utc.astimezone(ZoneInfo("Asia/Kolkata")).date()
+    else:
+        today_ist = datetime.now(ZoneInfo("Asia/Kolkata")).date()
+        end = end_date or today_ist
+        start = start_date or (end - timedelta(days=29))
+        if start > end:
+            raise HTTPException(status_code=422, detail="start_date must be on or before end_date")
+        ist = ZoneInfo("Asia/Kolkata")
+        start_utc = datetime.combine(start, datetime.min.time(), tzinfo=ist).astimezone(timezone.utc)
+        end_utc = datetime.combine(end + timedelta(days=1), datetime.min.time(), tzinfo=ist).astimezone(timezone.utc)
+        start_text = start_utc.isoformat(timespec="seconds").replace("+00:00", "Z")
+        end_text = end_utc.isoformat(timespec="seconds").replace("+00:00", "Z")
 
     with transaction() as connection:
         cluster = connection.execute(
@@ -1026,6 +1055,16 @@ def collection_health_trends(
         ).fetchone()
         if cluster is None:
             raise HTTPException(status_code=404, detail="Cluster not found or disabled")
+        retention_row = connection.execute(
+            "SELECT setting_value FROM app_settings WHERE setting_key='telemetry_retention_days'"
+        ).fetchone()
+        interval_row = connection.execute(
+            "SELECT setting_value FROM app_settings WHERE setting_key='node_interval_minutes'"
+        ).fetchone()
+        retention_days = max(1, int(retention_row["setting_value"])) if retention_row else 3
+        interval_minutes = max(1, int(interval_row["setting_value"])) if interval_row else 5
+        if (end_utc - start_utc) > timedelta(days=retention_days):
+            raise HTTPException(status_code=422, detail=f"Selected range exceeds configured telemetry retention of {retention_days} days")
         sql = """
             SELECT r.run_id,r.cluster_id,c.name AS cluster_name,l.name AS location_name,
                    r.snapshot_ts,r.collected_at,r.node_count AS recorded_node_count,
@@ -1107,6 +1146,10 @@ def collection_health_trends(
         "cluster_id": cluster_id,
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
+        "start_ts": start_text,
+        "end_ts": end_text,
+        "retention_days": retention_days,
+        "interval_minutes": interval_minutes,
         "cluster": _dict(cluster),
         "samples": samples,
         "sample_count": len(samples),
@@ -1504,7 +1547,10 @@ def network_performance_series(
         if interface_name and interface_name.strip():
             sql += " AND n.interface_name=?"
             params.append(interface_name.strip())
-        rows = connection.execute(sql + " ORDER BY r.snapshot_ts,n.node_name,n.interface_name LIMIT ?", params + [max_samples + 1]).fetchall()
+        if instance and instance.strip():
+            sql += " AND n.instance=?"
+            params.append(instance.strip())
+        rows = connection.execute(sql + " ORDER BY r.snapshot_ts,n.node_name,n.interface_name,n.instance LIMIT ?", params + [max_samples + 1]).fetchall()
         truncated = len(rows) > max_samples
         if truncated:
             rows = rows[:max_samples]
@@ -1513,9 +1559,12 @@ def network_performance_series(
             SELECT DISTINCT n.node_name,n.interface_name,n.instance
             FROM node_health_runs r JOIN network_health_metrics n ON n.run_id=r.run_id
             WHERE r.cluster_id=? AND r.snapshot_ts>=? AND r.snapshot_ts<=?
-            ORDER BY n.node_name,n.interface_name
+              AND (? IS NULL OR n.node_name=?)
+              AND (? IS NULL OR n.interface_name=?)
+              AND (? IS NULL OR n.instance=?)
+            ORDER BY n.node_name,n.interface_name,n.instance
             """,
-            (cluster_id, start_text, end_text),
+            (cluster_id, start_text, end_text, node_name, node_name, interface_name, interface_name, instance, instance),
         ).fetchall()
 
     series = [dict(row) for row in rows]
