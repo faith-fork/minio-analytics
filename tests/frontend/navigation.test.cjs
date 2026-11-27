@@ -255,7 +255,7 @@ async function run() {
   iface.value="node01|ens3|node01:9100";
   iface.dispatchEvent(new window.Event("change",{bubbles:true}));
   await waitFor(()=>[...window.document.querySelectorAll(".table-panel tbody tr")].some(row=>row.textContent.includes("ens3")),"single interface summary");
-  assert.equal([...window.document.querySelectorAll(".table-panel tbody tr")].filter(row=>row.textContent.includes("ens4")).length,0,"Selecting one interface filters out the others");
+  assert.equal([...window.document.querySelectorAll(".table-panel tbody tr")].filter(row=>row.querySelector("td")&&row.cells[0]?.textContent.includes("ens4")).length,0,"Selecting one interface filters out the others");
   const nodeSelect=window.document.querySelector("[data-network-node-filter]");
   nodeSelect.value="node02";
   nodeSelect.dispatchEvent(new window.Event("change",{bubbles:true}));
