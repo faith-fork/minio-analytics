@@ -270,7 +270,8 @@ async function run() {
   customTo.value=utcToIstInput(customEndUtc);
   window.document.querySelector("[data-action='apply-historical-range']").click();
   await waitFor(()=>window.__requests.some(url=>url.includes("/network/performance-series")&&url.includes("start_ts=")),"custom absolute range query");
-  const expectedStartMs=Date.parse(utcToIstInput(customStartUtc)+":00+05:30");
+  const enteredIstStart=utcToIstInput(customStartUtc);
+  const expectedStartMs=Date.parse(enteredIstStart+":00Z")-5.5*60*60*1000;
   const lastNetworkRequest=[...window.__requests].reverse().find(url=>url.includes("/network/performance-series"));
   const actualStart=lastNetworkRequest?new window.URL(lastNetworkRequest,"http://localhost").searchParams.get("start_ts"):null;
   assert.equal(Date.parse(actualStart),expectedStartMs,"IST range should be normalized to the entered minute");
