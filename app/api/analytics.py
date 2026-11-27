@@ -1518,6 +1518,7 @@ def network_performance_series(
 
     series = [dict(row) for row in rows]
     grouped: dict[str, dict] = {}
+    accumulators: dict[str, dict[str, list[float]]] = {}
     for row in series:
         key = f'{row["node_name"]} / {row["interface_name"]}'
         group = grouped.setdefault(key, {
@@ -1527,12 +1528,14 @@ def network_performance_series(
             "sample_count": 0,
             "metrics": {},
         })
+        accumulator = accumulators.setdefault(key, {metric: [] for metric in metrics})
         group["sample_count"] += 1
         for metric in metrics:
-            values = [sample[metric] for sample in series
-                      if sample["node_name"] == row["node_name"]
-                      and sample["interface_name"] == row["interface_name"]
-                      and sample[metric] is not None]
+            value = row[metric]
+            if value is not None:
+                accumulator[metric].append(value)
+    for key, group in grouped.items():
+        for metric, values in accumulators[key].items():
             group["metrics"][metric] = {
                 "average": round(sum(values) / len(values), 3) if values else None,
                 "minimum": round(min(values), 3) if values else None,
