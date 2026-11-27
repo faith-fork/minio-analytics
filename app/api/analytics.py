@@ -1518,8 +1518,8 @@ def network_performance_series(
         ).fetchall()
 
     series = [dict(row) for row in rows]
-    grouped: dict[str, dict] = {}
-    accumulators: dict[str, dict[str, list[float]]] = {}
+    grouped: dict[tuple[str, str, str], dict] = {}
+    accumulators: dict[tuple[str, str, str], dict[str, list[float]]] = {}
     for row in series:
         key = (row["node_name"], row["instance"], row["interface_name"])
         group = grouped.setdefault(key, {
@@ -1557,7 +1557,8 @@ def network_performance_series(
         "series": series,
         "statistics": list(grouped.values()),
         "sample_count": len(series),
-        "truncated": truncated,\n        "data_warning": "Sample limit reached; statistics reflect the returned subset. Select a node/interface to narrow the query." if truncated else None,
+        "truncated": truncated,
+        "data_warning": "Sample limit reached; statistics reflect the returned subset. Select a node/interface to narrow the query." if truncated else None,
         "supported_metrics": list(metrics),
         "aggregation": "per-interface only; no cross-interface aggregation",
     }
