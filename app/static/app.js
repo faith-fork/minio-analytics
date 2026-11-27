@@ -1237,3 +1237,5 @@ $("#content").addEventListener("input",e=>{
   }
 });
 (async()=>{try{const d=await api("/api/auth/me");showApp(d.user);await setView("overview");}catch{showLogin();}})();
+
+document.addEventListener("toggle",function(event){const d=event.target;if(!d.matches(".time-range-dropdown")||!d.open)return;const p=d.querySelector(".time-range-popover");if(!p)return;d.classList.toggle("popover-align-right",p.getBoundingClientRect().right>window.innerWidth-8);},true);
