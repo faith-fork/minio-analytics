@@ -1,6 +1,6 @@
 # D1 — Global Time Range & Interface Selection Standardization
 
-**Status:** D1 implementation in progress — shared time model and timestamp API contract implemented; validation underway  
+**Status:** D1 implementation in lab validation — shared time model, timestamp API contract, and bounded future-clock-skew handling implemented; CI and runtime validation underway  
 **Base branch:** `feature/auth-foundation`  
 **Design branch:** `design/global-time-range-d1`  
 **Scope:** Cross-workspace historical time controls and Network interface selection
@@ -198,3 +198,17 @@ Implemented on the design branch:
 - Verify absolute IST-to-UTC conversion, retention/future/inverted range validation and empty-range behavior.
 - Verify the 20,000-sample boundary and ensure no hidden interface auto-selection.
 - Complete CI and user lab runtime/visual validation.
+
+
+## D1 defect fix — bounded timestamp clock skew
+
+A lab validation defect was identified when switching Node Infrastructure tabs: historical telemetry requests intermittently failed with `end_ts cannot be in the future`. The frontend creates relative-range end timestamps from browser time; API processing can occur after the server clock has advanced, making the timestamp marginally ahead of backend validation time.
+
+The timestamp validation was centralized in `_parse_timestamp_bounds` and applied to the topology trends, node performance-series, and network performance-series endpoints. Timezone-aware ISO-8601 parsing and UTC normalization remain mandatory. End timestamps up to 60 seconds ahead of server time are accepted and clamped to server time; timestamps beyond that tolerance remain rejected. Start/end ordering is revalidated after clamping.
+
+Regression coverage added for all three endpoints:
+- Accept a small future skew (30 seconds) and clamp the returned end bound to server time.
+- Reject a future timestamp beyond tolerance (2 minutes).
+- Existing invalid, naive, inverted, retention, and legacy date-contract tests remain in place.
+
+This is a D1 defect correction, not a relaxation of the future-range contract.
