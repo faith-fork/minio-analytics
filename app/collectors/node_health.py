@@ -2,6 +2,7 @@ from __future__ import annotations
 import json, logging, uuid
 from datetime import datetime, timezone
 from app.collectors.topology_collector import collect_topology_snapshot
+from app.collectors.network_metrics import collect_network_metrics
 from app.config.loader import LocationConfig
 from app.database.database import initialize_database, transaction
 from app.database.persistence import sync_configuration
@@ -18,6 +19,9 @@ def collect_node_health(locations:list[LocationConfig],snapshot_ts:datetime|None
             run_id=str(uuid.uuid4())
             try:
                 snap=collect_topology_snapshot(location,cluster,target,include_pool_health=False)
+                network_rows, network_error = collect_network_metrics(location, cluster, target)
+                if network_error:
+                    snap.family_errors['network'] = network_error
                 snapshot_text=snap.snapshot_ts.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00","Z")
                 collected_text=snap.collected_at.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00","Z")
                 run_status = "partial" if snap.family_errors else "success"
@@ -31,6 +35,17 @@ def collect_node_health(locations:list[LocationConfig],snapshot_ts:datetime|None
                     for d in snap.drives:
                         c.execute("""INSERT INTO drive_health_metrics(run_id,cluster_id,node_name,server,drive_path,mountpoint,total_bytes,used_bytes,free_bytes,availability_errors,io_errors,timeout_errors,filesystem_total_bytes,filesystem_available_bytes,filesystem_free_bytes,filesystem_readonly,filesystem_used_bytes,filesystem_used_pct)
                         VALUES(:run_id,:cluster_id,:node_name,:server,:drive_path,:mountpoint,:total_bytes,:used_bytes,:free_bytes,:availability_errors,:io_errors,:timeout_errors,:filesystem_total_bytes,:filesystem_available_bytes,:filesystem_free_bytes,:filesystem_readonly,:filesystem_used_bytes,:filesystem_used_pct)""",{"run_id":run_id,"cluster_id":cluster.id,**d})
+                    for net in network_rows:
+                        c.execute("""INSERT INTO network_health_metrics
+                        (run_id,cluster_id,node_name,instance,interface_name,
+                         rx_bytes_per_second,tx_bytes_per_second,rx_packets_per_second,
+                         tx_packets_per_second,rx_errors_per_second,tx_errors_per_second,
+                         rx_drops_per_second,tx_drops_per_second)
+                        VALUES(:run_id,:cluster_id,:node_name,:instance,:interface_name,
+                         :rx_bytes_per_second,:tx_bytes_per_second,:rx_packets_per_second,
+                         :tx_packets_per_second,:rx_errors_per_second,:tx_errors_per_second,
+                         :rx_drops_per_second,:tx_drops_per_second)""",
+                        {"run_id":run_id,"cluster_id":cluster.id,**net})
                 results.append({"cluster_id":cluster.id,"run_id":run_id,"nodes":len(snap.nodes),"drives":len(snap.drives),"family_errors":snap.family_errors,"status":run_status})
             except Exception as exc:
                 logger.exception("Node health collection failed for %s",cluster.id)

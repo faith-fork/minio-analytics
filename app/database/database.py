@@ -205,6 +205,33 @@ def _apply_migrations(c: sqlite3.Connection) -> None:
             c.execute("ALTER TABLE prometheus_connections ADD COLUMN auth_secret_encrypted TEXT")
         c.execute("INSERT INTO schema_version(version) VALUES (13)")
 
+    migration_v14 = c.execute("SELECT 1 FROM schema_version WHERE version=14").fetchone()
+    if not migration_v14:
+        _execute_sql_script(c, """
+        CREATE TABLE IF NOT EXISTS network_health_metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL REFERENCES node_health_runs(run_id) ON DELETE CASCADE,
+            cluster_id TEXT NOT NULL REFERENCES clusters(id) ON DELETE RESTRICT,
+            node_name TEXT NOT NULL,
+            instance TEXT NOT NULL,
+            interface_name TEXT NOT NULL,
+            rx_bytes_per_second REAL,
+            tx_bytes_per_second REAL,
+            rx_packets_per_second REAL,
+            tx_packets_per_second REAL,
+            rx_errors_per_second REAL,
+            tx_errors_per_second REAL,
+            rx_drops_per_second REAL,
+            tx_drops_per_second REAL,
+            UNIQUE(run_id, instance, interface_name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_network_metrics_cluster_run
+            ON network_health_metrics(cluster_id, run_id);
+        CREATE INDEX IF NOT EXISTS idx_network_metrics_node_interface
+            ON network_health_metrics(cluster_id, node_name, interface_name);
+        """)
+        c.execute("INSERT INTO schema_version(version) VALUES (14)")
+
 def initialize_database() -> None:
     c=get_connection()
     try:
