@@ -565,3 +565,4 @@
 
 .heading-actions .trend-controls{margin:0}.heading-actions .time-range-dropdown{flex:0 0 auto}.tenant-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.panel-header-actions .trend-controls{margin:0}.panel-header-actions .time-range-dropdown{flex:0 0 auto}
 .heading-actions .trend-controls{margin:0}.heading-actions .time-range-dropdown{flex:0 0 auto}.tenant-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.panel-header-actions .trend-controls{margin:0}.panel-header-actions .time-range-dropdown{flex:0 0 auto}
+.time-range-dropdown.popover-align-right .time-range-popover{left:auto;right:0}
