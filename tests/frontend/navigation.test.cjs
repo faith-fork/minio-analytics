@@ -166,7 +166,7 @@ async function run() {
   assert.match(appSource, /Node Health & Performance/);
   assert.match(appSource, /Drives & Filesystems/);
   assert.match(appSource, /Network/);
-  assert.match(appSource, /network\\/performance-series/);
+  assert.ok(appSource.includes("/network/performance-series"), "Network API route should be present");
   assert.match(appSource, /CPU & Memory Trends/);
   assert.match(appSource, /infra-overview-cpu/);
   assert.match(appSource, /infra-overview-memory/);
