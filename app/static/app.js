@@ -455,7 +455,7 @@ async function reviewBackupCleanup(){
   }catch(err){toast(err.message,true);}
 }
 function rangeControl(days,kind,id,attribution="current") {
-  const options=[[7,"Last 7 days"],[30,"Last 30 days"],[60,"Last 60 days"],[90,"Last 90 days"],[180,"Last 6 months"],[365,"Last 12 months"]];
+  const options=[[7,"Last 7 days"],[30,"Last 30 days"],[90,"Last 90 days"],[180,"Last 6 months"],[365,"Last 12 months"],[730,"Last 2 years"],[1825,"Last 5 years"],[3650,"Last 10 years"]];
   const context=kind==="cluster"||kind==="cluster-snapshots"?state.snapshotRange:state.snapshotContext;
   const custom=Boolean(context?.startDate&&context?.endDate);
   const selected=options.find(([value])=>Number(days)===value)||options[3];
@@ -901,13 +901,12 @@ async function showClusterTopology(id, section="infra-overview"){
 }
 
 async function showClusterSnapshots(id,days=90,startDate=null,endDate=null){
-  state.snapshotClusterId=id;state.snapshotRange={days,startDate,endDate};
+  state.snapshotClusterId=id;state.snapshotRange={days,startDate,endDate};state.clusterDetailTab="snapshots";
   const d=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"?"+trendQuery(days,startDate,endDate));
-  const rows=(d.series||[]).map(r=>`<tr><td>${dateLabel(r.snapshot_date)}</td><td>${bytes(r.raw_total_bytes)}</td><td>${bytes(r.raw_free_bytes)}</td><td>${bytes(r.usable_total_bytes)}</td><td>${bytes(r.usable_free_bytes)}</td><td>${r.nodes_online??"—"}</td><td>${r.nodes_offline??"—"}</td><td>${r.growth_bytes_per_day==null?"—":fmt(r.growth_bytes_per_day/1024**3)+" GiB"}</td><td>${r.days_to_full==null?"—":fmt(r.days_to_full,0)+" days"}</td><td>${pill(!!r.metrics_available)}</td></tr>`);
+  const rows=(d.series||[]).map(r=>`<tr><td>${dateLabel(r.snapshot_date)}</td><td>${bytes(r.raw_total_bytes)}</td><td>${bytes(r.raw_free_bytes)}</td><td>${bytes(r.usable_total_bytes)}</td><td>${bytes(r.usable_free_bytes)}</td><td>${r.nodes_online??"—"}</td><td>${r.nodes_offline??"—"}</td><td>${r.bucket_object_count==null?"—":fmt(r.bucket_object_count,0)}</td><td>${r.bucket_version_count==null?"—":fmt(r.bucket_version_count,0)}</td><td>${r.bucket_delete_marker_count==null?"—":fmt(r.bucket_delete_marker_count,0)}</td><td>${r.growth_bytes_per_day==null?"—":fmt(r.growth_bytes_per_day/1024**3)+" GiB"}</td><td>${r.days_to_full==null?"—":fmt(r.days_to_full,0)+" days"}</td><td>${pill(!!r.metrics_available)}</td></tr>`);
   clearCharts();
-  $("#content").innerHTML=pageHead(esc(d.cluster.name)+" — Daily snapshots","Historical daily cluster metrics · "+esc(d.cluster.location_name),'<button class="subtle-button" data-action="back-to-cluster">← Back to cluster</button>')+
-    rangeControl(days,"cluster-snapshots",id)+
-    table("Daily snapshots",rows.length+" snapshot(s) · "+(startDate&&endDate?dateLabel(startDate)+" – "+dateLabel(endDate):"Last "+days+" days"),["DATE","RAW TOTAL","RAW FREE","USABLE TOTAL","USABLE FREE","ONLINE","OFFLINE","GROWTH / DAY","DAYS TO FULL","STATUS"],rows,"No daily snapshots are available for this date range.");
+  $("#content").innerHTML=pageHead(esc(d.cluster.name),"Cluster · "+esc(d.cluster.location_name)+" · "+esc(id),'<button class="subtle-button" data-view="clusters">← All clusters</button>')+clusterDetailTabs("snapshots")+
+    section("Daily snapshots","Historical daily cluster metrics and stored bucket analytics.",table("Snapshot history",rows.length+" snapshot(s) · "+(startDate&&endDate?dateLabel(startDate)+" – "+dateLabel(endDate):"Last "+days+" days"),["DATE","RAW TOTAL","RAW FREE","USABLE TOTAL","USABLE FREE","ONLINE","OFFLINE","OBJECTS","VERSIONS","DELETE MARKERS","GROWTH / DAY","DAYS TO FULL","STATUS"],rows,"No daily snapshots are available for this date range."),rangeControl(days,"cluster-snapshots",id));
 }
 async function renderUsers(){
   const data=await api("/api/auth/users");
