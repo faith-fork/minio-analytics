@@ -169,3 +169,13 @@ Implement on this feature branch, starting from the verified integration commit.
 - CI is green on the implementation head. A final documentation commit and its CI run remain pending.
 - Complete patch review and lab browser/runtime acceptance remain required.
 - This PR is not merged; no VM deployment is authorized by this checkpoint.
+
+
+### Final follow-up validation — 27 November 2026
+
+- Fixed the Daily Snapshots workspace rendering helper uncovered by DOM regression tests.
+- Preserved histogram date selections outside the main trend window and reset the selection when switching clusters.
+- Corrected compact date-input styling.
+- Final application head before this documentation update: `f9dca6d3dd15b1ddcb8f33d7447a0543c48001c5`.
+- GitHub Actions run [46048264635](https://github.com/faith-fork/minio-analytics/actions/runs/46048264635) passed on that exact application head: frontend syntax/DOM tests and Python 3.12 tests.
+- PR #71 is open as a Draft. Complete diff review and lab browser/runtime acceptance remain outstanding.
