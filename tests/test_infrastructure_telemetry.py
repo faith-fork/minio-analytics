@@ -656,11 +656,13 @@ def test_topology_trends_rejects_invalid_timestamp_bounds(viewer_client):
         "/api/analytics/clusters/cluster-1/topology/trends?start_ts=2026-11-27T09:00:00Z&end_ts=2026-11-27T08:00:00Z"
     )
     assert inverted.status_code == 422
-    future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    future_start = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    future_end = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(timespec="seconds").replace("+00:00", "Z")
     future_response = viewer_client.get(
-        f"/api/analytics/clusters/cluster-1/topology/trends?start_ts={future}&end_ts={future}"
+        f"/api/analytics/clusters/cluster-1/topology/trends?start_ts={future_start}&end_ts={future_end}"
     )
     assert future_response.status_code == 422
+    assert "future" in future_response.json()["detail"].lower()
 
 
 def test_topology_trends_enforces_configured_retention(viewer_client):
