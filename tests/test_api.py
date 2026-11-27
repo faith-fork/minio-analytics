@@ -532,3 +532,101 @@ def test_master_admin_settings_reject_legacy_interval_above_policy_limit(admin_c
     assert settings["node_interval_minutes"] == 60
     assert settings["node_interval_hours"] == 1
     assert settings["telemetry_retention_days"] == 3
+
+
+def test_cluster_analytics_exposes_complete_version_and_delete_marker_trends(
+    viewer_client: TestClient,
+) -> None:
+    from app.database.database import transaction
+
+    with transaction() as connection:
+        connection.execute(
+            "UPDATE bucket_daily_metrics SET version_count=?, delete_marker_count=? WHERE bucket_id=1",
+            (12, 2),
+        )
+        connection.execute(
+            "UPDATE bucket_daily_metrics SET version_count=?, delete_marker_count=? WHERE bucket_id=2",
+            (18, 3),
+        )
+        connection.execute(
+            "UPDATE bucket_daily_metrics SET version_count=?, delete_marker_count=? WHERE bucket_id=3",
+            (24, 4),
+        )
+
+    response = viewer_client.get(
+        "/api/analytics/clusters/cluster-1?start_date=2026-01-01&end_date=2026-01-01"
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["latest_bucket_summary"]["versions"] == 54
+    assert payload["latest_bucket_summary"]["delete_markers"] == 9
+    assert payload["series"][0]["bucket_version_count"] == 54
+    assert payload["series"][0]["bucket_delete_marker_count"] == 9
+    assert payload["series"][0]["version_bucket_count"] == 3
+    assert payload["series"][0]["delete_marker_bucket_count"] == 3
+
+
+def test_cluster_analytics_withholds_incomplete_version_totals(
+    viewer_client: TestClient,
+) -> None:
+    from app.database.database import transaction
+
+    with transaction() as connection:
+        connection.execute(
+            "UPDATE bucket_daily_metrics SET version_count=7, delete_marker_count=1 WHERE bucket_id=1"
+        )
+        connection.execute(
+            "UPDATE bucket_daily_metrics SET version_count=NULL, delete_marker_count=2 WHERE bucket_id=2"
+        )
+        connection.execute(
+            "UPDATE bucket_daily_metrics SET version_count=9, delete_marker_count=NULL WHERE bucket_id=3"
+        )
+
+    response = viewer_client.get(
+        "/api/analytics/clusters/cluster-1?start_date=2026-01-01&end_date=2026-01-01"
+    )
+    payload = response.json()
+    assert payload["series"][0]["bucket_version_count"] is None
+    assert payload["series"][0]["bucket_delete_marker_count"] is None
+    assert payload["series"][0]["version_bucket_count"] == 2
+    assert payload["series"][0]["delete_marker_bucket_count"] == 2
+
+
+def test_object_size_distribution_honors_exact_snapshot_date(
+    admin_client: TestClient,
+) -> None:
+    import json
+    from app.database.database import transaction
+
+    with transaction() as connection:
+        for bucket_id, name, count in ((1, "bucket-one", 10), (2, "bucket-two", 20), (3, "bucket-three", 30)):
+            connection.execute(
+                """INSERT INTO bucket_daily_metrics
+                   (snapshot_date,bucket_id,cluster_id,bucket_name,tenant_id_at_snapshot,
+                    snapshot_ts,collected_at,used_bytes,quota_bytes,object_count,
+                    object_size_distribution_json,metrics_available)
+                   VALUES ('2026-01-02',?,?,?,NULL,'2026-01-02T00:00:00Z',
+                           '2026-01-02T00:05:00Z',100,1000,?,?,1)""",
+                (bucket_id,"cluster-1",name,count,json.dumps({"LESS_THAN_1KB":count})),
+            )
+
+    latest = admin_client.get("/api/analytics/object-size-distribution/cluster/cluster-1")
+    assert latest.status_code == 200
+    assert latest.json()["snapshot_date"] == "2026-01-02"
+    assert latest.json()["total_objects"] == 60
+
+    selected = admin_client.get(
+        "/api/analytics/object-size-distribution/cluster/cluster-1?snapshot_date=2026-01-01"
+    )
+    assert selected.status_code == 200
+    assert selected.json()["snapshot_date"] == "2026-01-01"
+    assert selected.json()["total_objects"] == 30
+    assert "2026-01-02" in selected.json()["available_dates"]
+
+    missing = admin_client.get(
+        "/api/analytics/object-size-distribution/cluster/cluster-1?snapshot_date=2025-12-31"
+    )
+    assert missing.status_code == 200
+    assert missing.json()["snapshot_date"] == "2025-12-31"
+    assert missing.json()["status"] == "unavailable"
+    assert missing.json()["total_objects"] is None
