@@ -54,17 +54,20 @@ const topologyPayload = {
   pools:[],erasure_sets:[],family_errors:{}
 };
 
+window.__requests = [];
 window.fetch = async (url) => {
   const key = String(url);
-  if (key.includes("/api/analytics/clusters/test-cluster/topology/trends")) return {ok:true,status:200,json:async()=>({sample_count:1,samples:[{snapshot_ts:"2026-11-25T10:00:00Z",drives_online:3,drives_offline:1,availability_errors:1,io_errors:2,timeout_errors:0,filesystem_used_pct:46,filesystem_weighted_used_pct:46}]})};
+  window.__requests.push(key);
+  if (key.includes("/api/analytics/clusters/test-cluster/topology/trends")) return {ok:true,status:200,json:async()=>({sample_count:1,retention_days:3,interval_minutes:5,samples:[{snapshot_ts:"2026-11-25T10:00:00Z",drives_online:3,drives_offline:1,availability_errors:1,io_errors:2,timeout_errors:0,filesystem_used_pct:46,filesystem_weighted_used_pct:46}]})};
   if (key.includes("/api/analytics/clusters/test-cluster/network/performance-series")) return {ok:true,status:200,json:async()=>({
     cluster:{id:"test-cluster",name:"Test Cluster"},start_ts:"2026-11-27T08:00:00Z",end_ts:"2026-11-27T14:00:00Z",hours:6,retention_days:3,interval_minutes:5,selected_node:null,selected_interface:null,
     available_interfaces:[{node_name:"node01",instance:"node01:9100",interface_name:"ens3"},{node_name:"node01",instance:"node01:9100",interface_name:"ens4"},{node_name:"node02",instance:"node02:9100",interface_name:"ens3"}],
     series:[
       {snapshot_ts:"2026-11-27T13:55:00Z",node_name:"node01",instance:"node01:9100",interface_name:"ens3",rx_bytes_per_second:100,tx_bytes_per_second:50,rx_packets_per_second:10,tx_packets_per_second:5,rx_errors_per_second:0,tx_errors_per_second:0,rx_drops_per_second:0,tx_drops_per_second:0},
       {snapshot_ts:"2026-11-27T14:00:00Z",node_name:"node01",instance:"node01:9100",interface_name:"ens3",rx_bytes_per_second:200,tx_bytes_per_second:100,rx_packets_per_second:20,tx_packets_per_second:10,rx_errors_per_second:0,tx_errors_per_second:0,rx_drops_per_second:0,tx_drops_per_second:0},
+      {snapshot_ts:"2026-11-27T14:00:00Z",node_name:"node01",instance:"node01:9100",interface_name:"ens4",rx_bytes_per_second:55,tx_bytes_per_second:25,rx_packets_per_second:8,tx_packets_per_second:4,rx_errors_per_second:0,tx_errors_per_second:0,rx_drops_per_second:0,tx_drops_per_second:0},
     ],
-    statistics:[{node_name:"node01",instance:"node01:9100",interface_name:"ens3",sample_count:2,metrics:{rx_bytes_per_second:{average:150,minimum:100,maximum:200,latest:200,sample_count:2},tx_bytes_per_second:{average:75,minimum:50,maximum:100,latest:100,sample_count:2},rx_packets_per_second:{average:15,minimum:10,maximum:20,latest:20,sample_count:2},tx_packets_per_second:{average:7.5,minimum:5,maximum:10,latest:10,sample_count:2},rx_errors_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2},tx_errors_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2},rx_drops_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2},tx_drops_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2}}}],
+    statistics:[{node_name:"node01",instance:"node01:9100",interface_name:"ens3",sample_count:2,metrics:{rx_bytes_per_second:{average:150,minimum:100,maximum:200,latest:200,sample_count:2},tx_bytes_per_second:{average:75,minimum:50,maximum:100,latest:100,sample_count:2},rx_packets_per_second:{average:15,minimum:10,maximum:20,latest:20,sample_count:2},tx_packets_per_second:{average:7.5,minimum:5,maximum:10,latest:10,sample_count:2},rx_errors_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2},tx_errors_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2},rx_drops_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2},tx_drops_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2}}},{node_name:"node01",instance:"node01:9100",interface_name:"ens4",sample_count:1,metrics:{rx_bytes_per_second:{average:55,minimum:55,maximum:55,latest:55,sample_count:1},tx_bytes_per_second:{average:25,minimum:25,maximum:25,latest:25,sample_count:1}}}],
     sample_count:2,truncated:false,supported_metrics:[],aggregation:"per-interface only"
   })};
   if (key.includes("/api/analytics/clusters/test-cluster/topology")) return {ok:true,status:200,json:async()=>topologyPayload};
@@ -85,6 +88,9 @@ async function waitFor(predicate, description) {
 }
 
 async function run() {
+  const cssSource=fs.readFileSync(path.join(root,"app/static/app.css"),"utf8");
+  assert.ok(cssSource.includes(".infra-compact-toolbar .time-range-popover,.heading-actions .time-range-popover,.panel-header-actions .time-range-popover{left:auto;right:0}"),"Right-aligned popovers should stay aligned within the viewport");
+  assert.ok(fs.readFileSync(path.join(root,"app/static/app.js"),"utf8").includes('panel("Bucket usage and quota trend"'),"Bucket trend controls should be rendered in the chart header");
   window.eval(fs.readFileSync(path.join(root, "app/static/app.js"), "utf8"));
   window.eval(fs.readFileSync(path.join(root, "app/static/prometheus-connections.js"), "utf8"));
   window.eval(fs.readFileSync(path.join(root, "app/static/backfill-jobs.js"), "utf8"));
@@ -178,6 +184,10 @@ async function run() {
   await waitFor(() => window.document.querySelector('[data-drive-view="graphs"]'), "Drives graphs workspace");
   assert.equal(window.document.querySelector('[data-drive-view="graphs"]').getAttribute("aria-selected"), "true");
   assert.ok(window.document.querySelector("#infra-drive-availability"), "Graphs tab should retain drive availability panel");
+  await waitFor(()=>window.document.querySelector(".infra-compact-toolbar .time-range-dropdown"),"Drive graphs compact time toolbar");
+  assert.ok(window.document.querySelector(".drives-subtabs")?.closest(".infra-compact-toolbar"),"Drive view tabs should share the compact contextual toolbar");
+  assert.ok(window.document.querySelector(".infra-compact-toolbar .time-range-dropdown"),"Drive graph time range should be in the same toolbar");
+  assert.equal(window.document.querySelectorAll(".infra-compact-toolbar").length,1,"Drive graphs should not create a separate time-range row");
   window.document.querySelector('[data-drive-view="inventory"]').click();
   await waitFor(() => window.document.querySelector('[data-drive-node-filter]'), "Drive Inventory tab");
   assert.ok(window.document.querySelector(".drive-inventory-flat"), "Inventory should use a unified flat table");
@@ -235,9 +245,69 @@ async function run() {
   assert.ok(window.document.querySelector("#network-drops-chart"), "Drops chart should render");
   assert.match(window.document.querySelector(".table-panel").textContent, /ens3/);
 
+
+  // D1: the shared selector drives all timestamp-based Node Infrastructure charts.
+  await window.showClusterTopology("test-cluster","network");
+  assert.ok(window.document.querySelector("[data-historical-picker='network']"),"Network should use the shared time picker");
+  assert.ok(window.document.querySelector("[data-historical-range='1h']"),"Shared quick ranges should render inside the compact dropdown");
+  assert.ok(window.document.querySelector(".time-range-dropdown"),"Time range control should use a compact dropdown");
+  assert.equal(window.document.querySelector(".historical-time-picker.panel"),null,"Time range should not occupy a dedicated panel");
+  assert.ok(window.document.querySelector(".infra-compact-toolbar [data-network-node-filter]"),"Network filters should share the compact toolbar row");
+  assert.equal(window.document.querySelector("[data-network-range]"),null,"Network-local range buttons should not remain");
+  assert.match(window.document.querySelector(".time-range-popover").textContent,/5 min cadence/);
+  window.document.querySelector(".time-range-dropdown").open=true;
+  window.document.querySelector("[data-historical-range='6h']").click();
+  await waitFor(()=>window.document.querySelector("[data-historical-range='6h'].active"),"shared 6h range");
+  assert.ok(window.__requests.some(url=>url.includes("/network/performance-series")&&url.includes("start_ts=")),"Network requests should use timestamps");
+
+  const iface=window.document.querySelector("[data-network-interface-filter]");
+  assert.equal(iface.options[0].value,"all","All interfaces must be the default selection");
+  assert.ok([...window.document.querySelectorAll(".table-panel tbody tr")].some(row=>row.textContent.includes("ens4")),"All interfaces view must show ens4 in the summary table");
+  iface.value="node01|ens3|node01:9100";
+  iface.dispatchEvent(new window.Event("change",{bubbles:true}));
+  await waitFor(()=>[...window.document.querySelectorAll(".table-panel tbody tr")].some(row=>row.textContent.includes("ens3")),"single interface summary");
+  assert.equal([...window.document.querySelectorAll(".table-panel tbody tr")].filter(row=>row.querySelector("td")&&row.cells[0]?.textContent.includes("ens4")).length,0,"Selecting one interface filters out the others");
+  const nodeSelect=window.document.querySelector("[data-network-node-filter]");
+  nodeSelect.value="node02";
+  nodeSelect.dispatchEvent(new window.Event("change",{bubbles:true}));
+  await waitFor(()=>window.document.querySelector("[data-network-interface-filter]")?.value==="all","node change resets interface to All interfaces");
+
+  window.document.querySelector(".time-range-dropdown").open=true;
+  const customFrom=window.document.querySelector("[data-historical-start]");
+  const customTo=window.document.querySelector("[data-historical-end]");
+  const customEndUtc=new Date(Date.now()-10*60*1000);
+  const customStartUtc=new Date(customEndUtc.getTime()-60*60*1000);
+  const utcToIstInput=value=>new Date(value.getTime()+5.5*60*60*1000).toISOString().slice(0,16);
+  customFrom.value=utcToIstInput(customStartUtc);
+  customTo.value=utcToIstInput(customEndUtc);
+  const requestsBeforeCustomRange=window.__requests.length;
+  window.document.querySelector("[data-action='apply-historical-range']").click();
+  await waitFor(()=>window.__requests.slice(requestsBeforeCustomRange).some(url=>url.includes("/network/performance-series")&&url.includes("start_ts=")),"custom absolute range query");
+  const enteredIstStart=customFrom.value;
+  const expectedStartMs=Date.parse(enteredIstStart+":00Z")-5.5*60*60*1000;
+  const customNetworkRequests=window.__requests.slice(requestsBeforeCustomRange).filter(url=>url.includes("/network/performance-series"));
+  const actualStart=customNetworkRequests.length?new window.URL(customNetworkRequests[customNetworkRequests.length-1],"http://localhost").searchParams.get("start_ts"):null;
+  assert.equal(Date.parse(actualStart),expectedStartMs,"IST range should be normalized to the entered minute");
+
+  await window.showClusterTopology("test-cluster","nodes");
+  assert.ok(window.document.querySelector("[data-historical-picker='availability']"),"Availability trends should use shared range");
+  assert.equal(window.document.querySelector("[data-action='apply-infra-trends']"),null,"Legacy date controls should be removed");
+  window.document.querySelector("[data-node-subtab='performance']").click();
+  await waitFor(()=>window.document.querySelector("[data-historical-picker='performance']"),"Node Performance picker");
+  assert.equal(window.document.querySelector("[data-dashboard-range]"),null,"Node Performance should not contain a duplicate picker");
+  window.document.querySelector("[data-node-subtab='collection']").click();
+  await waitFor(()=>window.document.querySelector(".node-subtabs [data-node-subtab='collection'].active"),"Collection Health tab activation");
+  assert.equal(window.document.querySelector("[data-historical-picker]"),null,"Collection Health collection-window controls remain independent");
+
+  await window.showClusterTopology("test-cluster","drives");
+  assert.ok(window.document.querySelector("[data-historical-picker='drives']"),"Drive/Filesystem charts should use shared range");
+  window.document.querySelector("[data-drive-view='inventory']").click();
+  await waitFor(()=>window.document.querySelector("[data-drive-view='inventory'][aria-selected='true']"),"Drive Inventory");
+  assert.equal(window.document.querySelector("[data-historical-picker]"),null,"Current inventory is not filtered by chart range");
+
   await tick();
   await tick();
-  console.log("DOM-backed frontend navigation and drive inventory tests passed.");
+  console.log("DOM-backed frontend navigation, interface and time-range tests passed.");
   dom.window.close();
 }
 

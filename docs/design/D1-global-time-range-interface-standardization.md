@@ -1,0 +1,253 @@
+# D1 — Global Time Range & Interface Selection Standardization
+
+**Status:** D1 implementation in lab validation — shared time model, timestamp API contract, bounded future-clock-skew handling, and compact global toolbar refinement implemented; CI and runtime validation underway  
+**Base branch:** `feature/auth-foundation`  
+**Design branch:** `design/global-time-range-d1`  
+**Scope:** Cross-workspace historical time controls and Network interface selection
+
+## Design rule — Grafana-style time-range selector
+
+**Going forward, wherever historical time-series visualization makes it appropriate, MinIO Analytics should use a common Grafana-style time-range selector.** This is a product-wide design standard, not limited to the current D1 implementation. Apply it to new chart workspaces and retrofit existing applicable workspaces as opportunities arise. Preserve separate date/filter controls when their semantics are not time-series exploration (for example, daily snapshot/report date selection).
+
+The common selector should offer quick relative ranges, custom absolute/relative ranges, clear timezone context, and consistent application to related charts. The specific range options may be adapted to the data retention and collection resolution, but interaction patterns should remain consistent.
+
+## UX refinement — compact global toolbar
+
+The initial D1 lab experience showed the time-range selector as a large standalone panel with preset buttons and permanently visible custom date inputs. This consumes too much vertical space and separates controls from the charts they govern.
+
+The approved direction is a compact, modern, Grafana-style toolbar:
+
+- Time range appears as one compact dropdown control with a clear selected label.
+- Presets and custom start/end fields are contained in an on-demand popover.
+- Retention and cadence context remain available inside the popover.
+- Network node and interface filters share the same compact toolbar row as the time selector.
+- Daily snapshot trend controls use the same visual dropdown/popover pattern while preserving their distinct day-based semantics.
+- Controls should not create standalone cards or oversized filter sections.
+- Charts and operational data remain the visual priority.
+- Responsive layouts may wrap controls only when necessary.
+
+This refinement is a visual/interaction standard. It does not couple daily snapshot report filters, collection-health outcome windows, inventory filters, or other semantically independent controls to the high-frequency telemetry time-range model.
+
+## UX refinement — contextual graph toolbar consolidation
+
+Lab review of the compact selector identified one remaining vertical-space issue: the time control and secondary graph-view controls were still rendered on separate rows in some sections.
+
+The contextual toolbar standard is now:
+- Left side: section-specific graph tabs, filters, and concise telemetry context.
+- Right side: shared historical time-range selector.
+- Network: node and interface filters on the left, time range on the right.
+- Drives & Filesystems (Graphs): Graphs/Drive Inventory tabs and trend context on the left; time range on the right. The time picker is omitted from current-state Drive Inventory.
+- Node Health: compact historical trend context on the left and time range on the right.
+- Node Performance: metric tabs on the left and time range on the right.
+- Responsive wrapping is permitted only when viewport width requires it.
+
+## Goals
+
+1. Standardize historical time-range selection across dashboard workspaces and chart groups.
+2. Provide common quick ranges: 5m, 15m, 30m, 1h, 3h, 6h, 12h, 24h, 2d, 7d, 30d.
+3. Support custom absolute start/end time and timezone-aware display.
+4. Make the selected time context consistent for all charts in the current dashboard context.
+5. Add **All interfaces** to Network's interface selector for the selected node.
+6. Keep interface series distinct; do not sum or aggregate across interfaces.
+7. Preserve honest handling of data gaps, sampling cadence, retention, and unavailable metrics.
+
+## User experience
+
+### Global time picker
+
+A shared time-picker component should be located in the dashboard-level header/context, not independently duplicated in each workspace. It should expose:
+
+- Quick ranges: Last 5 minutes, 15 minutes, 30 minutes, 1 hour, 3 hours, 6 hours, 12 hours, 24 hours, 2 days, 7 days, and 30 days.
+- Custom absolute range (start/end date-time).
+- Relative range support where practical (e.g. now-6h, now-24h, now-7d).
+- Explicit timezone indication (browser timezone by default; preserve existing IST display conventions where applicable).
+- Apply/cancel behavior for custom range.
+- A clear selected-range label and resolved start/end timestamps.
+
+Previous/next time-window navigation and auto-refresh are **not included** in D1 unless separately approved.
+
+### Shared time context
+
+A single selected time context should be consumed by every historical chart on a workspace/page. Switching workspaces should preserve the selected range where the data and workspace support it. A chart with no data at the selected range must display a clear empty/insufficient-data state, not silently change the range.
+
+The global picker should not affect snapshot/report date filters that represent a different semantic (daily snapshots, date-based reports) unless the audit confirms they are truly time-series charts.
+
+### Network interface selector
+
+For a selected node, the selector should include:
+
+- **All interfaces** (default option)
+- Each available interface as a distinct option
+
+Behavior:
+- All interfaces: show distinct per-interface series; never sum RX/TX values across interfaces.
+- Single interface: filter charts and summary to that interface.
+- Interface inventory and selector options are scoped to the selected node.
+- Node changes reset interface selection to All interfaces.
+- Missing metrics remain unavailable/null; do not turn them into zero.
+- Keep interface identity labels readable. Exporter identity may be secondary detail if needed.
+
+## Current-state audit (source review)
+
+The current implementation contains independent range state and controls:
+
+- Network state: `networkHours` (default 6); current quick options are 2, 6, 12, 24, 48, 72 hours, constrained by configured retention.
+- Node health/performance state: `nodePerformanceHours` (default 6), used for the node-performance endpoint.
+- Historical performance series state: `performanceRangeHours` (default 2), with quick ranges 2, 6, 12, 24, 48, 72 hours and a custom date/time range.
+- Existing API calls use hours-based parameters for network and performance series, while custom performance series uses start/end parameters.
+
+This confirms that D1 requires a shared time-range contract and coordinated endpoint/API handling—not just replacing button markup.
+
+## Proposed time-range contract
+
+Represent the selection as a normalized object:
+
+- `mode`: relative or absolute
+- `relative`: supported preset identifier (when relative)
+- `start`: ISO-8601 timestamp (when absolute or resolved)
+- `end`: ISO-8601 timestamp (when absolute or resolved)
+- `timezone`: IANA timezone identifier
+- `label`: user-facing label
+
+Use a shared client-side source of truth. APIs should receive a consistent range representation, preferably explicit start/end timestamps or a well-defined relative duration. Backend validation must enforce retention and reasonable maximum query windows. Existing endpoints should remain backward-compatible during migration where feasible.
+
+## Data-resolution and retention rules
+
+- Do not promise sub-collection-interval resolution. Current lab telemetry collection interval is 5 minutes.
+- Short ranges may contain few or no samples; show a clear explanation of collection cadence and available sample count.
+- Do not interpolate or fabricate samples.
+- Apply configured retention limits. If a requested range exceeds retention, either constrain the available range with an explicit notice or return a clear validation response; never silently imply full coverage.
+- Use a consistent timezone for range boundaries, labels, and chart tooltips.
+- Keep missing values distinct from zero.
+
+## Cross-workspace audit checklist
+
+Before implementation, inventory all historical/time-series charts and classify them:
+
+1. Cluster/node performance and health trends
+2. Drives and filesystem historical trends
+3. Network telemetry
+4. Collection/scraper health trends
+5. Any other time-series charts
+
+Exclude semantic date filters for daily snapshots, report periods, and static inventory views unless they are chart time contexts.
+
+## Acceptance criteria
+
+- One shared time picker is used for applicable historical chart workspaces.
+- Selecting a range updates all applicable charts in the active workspace consistently.
+- Workspace navigation preserves selected range where supported.
+- Custom range validates start <= end and clearly displays timezone.
+- Every chart reports/handles no-data and insufficient-resolution cases honestly.
+- Retention boundaries are respected and communicated.
+- Network selector has All interfaces and per-interface choices scoped to selected node.
+- All interfaces mode displays distinct series and does not aggregate/sum traffic.
+- Selecting one interface filters the chart and summary table to that interface.
+- Changing node resets interface to All interfaces.
+- Existing daily snapshot/report date filters are not unintentionally coupled to global time.
+- Regression tests cover shared state, range conversion, timezone boundaries, retention, interface filtering, and no-aggregation behavior.
+
+## Implementation sequencing
+
+1. Complete chart inventory and classify existing controls.
+2. Define shared range object and API contract.
+3. Implement reusable picker and shared dashboard time state.
+4. Migrate workspace/chart APIs and UI incrementally.
+5. Implement Network All interfaces behavior.
+6. Add tests and regression checks.
+7. User lab deployment and visual/runtime validation.
+
+## Out of scope
+
+- Auto-refresh
+- Previous/next time-window navigation
+- Interface classification (physical, bond, VLAN, bridge, virtual)
+- Network aggregation or traffic attribution
+- New telemetry collection frequencies
+- Changes to daily snapshot/report semantics
+
+
+
+## Source audit — existing historical chart surfaces
+
+The frontend/backend source audit identified these existing time-related controls and endpoints:
+
+| Workspace / surface | Current mechanism | Classification | D1 treatment |
+|---|---|---|---|
+| Node Infrastructure → Network | Independent 2/6/12/24/48/72h controls; API supports custom `start_ts/end_ts` but UI currently uses hours | Historical time-series | Migrate to shared selector; add All interfaces |
+| Node Infrastructure → Node Health & Performance → CPU/Memory trends | Independent 2/6/12/24/48/72h controls plus custom range; raw series endpoint supports `hours` or `start_ts/end_ts` | Historical time-series | Migrate to shared selector |
+| Node Infrastructure → Node Health & Performance → Availability/Collection trends | Date-based `start_date/end_date` filter to topology trends endpoint; default window is date-based | Historical time-series, currently day-oriented | Assess chart resolution and API needs; shared selector where supported and useful |
+| Node Infrastructure → Drives & Filesystems | Date-based trend filter to topology trends endpoint | Historical time-series, currently day-oriented | Assess chart resolution and API needs; shared selector where supported and useful |
+| Node Health & Performance summary table | Independent averaging window buttons (2/6/12/24h), API summary endpoint | Time-window summary, not chart range | Keep distinct only if explicitly labeled as averaging window; otherwise align/rename to avoid confusion |
+| Snapshot/consolidated reports | Snapshot dates / report period filters | Report/snapshot semantics | Do not automatically couple to global time picker |
+
+### API findings
+
+- Network historical series supports `hours` and timezone-aware `start_ts/end_ts`; retention is enforced server-side.
+- Node performance series supports `hours` and timezone-aware `start_ts/end_ts`; retention is enforced server-side.
+- Topology trends currently uses `start_date/end_date` with IST day boundaries and a date-oriented default window. It is not equivalent to the timestamp-range API and may need an API enhancement for finer relative ranges.
+- The existing frontend keeps separate state for network, node summary, and node performance time ranges. D1 should remove this duplication for applicable chart contexts.
+- The Network endpoint already accepts node/interface/instance filters. The UI currently chooses a single interface and may auto-select one when the response is truncated. All-interface mode must be implemented with bounded-query safeguards; if the response limit is exceeded, present a clear notice and encourage node/interface narrowing rather than silently selecting one interface.
+
+### Implementation risks / sequencing notes
+
+1. Build and test a shared time-range model/picker first.
+2. Migrate timestamp-capable endpoints (Network and node performance series) first.
+3. Review topology trend API resolution and bounds before migrating day-oriented charts; avoid presenting a 5-minute selector for daily/4-hour data if it cannot provide meaningful results.
+4. Keep the node summary's averaging window semantically distinct from chart range unless the UX explicitly combines them.
+5. Add All interfaces with explicit series identity and sample-bound handling; no cross-interface aggregation.
+6. Regression-test report/snapshot filters to prove they remain independent.
+
+
+## Implementation checkpoint — initial D1 slice
+
+Implemented on the design branch:
+
+- Shared dashboard preset state is now used by Network and Node Performance historical charts.
+- Presets: 5m, 15m, 30m, 1h, 3h, 6h, 12h, 24h, 2d, 7d, 30d.
+- Network queries use explicit UTC ISO start/end timestamps, allowing ranges shorter than the API's hours-based minimum.
+- Network interface selector includes **All interfaces** and per-interface options.
+- All-interface chart mode displays RX/TX series separately for each node/interface identity. No cross-interface sums are created.
+- Interface selection filters the summary table as well as the chart series.
+- Changing the selected node resets interface selection to All interfaces.
+- Node Performance historical series uses the same quick-range preset and timestamp query contract; custom absolute range remains supported there.
+
+### D1 continuation — shared time model and timestamp API
+
+- Added a normalized relative/absolute time-range model with explicit IST context.
+- A single shared picker serves Network, Node Availability, Node Performance and Drive/Filesystem historical chart workspaces.
+- All four chart paths consume shared UTC timestamp bounds; custom inputs are interpreted in IST.
+- The topology trends API supports timezone-aware absolute timestamp bounds while preserving its legacy IST calendar-date parameters for existing callers. It enforces configured retention and reports the configured node telemetry cadence/retention.
+- Network's selected Prometheus instance is applied to both returned samples and available-interface choices. All-interface series remain distinct, with no cross-interface sums.
+- Collection Health interval-outcome reporting, node summary averaging, inventory and daily snapshot/report date selection remain separate by design.
+
+### Remaining before D1 can be declared complete
+
+- Run and pass Python and frontend regression checks on the latest PR head.
+- Verify chart dataset identity across All interfaces and test interface/node filtering and reset behavior.
+- Verify absolute IST-to-UTC conversion, retention/future/inverted range validation and empty-range behavior.
+- Verify the 20,000-sample boundary and ensure no hidden interface auto-selection.
+- Complete CI and user lab runtime/visual validation.
+
+
+## D1 defect fix — bounded timestamp clock skew
+
+A lab validation defect was identified when switching Node Infrastructure tabs: historical telemetry requests intermittently failed with `end_ts cannot be in the future`. The frontend creates relative-range end timestamps from browser time; API processing can occur after the server clock has advanced, making the timestamp marginally ahead of backend validation time.
+
+The timestamp validation was centralized in `_parse_timestamp_bounds` and applied to the topology trends, node performance-series, and network performance-series endpoints. Timezone-aware ISO-8601 parsing and UTC normalization remain mandatory. End timestamps up to 60 seconds ahead of server time are accepted and clamped to server time; timestamps beyond that tolerance remain rejected. Start/end ordering is revalidated after clamping.
+
+Regression coverage added for all three endpoints:
+- Accept a small future skew (30 seconds) and clamp the returned end bound to server time.
+- Reject a future timestamp beyond tolerance (2 minutes).
+- Existing invalid, naive, inverted, retention, and legacy date-contract tests remain in place.
+
+This is a D1 defect correction, not a relaxation of the future-range contract.
+
+
+## Compact trend toolbar refinement (lab review)
+
+- Time-range popovers in right-aligned contextual toolbars open aligned to the trigger's right edge, keeping the panel within the viewport.
+- Popovers are constrained to the viewport width.
+- Tenant detail: the daily-snapshot range selector shares the page-heading action row with ownership mode controls; redundant history-window card is removed.
+- Bucket detail: the daily-snapshot range selector is placed in the trend chart header, alongside chart actions rather than consuming a separate row.
+- Snapshot-table date filters remain separate because they filter table records and are not graph controls.

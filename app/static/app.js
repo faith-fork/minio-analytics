@@ -1,8 +1,53 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
 if(window.Chart&&window.ChartZoom){Chart.register(ChartZoom);Chart.defaults.plugins.zoom={pan:{enabled:true,mode:"x",modifierKey:"shift"},zoom:{wheel:{enabled:true,speed:0.08},drag:{enabled:true,backgroundColor:"rgba(19,165,139,.12)",borderColor:"#13a58b",borderWidth:1},pinch:{enabled:true},mode:"x"}};}
-const state = { user:null, view:"overview", masterConfigTab:"general", masterGeneralTab:"collection", backupPageSize:10, backupOffset:0, overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:null,driveView:"graphs",driveNodeFilter:"all",driveFsFilter:"all",driveInventoryPage:1,driveSortKey:"node",driveSortDirection:1,networkHours:6,networkNodeFilter:"all",networkSelectedInterface:"" };
+const state = { user:null, view:"overview", masterConfigTab:"general", masterGeneralTab:"collection", backupPageSize:10, backupOffset:0, overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:null,driveView:"graphs",driveNodeFilter:"all",driveFsFilter:"all",driveInventoryPage:1,driveSortKey:"node",driveSortDirection:1,networkHours:1,dashboardTimeRangePreset:"1h",historicalTimeRange:{mode:"relative",preset:"1h",startTs:null,endTs:null,timezone:"Asia/Kolkata"},historicalTimeRetentionDays:3,networkNodeFilter:"all",networkSelectedInterface:"all" };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
+
+const HISTORICAL_TIME_PRESETS = [
+  ["5m",300000,"Last 5 minutes"],["15m",900000,"Last 15 minutes"],
+  ["30m",1800000,"Last 30 minutes"],["1h",3600000,"Last 1 hour"],
+  ["3h",10800000,"Last 3 hours"],["6h",21600000,"Last 6 hours"],
+  ["12h",43200000,"Last 12 hours"],["24h",86400000,"Last 24 hours"],
+  ["2d",172800000,"Last 2 days"],["7d",604800000,"Last 7 days"],
+  ["30d",2592000000,"Last 30 days"]
+];
+const historicalIstToIso=value=>new Date(value+":00+05:30").toISOString();
+const historicalIsoToIstInput=value=>new Date(value).toLocaleString("sv-SE",{timeZone:"Asia/Kolkata"}).replace(" ","T").slice(0,16);
+function getHistoricalTimeBounds(now=Date.now()){
+  const range=state.historicalTimeRange||{mode:"relative",preset:"1h"};
+  if(range.mode==="absolute"&&range.startTs&&range.endTs)return {startTs:range.startTs,endTs:range.endTs};
+  const preset=HISTORICAL_TIME_PRESETS.find(x=>x[0]===range.preset)||HISTORICAL_TIME_PRESETS[3];
+  return {startTs:new Date(now-preset[1]).toISOString(),endTs:new Date(now).toISOString()};
+}
+function setHistoricalPreset(preset){
+  if(!HISTORICAL_TIME_PRESETS.some(x=>x[0]===preset))return;
+  state.historicalTimeRange={mode:"relative",preset,startTs:null,endTs:null,timezone:"Asia/Kolkata"};
+  state.dashboardTimeRangePreset=preset;
+}
+function validateHistoricalTimeRange(start,end,retentionDays,now=Date.now()){
+  if(!start||!end)return {valid:false,message:"Choose both a start and end time."};
+  const a=Date.parse(historicalIstToIso(start)),b=Date.parse(historicalIstToIso(end));
+  if(!Number.isFinite(a)||!Number.isFinite(b)||b<=a)return {valid:false,message:"The end time must be later than the start time."};
+  if(b>now+60000)return {valid:false,message:"The end time cannot be in the future."};
+  if(a<now-Math.max(1,Number(retentionDays)||3)*86400000)return {valid:false,message:"The selected range exceeds configured telemetry retention."};
+  return {valid:true,startTs:new Date(a).toISOString(),endTs:new Date(b).toISOString()};
+}
+function historicalRangePicker(retentionDays,intervalMinutes,context){
+  const selected=state.historicalTimeRange||{mode:"relative",preset:"1h"};
+  const retentionMs=Math.max(1,Number(retentionDays)||3)*86400000;
+  const bounds=getHistoricalTimeBounds();
+  const presetMs=HISTORICAL_TIME_PRESETS.find(x=>x[0]===selected.preset)?.[1]||3600000;
+  const from=selected.mode==="absolute"?historicalIsoToIstInput(bounds.startTs):historicalIsoToIstInput(new Date(Date.parse(bounds.endTs)-presetMs).toISOString());
+  const to=historicalIsoToIstInput(bounds.endTs);
+  const activePreset=HISTORICAL_TIME_PRESETS.find(x=>x[0]===selected.preset);
+  const rangeLabel=selected.mode==="absolute"
+    ? timestampLabel(selected.startTs).replace(" IST","")+" – "+timestampLabel(selected.endTs).replace(" IST","")
+    : (activePreset?.[2]||"Last 1 hour");
+  const buttons=HISTORICAL_TIME_PRESETS.filter(([,ms])=>ms<=retentionMs).map(([key,,label])=>'<button type="button" class="time-range-option '+(selected.mode==="relative"&&selected.preset===key?"active":"")+'" data-historical-range="'+key+'">'+label+'</button>').join("");
+  return '<div class="historical-time-toolbar" data-historical-picker="'+esc(context)+'"><details class="time-range-dropdown"><summary><span class="time-range-icon">◷</span><span class="time-range-label">'+esc(rangeLabel)+'</span><span class="time-range-chevron">▾</span></summary><div class="time-range-popover"><div class="time-range-popover-heading"><strong>Time range</strong><span>IST · '+fmt(intervalMinutes||5,0)+' min cadence · '+fmt(retentionDays||3,0)+' day retention</span></div><div class="time-range-options">'+buttons+'</div><div class="time-range-custom"><div class="time-range-custom-heading">Custom range</div><label>From<input type="datetime-local" data-historical-start value="'+esc(from)+'"></label><label>To<input type="datetime-local" data-historical-end value="'+esc(to)+'"></label><div class="time-range-actions"><button type="button" class="primary-small" data-action="apply-historical-range">Apply</button><button type="button" class="subtle-button" data-action="reset-historical-range">Reset</button></div></div></div></details></div>';
+}
+
 const bytes = n => { if(n==null)return "—"; const value=Number(n); if(!Number.isFinite(value))return "—"; if(value>=1024**4)return (value/1024**4).toFixed(2)+" TiB"; if(value>=1024**3)return (value/1024**3).toFixed(1)+" GiB"; if(value>=1024**2)return (value/1024**2).toFixed(1)+" MiB"; if(value>=1024)return (value/1024).toFixed(1)+" KiB"; return value.toFixed(0)+" B"; };
 const tibValue = n => n == null ? "—" : (n/1024**4).toFixed(2);
 const pct = (used,total) => used == null || !total ? null : Math.max(0,Math.min(100,used/total*100));
@@ -24,7 +69,7 @@ function pageHead(title,subtitle,actions=""){return `<div class="page-heading"><
 function reportTabs(active){const tabs=[["capacity-report","Consolidated Provisioned"],["bucket-usage-report","Consolidated Bucket Usage"],["raw-capacity-report","Consolidated RAW Capacity"]];return '<div class="report-tabs" role="tablist" aria-label="Consolidated reports">'+tabs.map(([view,label])=>'<button type="button" role="tab" aria-selected="'+(active===view)+'" class="'+(active===view?"active":"")+'" data-report-view="'+view+'">'+label+'</button>').join("")+'</div>';}
 function metric(label,value,foot,icon="◈",good=false){return `<div class="metric-card"><div class="metric-top"><span>${label}</span><span class="metric-icon">${icon}</span></div><div class="metric-value">${value}</div><div class="metric-foot ${good?"good":""}">${foot}</div></div>`;}
 function pill(status){const cls=status==="success"||status===true?"":status==="partial"?"warn":status==="failed"||status===false?"bad":"neutral";const label=status===true?"Available":status===false?"Unavailable":String(status??"Unknown");return `<span class="status-pill ${cls}"><i></i>${esc(label)}</span>`;}
-function panel(title,subtitle,body,tag=""){const chartId=body.match(/<canvas id="([^"]+)"/)?.[1];return `<section class="panel ${chartId?"chart-panel":""}"><div class="panel-header"><div><h3>${title}</h3><p>${subtitle||""}</p></div><div class="panel-header-actions">${tag?`<span class="panel-tag">${tag}</span>`:""}${chartId?`${chartId==="object-size-histogram"?"":`<div class="chart-zoom-controls" role="group" aria-label="Chart zoom controls"><button type="button" data-chart-zoom="in" data-chart-id="${chartId}" title="Zoom in" aria-label="Zoom in">+</button><button type="button" data-chart-zoom="out" data-chart-id="${chartId}" title="Zoom out" aria-label="Zoom out">−</button><button type="button" data-chart-zoom="reset" data-chart-id="${chartId}" title="Reset zoom" aria-label="Reset zoom">Reset</button></div>`}<button type="button" class="chart-expand-button" data-expand-chart="${chartId}" aria-label="Expand ${esc(title)} chart" title="Expand chart">⛶</button>`:""}</div></div>${body}</section>`;}
+function panel(title,subtitle,body,tag="",headerExtra=""){const chartId=body.match(/<canvas id="([^"]+)"/)?.[1];return `<section class="panel ${chartId?"chart-panel":""}"><div class="panel-header"><div><h3>${title}</h3><p>${subtitle||""}</p></div><div class="panel-header-actions">${tag?`<span class="panel-tag">${tag}</span>`:""}${headerExtra}${chartId?`${chartId==="object-size-histogram"?"":`<div class="chart-zoom-controls" role="group" aria-label="Chart zoom controls"><button type="button" data-chart-zoom="in" data-chart-id="${chartId}" title="Zoom in" aria-label="Zoom in">+</button><button type="button" data-chart-zoom="out" data-chart-id="${chartId}" title="Zoom out" aria-label="Zoom out">−</button><button type="button" data-chart-zoom="reset" data-chart-id="${chartId}" title="Reset zoom" aria-label="Reset zoom">Reset</button></div>`}<button type="button" class="chart-expand-button" data-expand-chart="${chartId}" aria-label="Expand ${esc(title)} chart" title="Expand chart">⛶</button>`:""}</div></div>${body}</section>`;}
 
 function loadReportColumnVisibility(reportId,columns,defaults={}) {
   let saved={};try{saved=JSON.parse(localStorage.getItem("minio-analytics-report-columns:"+reportId)||"{}")||{};}catch{}
@@ -408,7 +453,12 @@ async function reviewBackupCleanup(){
 }
 function rangeControl(days,kind,id,attribution="current") {
   const options=[[7,"Last 7 days"],[30,"Last 30 days"],[60,"Last 60 days"],[90,"Last 90 days"],[180,"Last 6 months"],[365,"Last 12 months"]];
-  return '<div class="toolbar trend-controls"><label for="trend-range" class="cell-muted">Trend period</label><select id="trend-range" class="form-control" data-trend-kind="'+kind+'" data-trend-id="'+esc(id)+'" data-trend-attribution="'+attribution+'">'+options.map(([value,label])=>'<option value="'+value+'" '+(Number(days)===value?'selected':'')+'>'+label+'</option>').join('')+'<option value="custom">Custom range</option></select><label class="trend-date-label" for="trend-start">From</label><input type="date" id="trend-start" class="form-control" aria-label="Start date"><label class="trend-date-label" for="trend-end">To</label><input type="date" id="trend-end" class="form-control" aria-label="End date"><button class="secondary-button" data-action="apply-trend-dates" data-trend-kind="'+kind+'" data-trend-id="'+esc(id)+'" data-trend-attribution="'+attribution+'">Apply</button></div>';
+  const context=kind==="cluster"||kind==="cluster-snapshots"?state.snapshotRange:state.snapshotContext;
+  const custom=Boolean(context?.startDate&&context?.endDate);
+  const selected=options.find(([value])=>Number(days)===value)||options[3];
+  const rangeLabel=custom?dateLabel(context.startDate)+" – "+dateLabel(context.endDate):selected[1];
+  const startValue=custom?context.startDate:"",endValue=custom?context.endDate:"";
+  return '<div class="toolbar trend-controls"><details class="time-range-dropdown"><summary><span class="time-range-icon">◷</span><span class="time-range-label">'+esc(rangeLabel)+'</span><span class="time-range-chevron">▾</span></summary><div class="time-range-popover"><div class="time-range-popover-heading"><strong>Trend period</strong><span>Daily snapshots</span></div><select id="trend-range" class="form-control" data-trend-kind="'+kind+'" data-trend-id="'+esc(id)+'" data-trend-attribution="'+attribution+'">'+options.map(([value,label])=>'<option value="'+value+'" '+(!custom&&Number(days)===value?'selected':'')+'>'+label+'</option>').join("")+'<option value="custom" '+(custom?'selected':'')+'>Custom range</option></select><div class="time-range-custom"><div class="time-range-custom-heading">Custom dates</div><label>From<input type="date" id="trend-start" class="form-control" aria-label="Start date" value="'+esc(startValue)+'"></label><label>To<input type="date" id="trend-end" class="form-control" aria-label="End date" value="'+esc(endValue)+'"></label><div class="time-range-actions"><button class="primary-small" data-action="apply-trend-dates" data-trend-kind="'+kind+'" data-trend-id="'+esc(id)+'" data-trend-attribution="'+attribution+'">Apply</button></div></div></div></details></div>';
 }
 function trendQuery(days,startDate,endDate,extra="") {
   const params=new URLSearchParams();
@@ -457,17 +507,12 @@ function renderNetworkWorkspace(data){
   const nodes=[...new Set(available.map(x=>x.node_name))].sort((a,b)=>a.localeCompare(b));
   if(state.networkNodeFilter!=="all"&&!nodes.includes(state.networkNodeFilter))state.networkNodeFilter="all";
   const filtered=available.filter(x=>state.networkNodeFilter==="all"||x.node_name===state.networkNodeFilter);
-  const selectedKey=state.networkSelectedInterface;
-  const selected=filtered.find(x=>x.node_name+"|"+x.interface_name+"|"+x.instance===selectedKey)||filtered[0]||null;
-  if(selected)state.networkSelectedInterface=selected.node_name+"|"+selected.interface_name+"|"+selected.instance;
-  const selectOptions=filtered.map(x=>{
-    const key=x.node_name+"|"+x.interface_name+"|"+x.instance;
-    return '<option value="'+esc(key)+'" '+(selected&&key===state.networkSelectedInterface?'selected':'')+'>'+esc(x.node_name+' / '+x.interface_name+' / '+x.instance)+'</option>';
-  }).join("");
+  const selectedKey=state.networkSelectedInterface||"all";
+  const selected=selectedKey==="all"?null:filtered.find(x=>x.node_name+"|"+x.interface_name+"|"+x.instance===selectedKey)||null;
+  const selectOptions='<option value="all" '+(selectedKey==="all"?'selected':'')+'>All interfaces</option>'+filtered.map(x=>{const key=x.node_name+"|"+x.interface_name+"|"+x.instance;return '<option value="'+esc(key)+'" '+(key===selectedKey?'selected':'')+'>'+esc(x.interface_name+' · '+x.node_name+' · '+x.instance)+'</option>';}).join("");
   const nodeOptions='<option value="all">All nodes</option>'+nodes.map(n=>'<option value="'+esc(n)+'" '+(state.networkNodeFilter===n?'selected':'')+'>'+esc(n)+'</option>').join("");
-  const hourOptions=[2,6,12,24,48,72].filter(h=>h<=(Number(data.retention_days||3)*24)).map(h=>'<button class="tab '+(state.networkHours===h?'active':'')+'" data-network-hours="'+h+'">'+h+'h</button>').join("");
   const stats=data.statistics||[];
-  const filteredStats=stats.filter(x=>state.networkNodeFilter==="all"||x.node_name===state.networkNodeFilter);
+  const filteredStats=stats.filter(x=>(state.networkNodeFilter==="all"||x.node_name===state.networkNodeFilter)&&(state.networkSelectedInterface==="all"||!state.networkSelectedInterface||(x.node_name+"|"+x.interface_name+"|"+x.instance)===state.networkSelectedInterface));
   const fmtRate=v=>v==null?'—':bytes(v)+'/s';
   const metricStat=(m,k)=>m&&m[k]!=null?fmtRate(m[k]):'—';
   const rows=filteredStats.map(s=>{
@@ -480,24 +525,22 @@ function renderNetworkWorkspace(data){
       '<td>'+ (m.rx_drops_per_second?.average==null?'—':fmt(m.rx_drops_per_second.average,3))+' / '+(m.tx_drops_per_second?.average==null?'—':fmt(m.tx_drops_per_second.average,3))+'</td>'+
       '<td>'+fmt(s.sample_count,0)+'</td></tr>';
   }).join("");
-  const charts=selected?'<div class="panel-grid network-chart-grid">'+
+  const charts=filtered.length?'<div class="panel-grid network-chart-grid">'+
     panel("Throughput","Receive and transmit · bytes/sec",'<div class="chart-wrap"><canvas id="network-throughput-chart"></canvas></div>')+
     panel("Packets","Receive and transmit · packets/sec",'<div class="chart-wrap"><canvas id="network-packets-chart"></canvas></div>')+
     panel("Errors","Receive and transmit · errors/sec",'<div class="chart-wrap"><canvas id="network-errors-chart"></canvas></div>')+
     panel("Drops","Receive and transmit · drops/sec",'<div class="chart-wrap"><canvas id="network-drops-chart"></canvas></div>')+'</div>':
     '<div class="chart-empty-state"><strong>No network interfaces in this range</strong><p>Network telemetry has not been recorded for the selected range or node.</p></div>';
-  return '<section class="panel network-filter-panel"><div class="panel-header"><div><h3>Network filters</h3><p>Historical per-interface telemetry · no cross-interface aggregation</p></div><div class="tabs">'+hourOptions+'</div></div>'+
-    '<div class="network-filter-row"><label>Node<select data-network-node-filter>'+nodeOptions+'</select></label><label>Interface<select data-network-interface-filter>'+selectOptions+'</select></label></div>'+
-    '<p class="muted">Samples: '+fmt(data.sample_count,0)+' · Collection interval: '+fmt(data.interval_minutes,0)+' min · Range: '+esc(timestampLabel(data.start_ts))+' to '+esc(timestampLabel(data.end_ts))+'</p></section>'+
+  return '<div class="network-filter-toolbar"><label>Node<select data-network-node-filter>'+nodeOptions+'</select></label><label>Interface<select data-network-interface-filter>'+selectOptions+'</select></label><span class="network-filter-meta">Samples '+fmt(data.sample_count,0)+' · '+fmt(data.interval_minutes,0)+' min cadence · '+esc(timestampLabel(data.start_ts))+' – '+esc(timestampLabel(data.end_ts))+'</span></div>'+
     (data.truncated?'<div class="detail-card"><strong>Data limited to 20,000 samples</strong><p class="muted">Statistics are based on the returned subset. Select a node/interface to narrow the query.</p></div>':'')+
-    (selected?charts:'')+
+    (filtered.length?charts:'')+
     '<section class="panel table-panel"><div class="panel-header"><div><h3>Interface summary</h3><p>Average rates across the selected range; missing metric values remain unavailable.</p></div></div>'+
     '<div class="table-wrap"><table><thead><tr><th>Node</th><th>Interface</th><th>RX avg</th><th>TX avg</th><th>RX packets</th><th>TX packets</th><th>Errors/s RX / TX</th><th>Drops/s RX / TX</th><th>Samples</th></tr></thead><tbody>'+
     (rows||'<tr><td colspan="9" class="muted">No samples found.</td></tr>')+'</tbody></table></div></section>'+
     (data.sample_count===0?'<div class="chart-empty-state"><strong>No samples available</strong><p>Try a longer time range or wait for the next collection.</p></div>':'');
 }
 async function showClusterTopology(id, section="infra-overview"){
-  if(section==="network"&&state.topologyClusterId!==id){state.networkNodeFilter="all";state.networkSelectedInterface="";}
+  if(section==="network"&&state.topologyClusterId!==id){state.networkNodeFilter="all";state.networkSelectedInterface="all";}
   const d=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/topology");
   state.topologyClusterId=id;state.topologySection=section;
   const storageView=section==="storage-overview"||section==="pools"||section==="sets";
@@ -602,49 +645,33 @@ async function showClusterTopology(id, section="infra-overview"){
   const setRows=sets.map(s=>'<tr><td>'+esc(s.pool_id)+'</td><td>'+esc(s.set_id)+'</td><td>'+(s.status_value??'—')+'</td><td>'+(s.online_drives??'—')+'</td><td>'+(s.healing_drives??'—')+'</td><td>'+(s.read_quorum??'—')+'</td><td>'+(s.write_quorum??'—')+'</td></tr>');
 
   let trendData=null,performanceData=null;
-  const trendFilter=state.topologyTrendFilters?.[id]||{startDate:"",endDate:""};
   let networkData=null;
+  const rangeBounds=getHistoricalTimeBounds();
   if(section==="network"){
-    const networkParams=new URLSearchParams({hours:String(state.networkHours||6)});
+    const networkParams=new URLSearchParams({start_ts:rangeBounds.startTs,end_ts:rangeBounds.endTs});
     if(state.networkNodeFilter!=="all")networkParams.set("node_name",state.networkNodeFilter);
-    if(state.networkSelectedInterface){const selectedParts=state.networkSelectedInterface.split("|");if(selectedParts.length===3){networkParams.set("node_name",selectedParts[0]);networkParams.set("interface_name",selectedParts[1]);networkParams.set("instance",selectedParts[2]);}}
+    if(state.networkSelectedInterface&&state.networkSelectedInterface!=="all"){const p=state.networkSelectedInterface.split("|");if(p.length===3){networkParams.set("node_name",p[0]);networkParams.set("interface_name",p[1]);networkParams.set("instance",p[2]);}}
     networkData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/network/performance-series?"+networkParams.toString());
-    if(networkData.truncated&&!state.networkSelectedInterface){
-      const firstInterface=(networkData.available_interfaces||[]).find(x=>state.networkNodeFilter==="all"||x.node_name===state.networkNodeFilter);
-      if(firstInterface){
-        state.networkSelectedInterface=firstInterface.node_name+"|"+firstInterface.interface_name+"|"+firstInterface.instance;
-        networkParams.set("node_name",firstInterface.node_name);
-        networkParams.set("interface_name",firstInterface.interface_name);
-        networkParams.set("instance",firstInterface.instance);
-        networkData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/network/performance-series?"+networkParams.toString());
-      }
-    }
   }
   if(section==="nodes"&&nodeSubsection==="health"){
-    const trendParams=new URLSearchParams();
-    if(trendFilter.startDate)trendParams.set("start_date",trendFilter.startDate);
-    if(trendFilter.endDate)trendParams.set("end_date",trendFilter.endDate);
+    const trendParams=new URLSearchParams({start_ts:rangeBounds.startTs,end_ts:rangeBounds.endTs});
     trendData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/topology/trends?"+trendParams.toString());
   }
   if(section==="drives"){
-    const trendParams=new URLSearchParams();
-    if(trendFilter.startDate)trendParams.set("start_date",trendFilter.startDate);
-    if(trendFilter.endDate)trendParams.set("end_date",trendFilter.endDate);
+    const trendParams=new URLSearchParams({start_ts:rangeBounds.startTs,end_ts:rangeBounds.endTs});
     trendData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/topology/trends?"+trendParams.toString());
   }
   if(section==="nodes"||section==="infra-overview"){
     performanceData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/nodes/performance?hours="+state.nodePerformanceHours);
     if(nodeSubsection==="performance"){
     const seriesParams=new URLSearchParams();
-    if(state.performanceStart&&state.performanceEnd){
-      seriesParams.set("start_ts",new Date(state.performanceStart+":00+05:30").toISOString());
-      seriesParams.set("end_ts",new Date(state.performanceEnd+":00+05:30").toISOString());
-    }else seriesParams.set("hours",String(state.performanceRangeHours));
+    seriesParams.set("start_ts",rangeBounds.startTs);
+    seriesParams.set("end_ts",rangeBounds.endTs);
     (state.performanceSelectedNodes||[]).forEach(name=>seriesParams.append("node_names",name));
     var performanceSeriesData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/nodes/performance-series?"+seriesParams.toString());
     }
   }
-  const trendControls=trendData?'<section class="panel health-trends-panel"><div class="panel-header"><div><h3>Historical infrastructure trends</h3><p>Persisted high-frequency telemetry · '+fmt(trendData.sample_count||0,0)+' samples</p></div></div><div class="health-trend-filters"><label>FROM DATE<input id="infra-trend-start" type="date" value="'+esc(trendFilter.startDate)+'"></label><label>TO DATE<input id="infra-trend-end" type="date" value="'+esc(trendFilter.endDate)+'"></label><button class="primary-small" data-action="apply-infra-trends">Apply</button><button class="subtle-button" data-action="reset-infra-trends">Last 30 days</button></div></section>':'';
+  const trendControls=trendData?'<span class="infra-toolbar-meta">Historical trends · '+fmt(trendData.sample_count||0,0)+' samples · '+fmt(trendData.interval_minutes||5,0)+' min cadence</span>':'';
   const trendSamples=trendData?.samples||[];
   const trendLabels=trendSamples.map(x=>snapshotTimestampLabel(x.snapshot_ts));
   const performanceTrendPanel=(title,description,canvasId)=>'<section class="panel"><div class="panel-header"><div><h3>'+title+'</h3><p>'+description+'</p></div></div>'+(performanceData?.samples?.length?'<div class="chart-wrap health-trend-chart"><canvas id="'+canvasId+'"></canvas></div>':'<div class="chart-empty-state"><strong>No historical samples available</strong><p>No telemetry was stored in the selected averaging window.</p></div>')+'</section>';
@@ -691,8 +718,9 @@ async function showClusterTopology(id, section="infra-overview"){
   const selectedCount=selectedNames.length;
   const nodeFilterLabel=selectedCount===nodeCount?"All nodes":selectedCount===0?"No nodes":selectedCount+" of "+nodeCount+" nodes";
   const nodeFilter='<details class="report-column-menu node-performance-filter"><summary class="subtle-button"><span>Nodes · '+nodeFilterLabel+'</span> <span>▾</span></summary><div class="report-column-options"><div class="node-filter-actions"><button type="button" class="table-link" data-action="select-all-performance-nodes">All nodes</button><button type="button" class="table-link" data-action="clear-performance-nodes">Clear</button></div>'+(ps.available_nodes||[]).map(name=>'<label><input type="checkbox" data-performance-node value="'+esc(name)+'" '+(selectedNames.includes(name)?'checked':'')+'> <span>'+esc(name)+'</span></label>').join("")+'</div></details>';
-  const perfRange='<div class="toolbar node-performance-range"><div class="node-performance-range-options"><span class="cell-muted">TIME RANGE</span>'+[2,6,12,24,48,72].map(h=>'<button class="secondary-button '+(!state.performanceStart&&state.performanceRangeHours===h?'active':'')+'" data-performance-hours="'+h+'">'+h+'h</button>').join("")+'<button class="secondary-button '+(state.performanceStart?'active':'')+'" data-performance-custom>Custom</button></div>'+nodeFilter+'</div>';
-  const customRange='<div class="toolbar"><label>FROM <input id="performance-start" type="datetime-local" value="'+esc(state.performanceStart)+'"></label><label>TO <input id="performance-end" type="datetime-local" value="'+esc(state.performanceEnd)+'"></label><button class="primary-small" data-action="apply-performance-range">Apply custom range</button><span class="cell-muted">IST · limited by telemetry retention</span></div>';
+  const timePresets=[["5m","Last 5m"],["15m","15m"],["30m","30m"],["1h","1h"],["3h","3h"],["6h","6h"],["12h","12h"],["24h","24h"],["2d","2d"],["7d","7d"],["30d","30d"]];
+  const perfRange=nodeFilter;
+  const customRange="";
   const metricTabsHtml='<div class="tabs">'+metricTabs.map(([key,label])=>'<button class="tab '+(state.performanceMetric===key?'active':'')+'" data-performance-metric="'+key+'">'+label+'</button>').join("")+'</div>';
   const metricLabels={cpu:["CPU utilization","%"],memory:["Memory utilization","%"],load:["System load",""],filesystem_utilization:["Filesystem utilization","%"]};
   const metricField={cpu:"cpu_utilization_pct",memory:"memory_used_pct",load:"load1"};
@@ -713,11 +741,12 @@ async function showClusterTopology(id, section="infra-overview"){
   }
   const perfGraph='<section class="panel"><div class="panel-header"><div><h3>'+metricLabels[state.performanceMetric][0]+'</h3><p>Raw recorded samples · '+fmt(ps.interval_minutes||5,0)+'-minute collection cadence · '+fmt(ps.sample_count||0,0)+' node samples</p></div></div>'+(graphLabels.length?'<div class="chart-wrap health-trend-chart"><canvas id="node-performance-explorer-chart"></canvas></div>':'<div class="chart-empty-state"><strong>No samples available</strong><p>No matching telemetry was recorded for this range and node selection.</p></div>')+'</section>';
   const perfStats=table("Per-node statistics","Average, minimum, maximum, latest value and sample count for the selected range.",["NODE / FILESYSTEM","AVG","MIN","MAX","LATEST","SAMPLES"],statRows);
-  const nodePerformanceBody=perfRange+(state.performanceStart?customRange:"")+metricTabsHtml+perfGraph+perfStats;
+  const nodePerformancePicker=historicalRangePicker(performanceSeriesData?.retention_days||3,performanceSeriesData?.interval_minutes||5,"performance");
+  const nodePerformanceBody='<div class="infra-compact-toolbar"><div class="infra-toolbar-left">'+metricTabsHtml+'</div>'+nodePerformancePicker+'</div>'+perfGraph+perfStats;
   const nodeHealthBody=table("Node availability","Node Exporter and MinIO scrape status are shown independently.",["NODE","NODE EXPORTER","MINIO TARGET","CPU (LATEST)","MEMORY (LATEST)","LOAD 1M","DRIVES UP","DRIVES DOWN"],nodeRows);
   const nodeCollectionBody=perfToolbar+perfCoverage+missingIntervalPanel+reliabilityPanel;
   const nodeReportsBody=perfToolbar+table("Node performance report","Average, minimum and peak values for each node over the selected window.",["NODE","CPU AVG / MIN / PEAK","MEMORY AVG / MIN / PEAK","LOAD AVG / PEAK","SAMPLES","EXPORTER AVAILABILITY"],perfNodes.map(n=>'<tr><td><span class="cell-strong">'+esc(n.node_name)+'</span></td><td>'+fmt(n.avg_cpu_pct,1)+'% / '+fmt(n.min_cpu_pct,1)+'% / '+fmt(n.max_cpu_pct,1)+'%</td><td>'+fmt(n.avg_memory_used_pct,1)+'% / '+fmt(n.min_memory_used_pct,1)+'% / '+fmt(n.max_memory_used_pct,1)+'%</td><td>'+fmt(n.avg_load1,2)+' / '+fmt(n.max_load1,2)+'</td><td>'+fmt(n.sample_count,0)+'</td><td>'+fmt(n.node_exporter_availability_pct,1)+'%</td></tr>'));
-  if(section==="nodes") body=nodeSubTabsHtml+(nodeSubsection==="health"?trendControls+'<div class="health-infra-trend-grid">'+
+  if(section==="nodes") body=nodeSubTabsHtml+(nodeSubsection==="health"?'<div class="infra-compact-toolbar">'+historicalRangePicker(trendData?.retention_days||3,trendData?.interval_minutes||5,"availability")+trendControls+'</div><div class="health-infra-trend-grid">'+
     trendPanel("Node Exporter availability","Percentage of nodes reporting successfully","infra-node-availability")+
     trendPanel("MinIO scrape availability","Percentage of MinIO node targets reporting","infra-minio-availability")+
     '</div>'+nodeHealthBody:nodeSubsection==="performance"?nodePerformanceBody:nodeSubsection==="collection"?nodeCollectionBody:nodeReportsBody);
@@ -727,7 +756,7 @@ async function showClusterTopology(id, section="infra-overview"){
     trendPanel("Drive error counters","Cumulative availability, I/O and timeout errors reported by drives","infra-drive-errors")+
     trendPanel("Filesystem utilization","Weighted utilization across monitored MinIO data filesystems","infra-filesystem-trend")+
     '</div>';
-  if(section==="drives") body=driveSubTabs+(state.driveView==="graphs"?driveGraphs:driveInventoryHtml());
+  if(section==="drives") body=state.driveView==="graphs"?'<div class="infra-compact-toolbar"><div class="infra-toolbar-left">'+driveSubTabs+trendControls+'</div>'+historicalRangePicker(trendData?.retention_days||3,trendData?.interval_minutes||5,"drives")+'</div>'+driveGraphs.replace(trendControls,""):driveSubTabs+driveInventoryHtml();
   if(section==="network") body=renderNetworkWorkspace(networkData);
   if(section==="storage-overview") body=storageOverview;
   if(section==="pools") body=table("Storage pools","Pool capacity is not inferred where no pool-level capacity metric was discovered.",["POOL","ERASURE SETS","ONLINE DRIVES","HEALING DRIVES"],poolRows);
@@ -737,7 +766,17 @@ async function showClusterTopology(id, section="infra-overview"){
   const pageTitle=storageView?"Storage Topology":"Node Infrastructure";
   const pageSubtitle=storageView?"MinIO storage pools, erasure sets and quorum topology":"Node availability, compute resources, drive health, filesystem and network telemetry";
   const pageSnapshot='<span class="page-heading-snapshot">'+(section==="network"?"Latest network sample ":"Snapshot ")+esc(snapshotTimestampLabel(storageView?d.topology_snapshot_ts:section==="network"?(networkData.series||[]).at(-1)?.snapshot_ts:d.node_snapshot_ts))+'</span>';
-  $("#content").innerHTML=pageHead(esc(d.cluster.name)+" — "+pageTitle,pageSubtitle+pageSnapshot,'<button class="subtle-button" data-action="back-to-cluster-overview">← Back to cluster</button>')+errors+tabHtml+body;
+  const timePickerContext=section==="network"?"network":section==="drives"&&state.driveView==="graphs"?"drives":section==="nodes"&&nodeSubsection==="health"?"availability":section==="nodes"&&nodeSubsection==="performance"?"performance":null;
+  const timePickerRetention=networkData?.retention_days||trendData?.retention_days||performanceSeriesData?.retention_days||3;
+  const timePickerInterval=networkData?.interval_minutes||trendData?.interval_minutes||performanceSeriesData?.interval_minutes||5;
+  state.historicalTimeRetentionDays=timePickerRetention;
+  const sharedTimePicker=timePickerContext?historicalRangePicker(timePickerRetention,timePickerInterval,timePickerContext):"";
+  const networkToolbarEnd=[body.indexOf('<div class="detail-card">'),body.indexOf('<div class="panel-grid network-chart-grid">'),body.indexOf('<div class="chart-empty-state">')].filter(index=>index>=0).sort((a,b)=>a-b)[0];
+  const networkToolbar=section==="network"?body.slice(0,networkToolbarEnd):"";
+  const networkContent=section==="network"?body.slice(networkToolbar.length):body;
+  body=body.replaceAll("__HIST_PICKER__",sharedTimePicker);
+  const toolbarHtml=section==="network"?' <div class="infra-compact-toolbar"><div class="infra-toolbar-left">'+networkToolbar+'</div>'+sharedTimePicker+'</div>':section==="nodes"&&nodeSubsection==="performance"||section==="nodes"&&nodeSubsection==="health"||section==="drives"&&state.driveView==="graphs"?"":sharedTimePicker;
+  $("#content").innerHTML=pageHead(esc(d.cluster.name)+" — "+pageTitle,pageSubtitle+pageSnapshot,'<button class="subtle-button" data-action="back-to-cluster-overview">← Back to cluster</button>')+errors+tabHtml+toolbarHtml+networkContent;
   if(section==="drives"&&state.driveView==="inventory")applyDriveInventoryTable();
   if(performanceData?.samples?.length&&section==="infra-overview"){
     const overviewLabels=performanceData.samples.map(x=>snapshotTimestampLabel(x.snapshot_ts));
@@ -760,14 +799,18 @@ async function showClusterTopology(id, section="infra-overview"){
       {label:"Missing",data:reliabilityTrend.map(x=>x.missing_intervals),color:"#94a0af"}
     ],"line",0,"");
   }
-  if(networkData&&section==="network"&&state.networkSelectedInterface){
-    const selectedKey=state.networkSelectedInterface.split("|");
-    const selectedRows=(networkData.series||[]).filter(x=>x.node_name===selectedKey[0]&&x.interface_name===selectedKey[1]&&x.instance===selectedKey[2]);
-    const labels=selectedRows.map(x=>timestampLabel(x.snapshot_ts));
-    chart("network-throughput-chart",labels,[{label:"RX bytes/s",data:selectedRows.map(x=>x.rx_bytes_per_second),color:"#16a085"},{label:"TX bytes/s",data:selectedRows.map(x=>x.tx_bytes_per_second),color:"#4776c7"}],"line",0,"bytes/s");
-    chart("network-packets-chart",labels,[{label:"RX packets/s",data:selectedRows.map(x=>x.rx_packets_per_second),color:"#16a085"},{label:"TX packets/s",data:selectedRows.map(x=>x.tx_packets_per_second),color:"#4776c7"}],"line",0,"packets/s");
-    chart("network-errors-chart",labels,[{label:"RX errors/s",data:selectedRows.map(x=>x.rx_errors_per_second),color:"#d99a35"},{label:"TX errors/s",data:selectedRows.map(x=>x.tx_errors_per_second),color:"#8b6ccf"}],"line",0,"errors/s");
-    chart("network-drops-chart",labels,[{label:"RX drops/s",data:selectedRows.map(x=>x.rx_drops_per_second),color:"#d99a35"},{label:"TX drops/s",data:selectedRows.map(x=>x.tx_drops_per_second),color:"#d9534f"}],"line",0,"drops/s");
+  if(networkData&&section==="network"){
+    const allSeries=networkData.series||[];
+    const series=(!state.networkSelectedInterface||state.networkSelectedInterface==="all")?allSeries:allSeries.filter(x=>(x.node_name+"|"+x.interface_name+"|"+x.instance)===state.networkSelectedInterface);
+    const keys=[...new Set(series.map(x=>x.node_name+"|"+x.interface_name+"|"+x.instance))];
+    const colors=["#16a085","#4776c7","#d99a35","#8b6ccf","#d9534f","#2d9cdb","#6b9e40","#b05aa2"];
+    const stamps=[...new Set(series.map(x=>x.snapshot_ts))].sort();
+    const labels=stamps.map(timestampLabel);
+    const datasets=(rx,tx,unit)=>keys.flatMap((key,i)=>{const group=series.filter(x=>(x.node_name+"|"+x.interface_name+"|"+x.instance)===key);const iface=key.split("|");const name=state.networkSelectedInterface==="all"?iface[0]+" / "+iface[1]:iface[1];return [{label:name+" RX",data:stamps.map(ts=>group.find(x=>x.snapshot_ts===ts)?.[rx]??null),color:colors[(i*2)%colors.length]},{label:name+" TX",data:stamps.map(ts=>group.find(x=>x.snapshot_ts===ts)?.[tx]??null),color:colors[(i*2+1)%colors.length]}];});
+    chart("network-throughput-chart",labels,datasets("rx_bytes_per_second","tx_bytes_per_second","bytes/s"),"line",0,"bytes/s");
+    chart("network-packets-chart",labels,datasets("rx_packets_per_second","tx_packets_per_second","packets/s"),"line",0,"packets/s");
+    chart("network-errors-chart",labels,datasets("rx_errors_per_second","tx_errors_per_second","errors/s"),"line",0,"errors/s");
+    chart("network-drops-chart",labels,datasets("rx_drops_per_second","tx_drops_per_second","drops/s"),"line",0,"drops/s");
   }
   if(trendSamples.length&&section==="drives"){
     chart("infra-drive-availability",trendLabels,[{label:"Drives online",data:trendSamples.map(x=>x.drives_online),color:"#16a085"},{label:"Drives offline",data:trendSamples.map(x=>x.drives_offline),color:"#d9534f"}],"line",0,"");
@@ -806,7 +849,7 @@ async function showTenant(id,attribution="current",days=90,startDate=null,endDat
   const subtitle=current
     ?"Historical bucket usage attributed using current tenant ownership."
     :"Historical usage attributed to this tenant at snapshot time.";
-  const actions=`<div class="heading-actions"><button class="subtle-button ${current?'active':''}" data-tenant-mode="current" data-tenant-id="${id}" aria-pressed="${current}">Current ownership</button><button class="subtle-button ${!current?'active':''}" data-tenant-mode="historical" data-tenant-id="${id}" aria-pressed="${!current}">Historical ownership</button><button class="subtle-button" data-view="tenants">← All tenants</button></div>`;
+  const actions=`<div class="heading-actions"><button class="subtle-button ${current?'active':''}" data-tenant-mode="current" data-tenant-id="${id}" aria-pressed="${current}">Current ownership</button><button class="subtle-button ${!current?'active':''}" data-tenant-mode="historical" data-tenant-id="${id}" aria-pressed="${!current}">Historical ownership</button><button class="subtle-button" data-view="tenants">← All tenants</button>${rangeControl(days,"tenant",id,attribution)}</div>`;
   const hasHistoricalSnapshots=Array.isArray(d.series)&&d.series.length>0;
   const noHistoricalAttribution=!current&&!hasHistoricalSnapshots;
   const hasQuota=(d.series||[]).some(r=>r.quota_bytes!=null);
@@ -816,7 +859,7 @@ async function showTenant(id,attribution="current",days=90,startDate=null,endDat
     : panel("Tenant capacity and quota trend",current?"Daily usage and summed bucket quotas for currently assigned buckets · GiB":"Daily usage and quotas based on historical snapshot attribution · GiB",capacityControls+'<div class="chart-wrap"><canvas id="tenant-chart"></canvas></div>'+(hasQuota?'':'<div class="chart-note"><span class="chart-note-icon">ⓘ</span><strong>Quota not configured for the buckets attributed to this tenant.</strong></div>'))+
       panel("Tenant object trend","Daily object count across attributed buckets",'<div class="chart-wrap"><canvas id="tenant-object-chart"></canvas></div>')+objectSizeHistogram(hist,"Tenant object size distribution");
   $("#content").innerHTML=pageHead(esc(d.tenant.name),subtitle,actions)+
-    `${rangeControl(days,"tenant",id,attribution)}<div class="detail-grid"><div class="detail-card"><small>DESCRIPTION</small><strong style="font-size:14px">${esc(d.tenant.description||"—")}</strong></div><div class="detail-card"><small>STATUS</small><strong style="font-size:14px">${d.tenant.is_active?"Active":"Inactive"}</strong></div><div class="detail-card"><small>HISTORY WINDOW</small><strong>${days} days</strong></div></div>`+
+    `<div class="detail-grid"><div class="detail-card"><small>DESCRIPTION</small><strong style="font-size:14px">${esc(d.tenant.description||"—")}</strong></div><div class="detail-card"><small>STATUS</small><strong style="font-size:14px">${d.tenant.is_active?"Active":"Inactive"}</strong></div></div>`+
     charts+
     `<div class="snapshot-link-panel"><div><strong>Daily snapshots</strong><p>Browse daily tenant usage, quota, object counts and metric availability.</p></div><button class="primary-small" data-action="open-tenant-snapshots">View daily snapshots →</button></div>`;
   if(!noHistoricalAttribution){
@@ -850,7 +893,7 @@ async function showBucket(id,days=90,startDate=null,endDate=null){
   const [d,h,hist]=await Promise.all([api("/api/analytics/buckets/"+id+"?"+trendQuery(days,startDate,endDate)),api("/api/buckets/"+id+"/history"),api("/api/analytics/object-size-distribution/bucket/"+id)]);const series=d.series||[],latest=series.at(-1)||{};clearCharts();
   $("#content").innerHTML=pageHead(esc(d.bucket.bucket_name),"Cluster · "+esc(d.bucket.cluster_name)+" · Current tenant: "+esc(d.bucket.current_tenant_name||"Unassigned"),'<button class="subtle-button" data-view="buckets">← All buckets</button>')+
     `<div class="detail-grid"><div class="detail-card"><small>USED</small><strong>${bytes(latest.used_bytes)}</strong></div><div class="detail-card"><small>QUOTA</small><strong>${bytes(latest.quota_bytes)}</strong></div><div class="detail-card"><small>OBJECTS</small><strong>${fmt(latest.object_count,0)}</strong></div></div>`+
-    panel("Bucket usage and quota trend","Daily usage and quota in TiB",rangeControl(days,"bucket",id)+'<div class="chart-wrap"><canvas id="bucket-chart"></canvas></div>')+
+    panel("Bucket usage and quota trend","Daily usage and quota in TiB",'<div class="chart-wrap"><canvas id="bucket-chart"></canvas></div>',"",rangeControl(days,"bucket",id))+
     panel("Bucket object trend","Daily object count",'<div class="chart-wrap"><canvas id="bucket-object-chart"></canvas></div>')+objectSizeHistogram(hist,"Bucket object size distribution")+
     `<div class="snapshot-link-panel"><div><strong>Daily snapshots</strong><p>Browse daily usage, quota, object counts and snapshot-time tenant attribution.</p></div><button class="primary-small" data-action="open-bucket-snapshots">View daily snapshots →</button></div>`+
     table("Assignment history","Administrative ownership changes",["CHANGED AT","TENANT","CHANGED BY","NOTE"],h.items.map(r=>`<tr><td>${esc(r.changed_at)}</td><td>${esc(r.tenant_name||"Unassigned")}</td><td>${esc(r.changed_by)}</td><td>${esc(r.note||"—")}</td></tr>`));
@@ -1008,18 +1051,28 @@ document.addEventListener("click",async e=>{
   const bucket=e.target.closest("[data-bucket]");if(bucket){try{await showBucket(bucket.dataset.bucket);}catch(err){toast(err.message,true);}return;}
   const assign=e.target.closest("[data-assign]");if(assign){assignBucketModal(Number(assign.dataset.assign));return;}
   const topologyTab=e.target.closest("[data-topology-tab]");if(topologyTab){showClusterTopology(state.topologyClusterId,topologyTab.dataset.topologyTab).catch(err=>toast(err.message,true));return;}
-  const networkHoursButton=e.target.closest("[data-network-hours]");if(networkHoursButton){state.networkHours=Number(networkHoursButton.dataset.networkHours)||6;state.networkSelectedInterface="";showClusterTopology(state.topologyClusterId,"network").catch(err=>toast(err.message,true));return;}
+  const historicalRange=e.target.closest("[data-historical-range]");if(historicalRange){setHistoricalPreset(historicalRange.dataset.historicalRange);showClusterTopology(state.topologyClusterId,state.topologySection).catch(err=>toast(err.message,true));return;}
+  const rangeAction=e.target.closest("[data-action='apply-historical-range'],[data-action='reset-historical-range']");
+  if(rangeAction?.dataset.action==="apply-historical-range"){
+    const check=validateHistoricalTimeRange($("#content [data-historical-start]")?.value,$("#content [data-historical-end]")?.value,state.historicalTimeRetentionDays);
+    if(!check.valid){toast(check.message,true);return;}
+    state.historicalTimeRange={mode:"absolute",preset:null,startTs:check.startTs,endTs:check.endTs,timezone:"Asia/Kolkata"};
+    showClusterTopology(state.topologyClusterId,state.topologySection).catch(err=>toast(err.message,true));return;
+  }
+  if(rangeAction?.dataset.action==="reset-historical-range"){
+    setHistoricalPreset("1h");
+    showClusterTopology(state.topologyClusterId,state.topologySection).catch(err=>toast(err.message,true));return;
+  }
   const driveViewTab=e.target.closest("[data-drive-view]");if(driveViewTab){state.driveView=driveViewTab.dataset.driveView;showClusterTopology(state.topologyClusterId,"drives").catch(err=>toast(err.message,true));return;}
   const driveExport=e.target.closest("[data-drive-export]");if(driveExport){const rows=[...$("#content").querySelectorAll("[data-drive-row][data-drive-filter-visible='1']")];if(!rows.length){toast("No matching drive rows to export.",true);return;}const csvCell=value=>'"'+String(value??"").replace(/"/g,'""')+'"';const headers=["Node","Drive / Path","Mountpoint","Filesystem","Capacity","Used","Free","Utilization","State","Availability Errors","I/O Errors","Timeout Errors"];const data=rows.map(row=>{const cells=[...row.cells].map(cell=>cell.textContent.replace(/\s+/g," ").trim());const errorParts=(cells[9]||"").split("/").map(value=>value.trim());return [...cells.slice(0,9),...errorParts];});const csv="\uFEFF"+[headers,...data].map(row=>row.map(csvCell).join(",")).join("\r\n");const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"}),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="drive-inventory-"+new Date().toISOString().slice(0,10)+".csv";document.body.append(link);link.click();link.remove();URL.revokeObjectURL(url);toast("Drive inventory CSV exported.");return;}
   const driveSort=e.target.closest("[data-drive-sort]");if(driveSort){if(state.driveSortKey===driveSort.dataset.driveSort)state.driveSortDirection*=-1;else{state.driveSortKey=driveSort.dataset.driveSort;state.driveSortDirection=1;}window.applyDriveInventoryTable();return;}
   const drivePage=e.target.closest("[data-drive-page]");if(drivePage){state.driveInventoryPage=Math.max(1,(state.driveInventoryPage||1)+(drivePage.dataset.drivePage==="next"?1:-1));window.applyDriveInventoryTable();return;}
   const nodeSubTab=e.target.closest("[data-node-subtab]");if(nodeSubTab){state.nodeSubsection=nodeSubTab.dataset.nodeSubtab;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   const nodeHours=e.target.closest("[data-node-hours]");if(nodeHours){state.nodePerformanceHours=Number(nodeHours.dataset.nodeHours);showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
-  const performanceHours=e.target.closest("[data-performance-hours]");if(performanceHours){state.performanceRangeHours=Number(performanceHours.dataset.performanceHours);state.performanceStart="";state.performanceEnd="";showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
-  const performanceCustom=e.target.closest("[data-performance-custom]");if(performanceCustom){state.performanceStart=state.performanceStart||new Date(Date.now()-state.performanceRangeHours*3600000).toLocaleString("sv-SE",{timeZone:"Asia/Kolkata"}).replace(" ","T").slice(0,16);state.performanceEnd=state.performanceEnd||new Date().toLocaleString("sv-SE",{timeZone:"Asia/Kolkata"}).replace(" ","T").slice(0,16);showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
+
   const performanceMetric=e.target.closest("[data-performance-metric]");if(performanceMetric){state.performanceMetric=performanceMetric.dataset.performanceMetric;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   const action=e.target.closest("[data-action]")?.dataset.action;
-  if(action==="apply-performance-range"){const from=$("#performance-start")?.value,to=$("#performance-end")?.value;if(!from||!to||new Date(to+":00+05:30")<=new Date(from+":00+05:30")){toast("Choose a valid custom start and end time.",true);return;}state.performanceStart=from;state.performanceEnd=to;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
+
   if(action==="select-all-performance-nodes"){state.performanceSelectedNodes=null;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   if(action==="clear-performance-nodes"){state.performanceSelectedNodes=[];showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   if(action==="open-tenant-snapshots"){const c=state.snapshotContext;showTenantSnapshots(c.id,c.attribution,c.days,c.startDate,c.endDate).catch(err=>toast(err.message,true));return;}
@@ -1122,7 +1175,7 @@ $("#content").addEventListener("submit",async e=>{
   }catch(err){toast(err.message,true);if(button){button.disabled=false;button.textContent="Save & recalculate";}}
 });
 $("#content").addEventListener("change",async e=>{
-  if(e.target.matches("[data-network-node-filter]")){state.networkNodeFilter=e.target.value;state.networkSelectedInterface="";showClusterTopology(state.topologyClusterId,"network").catch(err=>toast(err.message,true));return;}
+  if(e.target.matches("[data-network-node-filter]")){state.networkNodeFilter=e.target.value;state.networkSelectedInterface="all";showClusterTopology(state.topologyClusterId,"network").catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-network-interface-filter]")){state.networkSelectedInterface=e.target.value;showClusterTopology(state.topologyClusterId,"network").catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-drive-node-filter]")){state.driveNodeFilter=e.target.value;state.driveInventoryPage=1;showClusterTopology(state.topologyClusterId,"drives").catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-drive-state-filter]")){state.driveFsFilter=e.target.value;state.driveInventoryPage=1;window.applyDriveInventoryTable();return;}
@@ -1184,3 +1237,5 @@ $("#content").addEventListener("input",e=>{
   }
 });
 (async()=>{try{const d=await api("/api/auth/me");showApp(d.user);await setView("overview");}catch{showLogin();}})();
+
+document.addEventListener("toggle",function(event){const d=event.target;if(!d.matches(".time-range-dropdown")||!d.open)return;const p=d.querySelector(".time-range-popover");if(!p)return;d.classList.toggle("popover-align-right",p.getBoundingClientRect().right>window.innerWidth-8);},true);

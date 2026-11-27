@@ -62,5 +62,5 @@ jobs:
           node --check app/static/prometheus-connections.js
           node --check app/static/backfill-jobs.js
 
-      - name: Run frontend navigation regression tests
+      - name: Run frontend navigation, interface and time-range regression tests
         run: node tests/frontend/navigation.test.cjs

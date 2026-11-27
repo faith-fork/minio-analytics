@@ -583,6 +583,133 @@ def test_network_performance_endpoint_filters_node_and_interface(viewer_client):
     assert all(row["interface_name"] == "eth1" for row in payload["series"])
 
 
+def test_network_performance_endpoint_filters_instance_independently(viewer_client):
+    _insert_network_samples()
+    stamp = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    with transaction() as connection:
+        connection.execute(
+            """INSERT INTO node_health_runs
+               (run_id,cluster_id,snapshot_ts,collected_at,node_count,drive_count)
+               VALUES('network-alt-instance','cluster-1',?,?,1,0)""",
+            (stamp, stamp),
+        )
+        connection.execute(
+            """INSERT INTO network_health_metrics
+               (run_id,cluster_id,node_name,instance,interface_name,rx_bytes_per_second)
+               VALUES('network-alt-instance','cluster-1','node-1','node-1-alt:9100','eth0',999)"""
+        )
+    response = viewer_client.get(
+        "/api/analytics/clusters/cluster-1/network/performance-series?hours=2&node_name=node-1&interface_name=eth0&instance=node-1%3A9100"
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selected_instance"] == "node-1:9100"
+    assert payload["sample_count"] == 2
+    assert {row["instance"] for row in payload["series"]} == {"node-1:9100"}
+    assert {row["instance"] for row in payload["available_interfaces"]} == {"node-1:9100"}
+
+
+def test_topology_trends_supports_timestamp_bounds_and_returns_collection_metadata(viewer_client):
+    now = datetime.now(timezone.utc)
+    stamp = (now - timedelta(minutes=2)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    with transaction() as connection:
+        connection.execute(
+            """INSERT INTO node_health_runs
+               (run_id,cluster_id,snapshot_ts,collected_at,node_count,drive_count)
+               VALUES('topology-time-range','cluster-1',?,?,0,0)""",
+            (stamp, stamp),
+        )
+    start = (now - timedelta(minutes=5)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    end = (now - timedelta(minutes=1)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    response = viewer_client.get(
+        f"/api/analytics/clusters/cluster-1/topology/trends?start_ts={start}&end_ts={end}"
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["sample_count"] == 1
+    assert payload["interval_minutes"] == 5
+    assert payload["retention_days"] == 3
+    assert payload["start_ts"].endswith("Z")
+    assert payload["end_ts"].endswith("Z")
+
+
+def test_topology_trends_retains_legacy_date_range_contract(viewer_client):
+    response = viewer_client.get(
+        "/api/analytics/clusters/cluster-1/topology/trends?start_date=2026-11-26&end_date=2026-11-26"
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["start_date"] == "2026-11-26"
+    assert payload["end_date"] == "2026-11-26"
+
+
+def test_topology_trends_rejects_invalid_timestamp_bounds(viewer_client):
+    mismatch = viewer_client.get(
+        "/api/analytics/clusters/cluster-1/topology/trends?start_ts=2026-11-27T08:00:00Z"
+    )
+    assert mismatch.status_code == 422
+    naive = viewer_client.get(
+        "/api/analytics/clusters/cluster-1/topology/trends?start_ts=2026-11-27T08:00:00&end_ts=2026-11-27T09:00:00"
+    )
+    assert naive.status_code == 422
+    inverted = viewer_client.get(
+        "/api/analytics/clusters/cluster-1/topology/trends?start_ts=2026-11-27T09:00:00Z&end_ts=2026-11-27T08:00:00Z"
+    )
+    assert inverted.status_code == 422
+    future_start = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    future_end = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    future_response = viewer_client.get(
+        f"/api/analytics/clusters/cluster-1/topology/trends?start_ts={future_start}&end_ts={future_end}"
+    )
+    assert future_response.status_code == 422
+    assert "future" in future_response.json()["detail"].lower()
+
+
+
+def test_timestamp_bounds_accept_small_future_skew_and_clamp_to_server_time(viewer_client):
+    start = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    end = (datetime.now(timezone.utc) + timedelta(seconds=30)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    endpoints = [
+        f"/api/analytics/clusters/cluster-1/topology/trends?start_ts={start}&end_ts={end}",
+        f"/api/analytics/clusters/cluster-1/nodes/performance-series?start_ts={start}&end_ts={end}",
+        f"/api/analytics/clusters/cluster-1/network/performance-series?start_ts={start}&end_ts={end}",
+    ]
+    for endpoint in endpoints:
+        response = viewer_client.get(endpoint)
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        returned_end = datetime.fromisoformat(payload["end_ts"].replace("Z", "+00:00"))
+        assert returned_end <= datetime.now(timezone.utc) + timedelta(seconds=2)
+
+
+def test_timestamp_bounds_reject_future_skew_beyond_tolerance(viewer_client):
+    start = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    end = (datetime.now(timezone.utc) + timedelta(minutes=2)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    endpoints = [
+        f"/api/analytics/clusters/cluster-1/topology/trends?start_ts={start}&end_ts={end}",
+        f"/api/analytics/clusters/cluster-1/nodes/performance-series?start_ts={start}&end_ts={end}",
+        f"/api/analytics/clusters/cluster-1/network/performance-series?start_ts={start}&end_ts={end}",
+    ]
+    for endpoint in endpoints:
+        response = viewer_client.get(endpoint)
+        assert response.status_code == 422
+        assert "future" in response.json()["detail"].lower()
+
+def test_topology_trends_enforces_configured_retention(viewer_client):
+    with transaction() as connection:
+        connection.execute(
+            "UPDATE app_settings SET setting_value='1' WHERE setting_key='telemetry_retention_days'"
+        )
+    now = datetime.now(timezone.utc)
+    start = (now - timedelta(days=2)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    end = (now - timedelta(hours=1)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    response = viewer_client.get(
+        f"/api/analytics/clusters/cluster-1/topology/trends?start_ts={start}&end_ts={end}"
+    )
+    assert response.status_code == 422
+    assert "retention" in response.json()["detail"].lower()
+
+
 def test_network_performance_endpoint_rejects_unsupported_window(viewer_client):
     response = viewer_client.get("/api/analytics/clusters/cluster-1/network/performance-series?hours=3")
     assert response.status_code == 422
