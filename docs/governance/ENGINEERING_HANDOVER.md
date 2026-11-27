@@ -523,3 +523,33 @@ No merge or deployment is authorized by this checkpoint.
 - Combined with deployment-stage 1–3 evidence, **browser functional acceptance is passed for the displayed views**.
 - Browser Console error status and explicit Network-panel verification of fingerprinted asset requests were not included in the evidence; these remain unverified, but do not block the demonstrated navigation/UI acceptance.
 - Deployment/runtime acceptance for PR #59 is therefore recorded as passed for the checks evidenced by terminal output and screenshots. No further deployment is requested by this checkpoint.
+
+
+## 24. Canonical integration baseline reconciliation — 25 November 2026
+
+### Decision and integration
+- User approved adopting `feature/auth-foundation` as the sole canonical integration baseline.
+- PR #60: https://github.com/faith-fork/minio-analytics/pull/60 — Reconcile canonical integration baseline with validated product.
+- Original base SHA: `e1dd236ed09dae3cde5c920cdcbfd29a7d19de70`.
+- Source branch `feature/prometheus-authentication` SHA: `3fc086a02e8a19127a0db9722c35f86a939d43cf`.
+- Comparison confirmed source was 147 commits ahead and 0 behind; merge base was the original canonical branch SHA, so ancestry was linear.
+- CI on source head passed (Python 3.12 tests and frontend validation).
+- PR #60 was merged with merge-commit strategy, preserving commit history. Merge commit: `066dff8c8629b023104eda28d6423b2f0bce1cd1`.
+
+### Canonical branch governance (effective immediately)
+- Sole integration branch: `feature/auth-foundation`.
+- All new feature branches must originate from this branch.
+- All feature PRs target this branch.
+- Releases/deployments must reference an exact approved merge SHA; deployment remains a separate explicit approval gate.
+- `feature/prometheus-authentication` is historical and must not be used for new development or as a parallel integration target.
+- Do not delete historical branches or close stacked PRs #44–#48 until their current state and supersession are individually verified and a separate cleanup plan is reviewed.
+
+### Lab status
+- No VM deployment was performed as part of PR #60. The lab remains on the previously accepted PR #59 application SHA `55d7940ce32e1c76bb80ee7627bbacc2c5ce0feb`.
+- PR #60 integrates source history and includes a later documentation-only checkpoint; no runtime application change is intended from this baseline reconciliation.
+
+### Next product work
+- Planned feature: Historical Infrastructure Health Trends.
+- Metrics/views: node availability over time; MinIO scrape availability over time; drive availability/error trends; CPU and memory utilization; filesystem utilization.
+- Architectural placement: CPU, memory, drive, and filesystem telemetry belong under **Node Infrastructure**, not Collection Health.
+- Before feature implementation, create a focused feature branch from the newly canonical `feature/auth-foundation`, inspect the existing telemetry data model and collection paths, and prepare a scope/design proposal. Do not start coding until the proposal and test strategy are reviewed.
