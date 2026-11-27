@@ -602,7 +602,7 @@ async function showClusterTopology(id, section="infra-overview"){
   let networkData=null;
   if(section==="network"){
     const presets={"5m":300000,"15m":900000,"30m":1800000,"1h":3600000,"3h":10800000,"6h":21600000,"12h":43200000,"24h":86400000,"2d":172800000,"7d":604800000,"30d":2592000000};
-    const rangeMs=presets[state.networkRangePreset||"1h"]||3600000;
+    const rangeMs=presets[state.dashboardTimeRangePreset||"1h"]||3600000;
     const networkParams=new URLSearchParams({start_ts:new Date(Date.now()-rangeMs).toISOString(),end_ts:new Date().toISOString()});
     if(state.networkNodeFilter!=="all")networkParams.set("node_name",state.networkNodeFilter);
     if(state.networkSelectedInterface&&state.networkSelectedInterface!=="all"){const p=state.networkSelectedInterface.split("|");if(p.length===3){networkParams.set("node_name",p[0]);networkParams.set("interface_name",p[1]);networkParams.set("instance",p[2]);}}
