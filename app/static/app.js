@@ -194,8 +194,10 @@ function histogramRangeLabel(value){
 }
 function objectSizeHistogram(data,title){
   const selectedDate=data?.snapshot_date||"";
-  const dateOptions=(data?.available_dates||[]).map(d=>'<option value="'+esc(d)+'" '+(d===selectedDate?'selected':'')+'>'+esc(dateLabel(d))+'</option>').join("");
-  const dateControl='<label class="histogram-date-control">Snapshot date<select class="form-control" data-cluster-hist-date>'+dateOptions+'</select></label>';
+  const availableDates=data?.available_dates||[];
+  const minDate=availableDates.length?availableDates[availableDates.length-1]:"";
+  const maxDate=availableDates.length?availableDates[0]:"";
+  const dateControl='<label class="histogram-date-control">Snapshot date<input type="date" class="form-control" data-cluster-hist-date value="'+esc(selectedDate)+'" min="'+esc(minDate)+'" max="'+esc(maxDate)+'"></label>';
   const controls='<div class="histogram-toolbar">'+dateControl+'<span>Display</span><div class="tenant-chart-controls"><button type="button" class="active" data-histogram-mode="graph" aria-pressed="true">Graph</button><button type="button" data-histogram-mode="table" aria-pressed="false">Table</button></div></div>';
   if(!data||data.status==="unavailable"||!data.distribution?.length)
     return panel(title,"Historical snapshot · "+(selectedDate?dateLabel(selectedDate):"No snapshot selected"),controls+'<div class="empty-state"><strong>Object-size distribution unavailable</strong><p>No complete distribution is available for the selected snapshot date.</p></div>');
