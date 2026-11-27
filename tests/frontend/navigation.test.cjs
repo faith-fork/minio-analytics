@@ -247,7 +247,7 @@ async function run() {
   assert.equal(window.document.querySelector(".historical-time-picker.panel"),null,"Time range should not occupy a dedicated panel");
   assert.ok(window.document.querySelector(".infra-compact-toolbar [data-network-node-filter]"),"Network filters should share the compact toolbar row");
   assert.equal(window.document.querySelector("[data-network-range]"),null,"Network-local range buttons should not remain");
-  assert.match(window.document.querySelector(".historical-time-picker").textContent,/5 min cadence/);
+  assert.match(window.document.querySelector(".time-range-popover").textContent,/5 min cadence/);
   window.document.querySelector(".time-range-dropdown").open=true;
   window.document.querySelector("[data-historical-range='6h']").click();
   await waitFor(()=>window.document.querySelector("[data-historical-range='6h'].active"),"shared 6h range");
