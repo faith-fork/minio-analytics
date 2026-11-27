@@ -1432,7 +1432,8 @@ def network_performance_series(
     start_ts: str | None = Query(default=None),
     end_ts: str | None = Query(default=None),
     node_name: str | None = Query(default=None),
-    interface_name: str | None = Query(default=None),\n    instance: str | None = Query(default=None),
+    interface_name: str | None = Query(default=None),
+    instance: str | None = Query(default=None),
     _: dict = Depends(get_current_user),
 ) -> dict:
     """Return bounded historical per-interface network telemetry."""
@@ -1552,7 +1553,8 @@ def network_performance_series(
         "retention_days": retention_days,
         "interval_minutes": interval_minutes,
         "selected_node": node_name,
-        "selected_interface": interface_name,\n        "selected_instance": instance,
+        "selected_interface": interface_name,
+        "selected_instance": instance,
         "available_interfaces": [dict(row) for row in available_rows],
         "series": series,
         "statistics": list(grouped.values()),
