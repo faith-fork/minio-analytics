@@ -691,9 +691,10 @@ def object_size_distribution(
     scope: str,
     entity_id: str,
     attribution: str = Query(default="current", pattern="^(current|historical)$"),
+    snapshot_date: date | None = Query(default=None),
     _: dict = Depends(get_current_user),
 ) -> dict:
-    """Aggregate the latest stored MinIO object-size histogram for an entity."""
+    """Aggregate a stored MinIO object-size histogram for a selected snapshot."""
     if scope not in {"bucket", "tenant", "cluster"}:
         raise HTTPException(status_code=404, detail="Unknown distribution scope")
 
@@ -768,10 +769,54 @@ def object_size_distribution(
                     (tenant_id,),
                 ).fetchone()[0]
 
+        if scope == "bucket":
+            date_rows = connection.execute(
+                "SELECT DISTINCT snapshot_date FROM bucket_daily_metrics WHERE bucket_id=? ORDER BY snapshot_date DESC",
+                (bucket_ids[0],),
+            ).fetchall()
+        elif scope == "cluster":
+            date_rows = connection.execute(
+                "SELECT DISTINCT snapshot_date FROM bucket_daily_metrics WHERE cluster_id=? ORDER BY snapshot_date DESC",
+                (entity_id,),
+            ).fetchall()
+        elif attribution == "historical":
+            date_rows = connection.execute(
+                "SELECT DISTINCT snapshot_date FROM bucket_daily_metrics WHERE tenant_id_at_snapshot=? ORDER BY snapshot_date DESC",
+                (tenant_id,),
+            ).fetchall()
+        else:
+            date_rows = connection.execute(
+                """SELECT DISTINCT m.snapshot_date FROM bucket_daily_metrics m
+                   JOIN buckets b ON b.id=m.bucket_id
+                   WHERE b.tenant_id=? AND b.is_active=1 ORDER BY m.snapshot_date DESC""",
+                (tenant_id,),
+            ).fetchall()
+        available_dates = [row[0] for row in date_rows]
+        if snapshot_date is not None:
+            latest = snapshot_date.isoformat()
+            if scope == "bucket":
+                bucket_ids = [bucket_id]
+            elif scope == "cluster":
+                bucket_ids = [row[0] for row in connection.execute(
+                    "SELECT DISTINCT bucket_id FROM bucket_daily_metrics WHERE cluster_id=? AND snapshot_date=?",
+                    (entity_id, latest),
+                ).fetchall()]
+            elif attribution == "historical":
+                bucket_ids = [row[0] for row in connection.execute(
+                    "SELECT DISTINCT bucket_id FROM bucket_daily_metrics WHERE tenant_id_at_snapshot=? AND snapshot_date=?",
+                    (tenant_id, latest),
+                ).fetchall()]
+            else:
+                bucket_ids = [row[0] for row in connection.execute(
+                    """SELECT b.id FROM buckets b JOIN bucket_daily_metrics m ON m.bucket_id=b.id
+                       WHERE b.tenant_id=? AND b.is_active=1 AND m.snapshot_date=?""",
+                    (tenant_id, latest),
+                ).fetchall()]
         if not bucket_ids or not latest:
             return {
                 "scope": scope, "entity": _dict(entity), "attribution": attribution,
-                "snapshot_date": latest, "distribution": [], "total_objects": None,
+                "snapshot_date": latest, "available_dates": available_dates,
+                "distribution": [], "total_objects": None,
                 "buckets_expected": len(bucket_ids), "buckets_available": 0,
                 "buckets_missing": len(bucket_ids), "status": "unavailable",
             }
@@ -827,6 +872,7 @@ def object_size_distribution(
         "entity": _dict(entity),
         "attribution": attribution,
         "snapshot_date": latest,
+        "available_dates": available_dates,
         "distribution": distribution,
         "total_objects": total,
         "buckets_expected": expected,
