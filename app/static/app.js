@@ -601,7 +601,14 @@ async function showClusterTopology(id, section="infra-overview"){
 
   let trendData=null,performanceData=null;
   const trendFilter=state.topologyTrendFilters?.[id]||{startDate:"",endDate:""};
-  let networkData=null;\n  if(section==="network"){\n    const networkParams=new URLSearchParams({hours:String(state.networkHours||6)});\n    if(state.networkNodeFilter!=="all")networkParams.set("node_name",state.networkNodeFilter);\n    if(state.networkSelectedInterface){const selectedParts=state.networkSelectedInterface.split("|");if(selectedParts.length===2){networkParams.set("node_name",selectedParts[0]);networkParams.set("interface_name",selectedParts[1]);}}\n    networkData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/network/performance-series?"+networkParams.toString());\n  }\n  if(section==="nodes"&&nodeSubsection==="health"){
+  let networkData=null;
+  if(section==="network"){
+    const networkParams=new URLSearchParams({hours:String(state.networkHours||6)});
+    if(state.networkNodeFilter!=="all")networkParams.set("node_name",state.networkNodeFilter);
+    if(state.networkSelectedInterface){const selectedParts=state.networkSelectedInterface.split("|");if(selectedParts.length===2){networkParams.set("node_name",selectedParts[0]);networkParams.set("interface_name",selectedParts[1]);}}
+    networkData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/network/performance-series?"+networkParams.toString());
+  }
+  if(section==="nodes"&&nodeSubsection==="health"){
     const trendParams=new URLSearchParams();
     if(trendFilter.startDate)trendParams.set("start_date",trendFilter.startDate);
     if(trendFilter.endDate)trendParams.set("end_date",trendFilter.endDate);
@@ -708,7 +715,8 @@ async function showClusterTopology(id, section="infra-overview"){
     trendPanel("Drive error counters","Cumulative availability, I/O and timeout errors reported by drives","infra-drive-errors")+
     trendPanel("Filesystem utilization","Weighted utilization across monitored MinIO data filesystems","infra-filesystem-trend")+
     '</div>';
-  if(section==="drives") body=driveSubTabs+(state.driveView==="graphs"?driveGraphs:driveInventoryHtml());\n  if(section==="network") body=renderNetworkWorkspace(networkData);
+  if(section==="drives") body=driveSubTabs+(state.driveView==="graphs"?driveGraphs:driveInventoryHtml());
+  if(section==="network") body=renderNetworkWorkspace(networkData);
   if(section==="storage-overview") body=storageOverview;
   if(section==="pools") body=table("Storage pools","Pool capacity is not inferred where no pool-level capacity metric was discovered.",["POOL","ERASURE SETS","ONLINE DRIVES","HEALING DRIVES"],poolRows);
   if(section==="sets") body=table("Erasure sets","Status is shown as the raw MinIO metric value; quorum values are not interpreted as a health enum.",["POOL","SET","STATUS VALUE","ONLINE DRIVES","HEALING DRIVES","READ QUORUM","WRITE QUORUM"],setRows);
@@ -740,7 +748,16 @@ async function showClusterTopology(id, section="infra-overview"){
       {label:"Missing",data:reliabilityTrend.map(x=>x.missing_intervals),color:"#94a0af"}
     ],"line",0,"");
   }
-  if(networkData&&section==="network"&&state.networkSelectedInterface){\n    const selectedKey=state.networkSelectedInterface.split("|");\n    const selectedRows=(networkData.series||[]).filter(x=>x.node_name===selectedKey[0]&&x.interface_name===selectedKey[1]);\n    const labels=selectedRows.map(x=>timestampLabel(x.snapshot_ts));\n    chart("network-throughput-chart",labels,[{label:"RX bytes/s",data:selectedRows.map(x=>x.rx_bytes_per_second),color:"#16a085"},{label:"TX bytes/s",data:selectedRows.map(x=>x.tx_bytes_per_second),color:"#4776c7"}],"line",0,"bytes/s");\n    chart("network-packets-chart",labels,[{label:"RX packets/s",data:selectedRows.map(x=>x.rx_packets_per_second),color:"#16a085"},{label:"TX packets/s",data:selectedRows.map(x=>x.tx_packets_per_second),color:"#4776c7"}],"line",0,"packets/s");\n    chart("network-errors-chart",labels,[{label:"RX errors/s",data:selectedRows.map(x=>x.rx_errors_per_second),color:"#d99a35"},{label:"TX errors/s",data:selectedRows.map(x=>x.tx_errors_per_second),color:"#8b6ccf"}],"line",0,"errors/s");\n    chart("network-drops-chart",labels,[{label:"RX drops/s",data:selectedRows.map(x=>x.rx_drops_per_second),color:"#d99a35"},{label:"TX drops/s",data:selectedRows.map(x=>x.tx_drops_per_second),color:"#d9534f"}],"line",0,"drops/s");\n  }\n  if(trendSamples.length&&section==="drives"){
+  if(networkData&&section==="network"&&state.networkSelectedInterface){
+    const selectedKey=state.networkSelectedInterface.split("|");
+    const selectedRows=(networkData.series||[]).filter(x=>x.node_name===selectedKey[0]&&x.interface_name===selectedKey[1]);
+    const labels=selectedRows.map(x=>timestampLabel(x.snapshot_ts));
+    chart("network-throughput-chart",labels,[{label:"RX bytes/s",data:selectedRows.map(x=>x.rx_bytes_per_second),color:"#16a085"},{label:"TX bytes/s",data:selectedRows.map(x=>x.tx_bytes_per_second),color:"#4776c7"}],"line",0,"bytes/s");
+    chart("network-packets-chart",labels,[{label:"RX packets/s",data:selectedRows.map(x=>x.rx_packets_per_second),color:"#16a085"},{label:"TX packets/s",data:selectedRows.map(x=>x.tx_packets_per_second),color:"#4776c7"}],"line",0,"packets/s");
+    chart("network-errors-chart",labels,[{label:"RX errors/s",data:selectedRows.map(x=>x.rx_errors_per_second),color:"#d99a35"},{label:"TX errors/s",data:selectedRows.map(x=>x.tx_errors_per_second),color:"#8b6ccf"}],"line",0,"errors/s");
+    chart("network-drops-chart",labels,[{label:"RX drops/s",data:selectedRows.map(x=>x.rx_drops_per_second),color:"#d99a35"},{label:"TX drops/s",data:selectedRows.map(x=>x.tx_drops_per_second),color:"#d9534f"}],"line",0,"drops/s");
+  }
+  if(trendSamples.length&&section==="drives"){
     chart("infra-drive-availability",trendLabels,[{label:"Drives online",data:trendSamples.map(x=>x.drives_online),color:"#16a085"},{label:"Drives offline",data:trendSamples.map(x=>x.drives_offline),color:"#d9534f"}],"line",0,"");
     chart("infra-drive-errors",trendLabels,[{label:"Availability errors",data:trendSamples.map(x=>x.availability_errors),color:"#d99a35"},{label:"I/O errors",data:trendSamples.map(x=>x.io_errors),color:"#8b6ccf"},{label:"Timeout errors",data:trendSamples.map(x=>x.timeout_errors),color:"#64748b"}],"line",0,"");
     chart("infra-filesystem-trend",trendLabels,[{label:"Filesystem used",data:trendSamples.map(x=>x.filesystem_weighted_used_pct??x.filesystem_used_pct),color:"#d99a35"}],"line",0,"%");
@@ -978,7 +995,8 @@ document.addEventListener("click",async e=>{
   const tenantScale=e.target.closest("[data-tenant-scale]");if(tenantScale){state.tenantCapacityScale=tenantScale.dataset.tenantScale;const c=state.snapshotContext;if(c?.type==="tenant")showTenant(c.id,c.attribution,c.days,c.startDate,c.endDate).catch(err=>toast(err.message,true));return;}
   const bucket=e.target.closest("[data-bucket]");if(bucket){try{await showBucket(bucket.dataset.bucket);}catch(err){toast(err.message,true);}return;}
   const assign=e.target.closest("[data-assign]");if(assign){assignBucketModal(Number(assign.dataset.assign));return;}
-  const topologyTab=e.target.closest("[data-topology-tab]");if(topologyTab){showClusterTopology(state.topologyClusterId,topologyTab.dataset.topologyTab).catch(err=>toast(err.message,true));return;}\n  const networkHoursButton=e.target.closest("[data-network-hours]");if(networkHoursButton){state.networkHours=Number(networkHoursButton.dataset.networkHours)||6;state.networkSelectedInterface="";showClusterTopology(state.topologyClusterId,"network").catch(err=>toast(err.message,true));return;}
+  const topologyTab=e.target.closest("[data-topology-tab]");if(topologyTab){showClusterTopology(state.topologyClusterId,topologyTab.dataset.topologyTab).catch(err=>toast(err.message,true));return;}
+  const networkHoursButton=e.target.closest("[data-network-hours]");if(networkHoursButton){state.networkHours=Number(networkHoursButton.dataset.networkHours)||6;state.networkSelectedInterface="";showClusterTopology(state.topologyClusterId,"network").catch(err=>toast(err.message,true));return;}
   const driveViewTab=e.target.closest("[data-drive-view]");if(driveViewTab){state.driveView=driveViewTab.dataset.driveView;showClusterTopology(state.topologyClusterId,"drives").catch(err=>toast(err.message,true));return;}
   const driveExport=e.target.closest("[data-drive-export]");if(driveExport){const rows=[...$("#content").querySelectorAll("[data-drive-row][data-drive-filter-visible='1']")];if(!rows.length){toast("No matching drive rows to export.",true);return;}const csvCell=value=>'"'+String(value??"").replace(/"/g,'""')+'"';const headers=["Node","Drive / Path","Mountpoint","Filesystem","Capacity","Used","Free","Utilization","State","Availability Errors","I/O Errors","Timeout Errors"];const data=rows.map(row=>{const cells=[...row.cells].map(cell=>cell.textContent.replace(/\s+/g," ").trim());const errorParts=(cells[9]||"").split("/").map(value=>value.trim());return [...cells.slice(0,9),...errorParts];});const csv="\uFEFF"+[headers,...data].map(row=>row.map(csvCell).join(",")).join("\r\n");const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"}),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="drive-inventory-"+new Date().toISOString().slice(0,10)+".csv";document.body.append(link);link.click();link.remove();URL.revokeObjectURL(url);toast("Drive inventory CSV exported.");return;}
   const driveSort=e.target.closest("[data-drive-sort]");if(driveSort){if(state.driveSortKey===driveSort.dataset.driveSort)state.driveSortDirection*=-1;else{state.driveSortKey=driveSort.dataset.driveSort;state.driveSortDirection=1;}window.applyDriveInventoryTable();return;}
@@ -1091,7 +1109,9 @@ $("#content").addEventListener("submit",async e=>{
     toast("Capacity factors saved; report recalculated.");await renderCapacityReport();
   }catch(err){toast(err.message,true);if(button){button.disabled=false;button.textContent="Save & recalculate";}}
 });
-$("#content").addEventListener("change",async e=>{\n  if(e.target.matches("[data-network-node-filter]")){state.networkNodeFilter=e.target.value;state.networkSelectedInterface="";showClusterTopology(state.topologyClusterId,"network").catch(err=>toast(err.message,true));return;}\n  if(e.target.matches("[data-network-interface-filter]")){state.networkSelectedInterface=e.target.value;showClusterTopology(state.topologyClusterId,"network").catch(err=>toast(err.message,true));return;}
+$("#content").addEventListener("change",async e=>{
+  if(e.target.matches("[data-network-node-filter]")){state.networkNodeFilter=e.target.value;state.networkSelectedInterface="";showClusterTopology(state.topologyClusterId,"network").catch(err=>toast(err.message,true));return;}
+  if(e.target.matches("[data-network-interface-filter]")){state.networkSelectedInterface=e.target.value;showClusterTopology(state.topologyClusterId,"network").catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-drive-node-filter]")){state.driveNodeFilter=e.target.value;state.driveInventoryPage=1;showClusterTopology(state.topologyClusterId,"drives").catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-drive-state-filter]")){state.driveFsFilter=e.target.value;state.driveInventoryPage=1;window.applyDriveInventoryTable();return;}
   if(e.target.id==="backup-page-size"){state.backupPageSize=Number(e.target.value)||10;state.backupOffset=0;renderMasterAdmin().catch(err=>toast(err.message,true));return;}
