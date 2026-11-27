@@ -503,7 +503,7 @@ async function showCluster(id,days=90,startDate=null,endDate=null,tab=state.clus
   let topology=null,hist=null;
   if(tab==="infra")topology=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/topology").catch(()=>null);
   if(tab==="objects"){
-    const chosen=state.clusterHistogramDate&&((d.series||[]).some(r=>r.snapshot_date===state.clusterHistogramDate))?state.clusterHistogramDate:null;
+    const chosen=state.clusterHistogramDate||null;
     const url="/api/analytics/object-size-distribution/cluster/"+encodeURIComponent(id)+(chosen?"?snapshot_date="+encodeURIComponent(chosen):"");
     hist=await api(url);
     state.clusterHistogramDate=hist.snapshot_date||null;
