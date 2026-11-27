@@ -284,7 +284,7 @@ async function run() {
   await waitFor(()=>window.document.querySelector("[data-historical-picker='performance']"),"Node Performance picker");
   assert.equal(window.document.querySelector("[data-dashboard-range]"),null,"Node Performance should not contain a duplicate picker");
   window.document.querySelector("[data-node-subtab='collection']").click();
-  await waitFor(()=>window.document.querySelector("[data-node-subtab='collection']"),"Collection Health tab");
+  await waitFor(()=>window.document.querySelector(".node-subtabs [data-node-subtab='collection'].active"),"Collection Health tab activation");
   assert.equal(window.document.querySelector("[data-historical-picker]"),null,"Collection Health collection-window controls remain independent");
 
   await window.showClusterTopology("test-cluster","drives");
