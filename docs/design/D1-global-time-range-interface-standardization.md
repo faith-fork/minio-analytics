@@ -242,3 +242,12 @@ Regression coverage added for all three endpoints:
 - Existing invalid, naive, inverted, retention, and legacy date-contract tests remain in place.
 
 This is a D1 defect correction, not a relaxation of the future-range contract.
+
+
+## Compact trend toolbar refinement (lab review)
+
+- Time-range popovers in right-aligned contextual toolbars open aligned to the trigger's right edge, keeping the panel within the viewport.
+- Popovers are constrained to the viewport width.
+- Tenant detail: the daily-snapshot range selector shares the page-heading action row with ownership mode controls; redundant history-window card is removed.
+- Bucket detail: the daily-snapshot range selector is placed in the trend chart header, alongside chart actions rather than consuming a separate row.
+- Snapshot-table date filters remain separate because they filter table records and are not graph controls.
