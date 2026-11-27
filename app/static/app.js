@@ -1,8 +1,49 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
 if(window.Chart&&window.ChartZoom){Chart.register(ChartZoom);Chart.defaults.plugins.zoom={pan:{enabled:true,mode:"x",modifierKey:"shift"},zoom:{wheel:{enabled:true,speed:0.08},drag:{enabled:true,backgroundColor:"rgba(19,165,139,.12)",borderColor:"#13a58b",borderWidth:1},pinch:{enabled:true},mode:"x"}};}
-const state = { user:null, view:"overview", masterConfigTab:"general", masterGeneralTab:"collection", backupPageSize:10, backupOffset:0, overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:null,driveView:"graphs",driveNodeFilter:"all",driveFsFilter:"all",driveInventoryPage:1,driveSortKey:"node",driveSortDirection:1,networkHours:1,dashboardTimeRangePreset:"1h",networkNodeFilter:"all",networkSelectedInterface:"all" };
+const state = { user:null, view:"overview", masterConfigTab:"general", masterGeneralTab:"collection", backupPageSize:10, backupOffset:0, overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:null,driveView:"graphs",driveNodeFilter:"all",driveFsFilter:"all",driveInventoryPage:1,driveSortKey:"node",driveSortDirection:1,networkHours:1,dashboardTimeRangePreset:"1h",historicalTimeRange:{mode:"relative",preset:"1h",startTs:null,endTs:null,timezone:"Asia/Kolkata"},historicalTimeRetentionDays:3,networkNodeFilter:"all",networkSelectedInterface:"all" };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
+
+const HISTORICAL_TIME_PRESETS = [
+  ["5m",300000,"Last 5 minutes"],["15m",900000,"Last 15 minutes"],
+  ["30m",1800000,"Last 30 minutes"],["1h",3600000,"Last 1 hour"],
+  ["3h",10800000,"Last 3 hours"],["6h",21600000,"Last 6 hours"],
+  ["12h",43200000,"Last 12 hours"],["24h",86400000,"Last 24 hours"],
+  ["2d",172800000,"Last 2 days"],["7d",604800000,"Last 7 days"],
+  ["30d",2592000000,"Last 30 days"]
+];
+const historicalIstToIso=value=>new Date(value+":00+05:30").toISOString();
+const historicalIsoToIstInput=value=>new Date(value).toLocaleString("sv-SE",{timeZone:"Asia/Kolkata"}).replace(" ","T").slice(0,16);
+function getHistoricalTimeBounds(now=Date.now()){
+  const range=state.historicalTimeRange||{mode:"relative",preset:"1h"};
+  if(range.mode==="absolute"&&range.startTs&&range.endTs)return {startTs:range.startTs,endTs:range.endTs};
+  const preset=HISTORICAL_TIME_PRESETS.find(x=>x[0]===range.preset)||HISTORICAL_TIME_PRESETS[3];
+  return {startTs:new Date(now-preset[1]).toISOString(),endTs:new Date(now).toISOString()};
+}
+function setHistoricalPreset(preset){
+  if(!HISTORICAL_TIME_PRESETS.some(x=>x[0]===preset))return;
+  state.historicalTimeRange={mode:"relative",preset,startTs:null,endTs:null,timezone:"Asia/Kolkata"};
+  state.dashboardTimeRangePreset=preset;
+}
+function validateHistoricalTimeRange(start,end,retentionDays,now=Date.now()){
+  if(!start||!end)return {valid:false,message:"Choose both a start and end time."};
+  const a=Date.parse(historicalIstToIso(start)),b=Date.parse(historicalIstToIso(end));
+  if(!Number.isFinite(a)||!Number.isFinite(b)||b<=a)return {valid:false,message:"The end time must be later than the start time."};
+  if(b>now+60000)return {valid:false,message:"The end time cannot be in the future."};
+  if(a<now-Math.max(1,Number(retentionDays)||3)*86400000)return {valid:false,message:"The selected range exceeds configured telemetry retention."};
+  return {valid:true,startTs:new Date(a).toISOString(),endTs:new Date(b).toISOString()};
+}
+function historicalRangePicker(retentionDays,intervalMinutes,context){
+  const selected=state.historicalTimeRange||{mode:"relative",preset:"1h"};
+  const retentionMs=Math.max(1,Number(retentionDays)||3)*86400000;
+  const bounds=getHistoricalTimeBounds();
+  const presetMs=HISTORICAL_TIME_PRESETS.find(x=>x[0]===selected.preset)?.[1]||3600000;
+  const from=selected.mode==="absolute"?historicalIsoToIstInput(bounds.startTs):historicalIsoToIstInput(new Date(Date.parse(bounds.endTs)-presetMs).toISOString());
+  const to=historicalIsoToIstInput(bounds.endTs);
+  const buttons=HISTORICAL_TIME_PRESETS.filter(([,ms])=>ms<=retentionMs).map(([key,,label])=>'<button type="button" class="secondary-button '+(selected.mode==="relative"&&selected.preset===key?"active":"")+'" data-historical-range="'+key+'">'+label.replace("Last ","")+'</button>').join("");
+  return '<section class="panel historical-time-picker" data-historical-picker="'+esc(context)+'"><div class="historical-time-picker-heading"><div><strong>TIME RANGE</strong><span>Shared Node Infrastructure chart range</span></div><span class="cell-muted">IST · '+fmt(intervalMinutes||5,0)+' min cadence · '+fmt(retentionDays||3,0)+' day retention</span></div><div class="historical-time-presets">'+buttons+'</div><div class="historical-time-custom"><label>FROM <input type="datetime-local" data-historical-start value="'+esc(from)+'"></label><label>TO <input type="datetime-local" data-historical-end value="'+esc(to)+'"></label><button type="button" class="primary-small" data-action="apply-historical-range">Apply custom range</button><button type="button" class="subtle-button" data-action="reset-historical-range">Reset</button></div></section>';
+}
+
 const bytes = n => { if(n==null)return "—"; const value=Number(n); if(!Number.isFinite(value))return "—"; if(value>=1024**4)return (value/1024**4).toFixed(2)+" TiB"; if(value>=1024**3)return (value/1024**3).toFixed(1)+" GiB"; if(value>=1024**2)return (value/1024**2).toFixed(1)+" MiB"; if(value>=1024)return (value/1024).toFixed(1)+" KiB"; return value.toFixed(0)+" B"; };
 const tibValue = n => n == null ? "—" : (n/1024**4).toFixed(2);
 const pct = (used,total) => used == null || !total ? null : Math.max(0,Math.min(100,used/total*100));
@@ -461,8 +502,7 @@ function renderNetworkWorkspace(data){
   const selected=selectedKey==="all"?null:filtered.find(x=>x.node_name+"|"+x.interface_name+"|"+x.instance===selectedKey)||null;
   const selectOptions='<option value="all" '+(selectedKey==="all"?'selected':'')+'>All interfaces</option>'+filtered.map(x=>{const key=x.node_name+"|"+x.interface_name+"|"+x.instance;return '<option value="'+esc(key)+'" '+(key===selectedKey?'selected':'')+'>'+esc(x.interface_name+' · '+x.node_name+' · '+x.instance)+'</option>';}).join("");
   const nodeOptions='<option value="all">All nodes</option>'+nodes.map(n=>'<option value="'+esc(n)+'" '+(state.networkNodeFilter===n?'selected':'')+'>'+esc(n)+'</option>').join("");
-  const presets=[["5m","Last 5m"],["15m","15m"],["30m","30m"],["1h","1h"],["3h","3h"],["6h","6h"],["12h","12h"],["24h","24h"],["2d","2d"],["7d","7d"],["30d","30d"]];
-  const hourOptions=presets.filter(([v])=>({ "5m":1/12,"15m":1/4,"30m":1/2,"1h":1,"3h":3,"6h":6,"12h":12,"24h":24,"2d":48,"7d":168,"30d":720 }[v]||0)<=(Number(data.retention_days||3)*24)).map(([v,label])=>'<button class="tab '+((state.dashboardTimeRangePreset||"1h")===v?'active':'')+'" data-network-range="'+v+'">'+label+'</button>').join("");  const stats=data.statistics||[];
+  const stats=data.statistics||[];
   const filteredStats=stats.filter(x=>(state.networkNodeFilter==="all"||x.node_name===state.networkNodeFilter)&&(state.networkSelectedInterface==="all"||!state.networkSelectedInterface||(x.node_name+"|"+x.interface_name+"|"+x.instance)===state.networkSelectedInterface));
   const fmtRate=v=>v==null?'—':bytes(v)+'/s';
   const metricStat=(m,k)=>m&&m[k]!=null?fmtRate(m[k]):'—';
@@ -482,7 +522,7 @@ function renderNetworkWorkspace(data){
     panel("Errors","Receive and transmit · errors/sec",'<div class="chart-wrap"><canvas id="network-errors-chart"></canvas></div>')+
     panel("Drops","Receive and transmit · drops/sec",'<div class="chart-wrap"><canvas id="network-drops-chart"></canvas></div>')+'</div>':
     '<div class="chart-empty-state"><strong>No network interfaces in this range</strong><p>Network telemetry has not been recorded for the selected range or node.</p></div>';
-  return '<section class="panel network-filter-panel"><div class="panel-header"><div><h3>Network filters</h3><p>Historical per-interface telemetry · no cross-interface aggregation</p></div><div class="tabs">'+hourOptions+'</div></div>'+
+  return '<section class="panel network-filter-panel"><div class="panel-header"><div><h3>Network filters</h3><p>Historical per-interface telemetry · no cross-interface aggregation</p></div></div>'+
     '<div class="network-filter-row"><label>Node<select data-network-node-filter>'+nodeOptions+'</select></label><label>Interface<select data-network-interface-filter>'+selectOptions+'</select></label></div>'+
     '<p class="muted">Samples: '+fmt(data.sample_count,0)+' · Collection interval: '+fmt(data.interval_minutes,0)+' min · Range: '+esc(timestampLabel(data.start_ts))+' to '+esc(timestampLabel(data.end_ts))+'</p></section>'+
     (data.truncated?'<div class="detail-card"><strong>Data limited to 20,000 samples</strong><p class="muted">Statistics are based on the returned subset. Select a node/interface to narrow the query.</p></div>':'')+
@@ -598,20 +638,16 @@ async function showClusterTopology(id, section="infra-overview"){
   const setRows=sets.map(s=>'<tr><td>'+esc(s.pool_id)+'</td><td>'+esc(s.set_id)+'</td><td>'+(s.status_value??'—')+'</td><td>'+(s.online_drives??'—')+'</td><td>'+(s.healing_drives??'—')+'</td><td>'+(s.read_quorum??'—')+'</td><td>'+(s.write_quorum??'—')+'</td></tr>');
 
   let trendData=null,performanceData=null;
-  const trendFilter=state.topologyTrendFilters?.[id]||{startDate:"",endDate:""};
   let networkData=null;
+  const rangeBounds=getHistoricalTimeBounds();
   if(section==="network"){
-    const presets={"5m":300000,"15m":900000,"30m":1800000,"1h":3600000,"3h":10800000,"6h":21600000,"12h":43200000,"24h":86400000,"2d":172800000,"7d":604800000,"30d":2592000000};
-    const rangeMs=presets[state.dashboardTimeRangePreset||"1h"]||3600000;
-    const networkParams=new URLSearchParams({start_ts:new Date(Date.now()-rangeMs).toISOString(),end_ts:new Date().toISOString()});
+    const networkParams=new URLSearchParams({start_ts:rangeBounds.startTs,end_ts:rangeBounds.endTs});
     if(state.networkNodeFilter!=="all")networkParams.set("node_name",state.networkNodeFilter);
     if(state.networkSelectedInterface&&state.networkSelectedInterface!=="all"){const p=state.networkSelectedInterface.split("|");if(p.length===3){networkParams.set("node_name",p[0]);networkParams.set("interface_name",p[1]);networkParams.set("instance",p[2]);}}
     networkData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/network/performance-series?"+networkParams.toString());
   }
   if(section==="nodes"&&nodeSubsection==="health"){
-    const trendParams=new URLSearchParams();
-    if(trendFilter.startDate)trendParams.set("start_date",trendFilter.startDate);
-    if(trendFilter.endDate)trendParams.set("end_date",trendFilter.endDate);
+    const trendParams=new URLSearchParams({start_ts:rangeBounds.startTs,end_ts:rangeBounds.endTs});
     trendData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/topology/trends?"+trendParams.toString());
   }
   if(section==="drives"){
@@ -624,19 +660,13 @@ async function showClusterTopology(id, section="infra-overview"){
     performanceData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/nodes/performance?hours="+state.nodePerformanceHours);
     if(nodeSubsection==="performance"){
     const seriesParams=new URLSearchParams();
-    if(state.performanceStart&&state.performanceEnd){
-      seriesParams.set("start_ts",new Date(state.performanceStart+":00+05:30").toISOString());
-      seriesParams.set("end_ts",new Date(state.performanceEnd+":00+05:30").toISOString());
-    }else{
-      const durations={"5m":300000,"15m":900000,"30m":1800000,"1h":3600000,"3h":10800000,"6h":21600000,"12h":43200000,"24h":86400000,"2d":172800000,"7d":604800000,"30d":2592000000};
-      const ms=durations[state.dashboardTimeRangePreset||"1h"]||3600000;
-      seriesParams.set("start_ts",new Date(Date.now()-ms).toISOString());seriesParams.set("end_ts",new Date().toISOString());
-    }
+    seriesParams.set("start_ts",rangeBounds.startTs);
+    seriesParams.set("end_ts",rangeBounds.endTs);
     (state.performanceSelectedNodes||[]).forEach(name=>seriesParams.append("node_names",name));
     var performanceSeriesData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/nodes/performance-series?"+seriesParams.toString());
     }
   }
-  const trendControls=trendData?'<section class="panel health-trends-panel"><div class="panel-header"><div><h3>Historical infrastructure trends</h3><p>Persisted high-frequency telemetry · '+fmt(trendData.sample_count||0,0)+' samples</p></div></div><div class="health-trend-filters"><label>FROM DATE<input id="infra-trend-start" type="date" value="'+esc(trendFilter.startDate)+'"></label><label>TO DATE<input id="infra-trend-end" type="date" value="'+esc(trendFilter.endDate)+'"></label><button class="primary-small" data-action="apply-infra-trends">Apply</button><button class="subtle-button" data-action="reset-infra-trends">Last 30 days</button></div></section>':'';
+  const trendControls=trendData?'<section class="panel health-trends-panel"><div class="panel-header"><div><h3>Historical infrastructure trends</h3><p>'+fmt(trendData.sample_count||0,0)+' samples · '+fmt(trendData.interval_minutes||5,0)+'-minute collection cadence</p></div></div></section>':'';
   const trendSamples=trendData?.samples||[];
   const trendLabels=trendSamples.map(x=>snapshotTimestampLabel(x.snapshot_ts));
   const performanceTrendPanel=(title,description,canvasId)=>'<section class="panel"><div class="panel-header"><div><h3>'+title+'</h3><p>'+description+'</p></div></div>'+(performanceData?.samples?.length?'<div class="chart-wrap health-trend-chart"><canvas id="'+canvasId+'"></canvas></div>':'<div class="chart-empty-state"><strong>No historical samples available</strong><p>No telemetry was stored in the selected averaging window.</p></div>')+'</section>';
@@ -706,7 +736,7 @@ async function showClusterTopology(id, section="infra-overview"){
   }
   const perfGraph='<section class="panel"><div class="panel-header"><div><h3>'+metricLabels[state.performanceMetric][0]+'</h3><p>Raw recorded samples · '+fmt(ps.interval_minutes||5,0)+'-minute collection cadence · '+fmt(ps.sample_count||0,0)+' node samples</p></div></div>'+(graphLabels.length?'<div class="chart-wrap health-trend-chart"><canvas id="node-performance-explorer-chart"></canvas></div>':'<div class="chart-empty-state"><strong>No samples available</strong><p>No matching telemetry was recorded for this range and node selection.</p></div>')+'</section>';
   const perfStats=table("Per-node statistics","Average, minimum, maximum, latest value and sample count for the selected range.",["NODE / FILESYSTEM","AVG","MIN","MAX","LATEST","SAMPLES"],statRows);
-  const nodePerformanceBody=perfRange+(state.performanceStart?customRange:"")+metricTabsHtml+perfGraph+perfStats;
+  const nodePerformanceBody=nodeFilter+metricTabsHtml+perfGraph+perfStats;
   const nodeHealthBody=table("Node availability","Node Exporter and MinIO scrape status are shown independently.",["NODE","NODE EXPORTER","MINIO TARGET","CPU (LATEST)","MEMORY (LATEST)","LOAD 1M","DRIVES UP","DRIVES DOWN"],nodeRows);
   const nodeCollectionBody=perfToolbar+perfCoverage+missingIntervalPanel+reliabilityPanel;
   const nodeReportsBody=perfToolbar+table("Node performance report","Average, minimum and peak values for each node over the selected window.",["NODE","CPU AVG / MIN / PEAK","MEMORY AVG / MIN / PEAK","LOAD AVG / PEAK","SAMPLES","EXPORTER AVAILABILITY"],perfNodes.map(n=>'<tr><td><span class="cell-strong">'+esc(n.node_name)+'</span></td><td>'+fmt(n.avg_cpu_pct,1)+'% / '+fmt(n.min_cpu_pct,1)+'% / '+fmt(n.max_cpu_pct,1)+'%</td><td>'+fmt(n.avg_memory_used_pct,1)+'% / '+fmt(n.min_memory_used_pct,1)+'% / '+fmt(n.max_memory_used_pct,1)+'%</td><td>'+fmt(n.avg_load1,2)+' / '+fmt(n.max_load1,2)+'</td><td>'+fmt(n.sample_count,0)+'</td><td>'+fmt(n.node_exporter_availability_pct,1)+'%</td></tr>'));
@@ -715,7 +745,7 @@ async function showClusterTopology(id, section="infra-overview"){
     trendPanel("MinIO scrape availability","Percentage of MinIO node targets reporting","infra-minio-availability")+
     '</div>'+nodeHealthBody:nodeSubsection==="performance"?nodePerformanceBody:nodeSubsection==="collection"?nodeCollectionBody:nodeReportsBody);
   const driveSubTabs='<div class="tabs drives-subtabs" role="tablist" aria-label="Drives and filesystems views"><button type="button" role="tab" aria-selected="'+(state.driveView==="graphs")+'" class="tab '+(state.driveView==="graphs"?"active":"")+'" data-drive-view="graphs">Graphs</button><button type="button" role="tab" aria-selected="'+(state.driveView==="inventory")+'" class="tab '+(state.driveView==="inventory"?"active":"")+'" data-drive-view="inventory">Drive Inventory</button></div>';
-  const driveGraphs=trendControls+'<div class="health-infra-trend-grid">'+
+  const driveGraphs='<div class="health-infra-trend-grid">'+
     trendPanel("Drive availability","MinIO-reported online and offline drive counts across the cluster","infra-drive-availability")+
     trendPanel("Drive error counters","Cumulative availability, I/O and timeout errors reported by drives","infra-drive-errors")+
     trendPanel("Filesystem utilization","Weighted utilization across monitored MinIO data filesystems","infra-filesystem-trend")+
@@ -730,7 +760,12 @@ async function showClusterTopology(id, section="infra-overview"){
   const pageTitle=storageView?"Storage Topology":"Node Infrastructure";
   const pageSubtitle=storageView?"MinIO storage pools, erasure sets and quorum topology":"Node availability, compute resources, drive health, filesystem and network telemetry";
   const pageSnapshot='<span class="page-heading-snapshot">'+(section==="network"?"Latest network sample ":"Snapshot ")+esc(snapshotTimestampLabel(storageView?d.topology_snapshot_ts:section==="network"?(networkData.series||[]).at(-1)?.snapshot_ts:d.node_snapshot_ts))+'</span>';
-  $("#content").innerHTML=pageHead(esc(d.cluster.name)+" — "+pageTitle,pageSubtitle+pageSnapshot,'<button class="subtle-button" data-action="back-to-cluster-overview">← Back to cluster</button>')+errors+tabHtml+body;
+  const timePickerContext=section==="network"?"network":section==="drives"&&state.driveView==="graphs"?"drives":section==="nodes"&&nodeSubsection==="health"?"availability":section==="nodes"&&nodeSubsection==="performance"?"performance":null;
+  const timePickerRetention=networkData?.retention_days||trendData?.retention_days||performanceSeriesData?.retention_days||3;
+  const timePickerInterval=networkData?.interval_minutes||trendData?.interval_minutes||performanceSeriesData?.interval_minutes||5;
+  state.historicalTimeRetentionDays=timePickerRetention;
+  const sharedTimePicker=timePickerContext?historicalRangePicker(timePickerRetention,timePickerInterval,timePickerContext):"";
+  $("#content").innerHTML=pageHead(esc(d.cluster.name)+" — "+pageTitle,pageSubtitle+pageSnapshot,'<button class="subtle-button" data-action="back-to-cluster-overview">← Back to cluster</button>')+errors+tabHtml+sharedTimePicker+body;
   if(section==="drives"&&state.driveView==="inventory")applyDriveInventoryTable();
   if(performanceData?.samples?.length&&section==="infra-overview"){
     const overviewLabels=performanceData.samples.map(x=>snapshotTimestampLabel(x.snapshot_ts));
@@ -1005,18 +1040,24 @@ document.addEventListener("click",async e=>{
   const bucket=e.target.closest("[data-bucket]");if(bucket){try{await showBucket(bucket.dataset.bucket);}catch(err){toast(err.message,true);}return;}
   const assign=e.target.closest("[data-assign]");if(assign){assignBucketModal(Number(assign.dataset.assign));return;}
   const topologyTab=e.target.closest("[data-topology-tab]");if(topologyTab){showClusterTopology(state.topologyClusterId,topologyTab.dataset.topologyTab).catch(err=>toast(err.message,true));return;}
-  const networkRangeButton=e.target.closest("[data-network-range]");if(networkRangeButton){state.dashboardTimeRangePreset=networkRangeButton.dataset.networkRange;showClusterTopology(state.topologyClusterId,"network").catch(err=>toast(err.message,true));return;}
+  const historicalRange=e.target.closest("[data-historical-range]");if(historicalRange){setHistoricalPreset(historicalRange.dataset.historicalRange);showClusterTopology(state.topologyClusterId,state.topologySection).catch(err=>toast(err.message,true));return;}
   const driveViewTab=e.target.closest("[data-drive-view]");if(driveViewTab){state.driveView=driveViewTab.dataset.driveView;showClusterTopology(state.topologyClusterId,"drives").catch(err=>toast(err.message,true));return;}
   const driveExport=e.target.closest("[data-drive-export]");if(driveExport){const rows=[...$("#content").querySelectorAll("[data-drive-row][data-drive-filter-visible='1']")];if(!rows.length){toast("No matching drive rows to export.",true);return;}const csvCell=value=>'"'+String(value??"").replace(/"/g,'""')+'"';const headers=["Node","Drive / Path","Mountpoint","Filesystem","Capacity","Used","Free","Utilization","State","Availability Errors","I/O Errors","Timeout Errors"];const data=rows.map(row=>{const cells=[...row.cells].map(cell=>cell.textContent.replace(/\s+/g," ").trim());const errorParts=(cells[9]||"").split("/").map(value=>value.trim());return [...cells.slice(0,9),...errorParts];});const csv="\uFEFF"+[headers,...data].map(row=>row.map(csvCell).join(",")).join("\r\n");const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"}),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="drive-inventory-"+new Date().toISOString().slice(0,10)+".csv";document.body.append(link);link.click();link.remove();URL.revokeObjectURL(url);toast("Drive inventory CSV exported.");return;}
   const driveSort=e.target.closest("[data-drive-sort]");if(driveSort){if(state.driveSortKey===driveSort.dataset.driveSort)state.driveSortDirection*=-1;else{state.driveSortKey=driveSort.dataset.driveSort;state.driveSortDirection=1;}window.applyDriveInventoryTable();return;}
   const drivePage=e.target.closest("[data-drive-page]");if(drivePage){state.driveInventoryPage=Math.max(1,(state.driveInventoryPage||1)+(drivePage.dataset.drivePage==="next"?1:-1));window.applyDriveInventoryTable();return;}
   const nodeSubTab=e.target.closest("[data-node-subtab]");if(nodeSubTab){state.nodeSubsection=nodeSubTab.dataset.nodeSubtab;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   const nodeHours=e.target.closest("[data-node-hours]");if(nodeHours){state.nodePerformanceHours=Number(nodeHours.dataset.nodeHours);showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
-  const dashboardRange=e.target.closest("[data-dashboard-range]");if(dashboardRange){state.dashboardTimeRangePreset=dashboardRange.dataset.dashboardRange;state.performanceStart="";state.performanceEnd="";showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
+  if(action==="apply-historical-range"){
+    const check=validateHistoricalTimeRange($("#content [data-historical-start]")?.value,$("#content [data-historical-end]")?.value,state.historicalTimeRetentionDays);
+    if(!check.valid){toast(check.message,true);return;}
+    state.historicalTimeRange={mode:"absolute",preset:null,startTs:check.startTs,endTs:check.endTs,timezone:"Asia/Kolkata"};
+    showClusterTopology(state.topologyClusterId,state.topologySection).catch(err=>toast(err.message,true));return;
+  }
+  if(action==="reset-historical-range"){setHistoricalPreset("1h");showClusterTopology(state.topologyClusterId,state.topologySection).catch(err=>toast(err.message,true));return;}
   const performanceCustom=e.target.closest("[data-performance-custom]");if(performanceCustom){state.performanceStart=state.performanceStart||new Date(Date.now()-(({ "5m":300000,"15m":900000,"30m":1800000,"1h":3600000,"3h":10800000,"6h":21600000,"12h":43200000,"24h":86400000,"2d":172800000,"7d":604800000,"30d":2592000000 })[state.dashboardTimeRangePreset||"1h"]||3600000)).toLocaleString("sv-SE",{timeZone:"Asia/Kolkata"}).replace(" ","T").slice(0,16);state.performanceEnd=state.performanceEnd||new Date().toLocaleString("sv-SE",{timeZone:"Asia/Kolkata"}).replace(" ","T").slice(0,16);showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   const performanceMetric=e.target.closest("[data-performance-metric]");if(performanceMetric){state.performanceMetric=performanceMetric.dataset.performanceMetric;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   const action=e.target.closest("[data-action]")?.dataset.action;
-  if(action==="apply-performance-range"){const from=$("#performance-start")?.value,to=$("#performance-end")?.value;if(!from||!to||new Date(to+":00+05:30")<=new Date(from+":00+05:30")){toast("Choose a valid custom start and end time.",true);return;}state.performanceStart=from;state.performanceEnd=to;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
+  if(action==="apply-performance-range"){const from=$("#performance-start")?.value,to=$("#performance-end")?.value;if(!from||!to||new Date(to+":00+05:30")<=new Date(from+":00+05:30")){toast("Choose a valid custom start and end time.",true);return;}const check=validateHistoricalTimeRange(from,to,state.historicalTimeRetentionDays);if(!check.valid){toast(check.message,true);return;}state.performanceStart=from;state.performanceEnd=to;state.historicalTimeRange={mode:"absolute",preset:null,startTs:check.startTs,endTs:check.endTs,timezone:"Asia/Kolkata"};showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   if(action==="select-all-performance-nodes"){state.performanceSelectedNodes=null;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   if(action==="clear-performance-nodes"){state.performanceSelectedNodes=[];showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   if(action==="open-tenant-snapshots"){const c=state.snapshotContext;showTenantSnapshots(c.id,c.attribution,c.days,c.startDate,c.endDate).catch(err=>toast(err.message,true));return;}
