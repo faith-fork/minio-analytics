@@ -493,7 +493,7 @@ function renderNetworkWorkspace(data){
     (data.sample_count===0?'<div class="chart-empty-state"><strong>No samples available</strong><p>Try a longer time range or wait for the next collection.</p></div>':'');
 }
 async function showClusterTopology(id, section="infra-overview"){
-  if(section==="network"&&state.topologyClusterId!==id){state.networkNodeFilter="all";state.networkSelectedInterface="";}
+  if(section==="network"&&state.topologyClusterId!==id){state.networkNodeFilter="all";state.networkSelectedInterface="all";}
   const d=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/topology");
   state.topologyClusterId=id;state.topologySection=section;
   const storageView=section==="storage-overview"||section==="pools"||section==="sets";
@@ -755,7 +755,7 @@ async function showClusterTopology(id, section="infra-overview"){
   }
   if(networkData&&section==="network"){
     const allSeries=networkData.series||[];
-    const series=state.networkSelectedInterface==="all"?allSeries:allSeries.filter(x=>(x.node_name+"|"+x.interface_name+"|"+x.instance)===state.networkSelectedInterface);
+    const series=(!state.networkSelectedInterface||state.networkSelectedInterface==="all")?allSeries:allSeries.filter(x=>(x.node_name+"|"+x.interface_name+"|"+x.instance)===state.networkSelectedInterface);
     const keys=[...new Set(series.map(x=>x.node_name+"|"+x.interface_name+"|"+x.instance))];
     const colors=["#16a085","#4776c7","#d99a35","#8b6ccf","#d9534f","#2d9cdb","#6b9e40","#b05aa2"];
     const stamps=[...new Set(series.map(x=>x.snapshot_ts))].sort();
