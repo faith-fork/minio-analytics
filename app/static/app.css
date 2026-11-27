@@ -505,7 +505,7 @@
 /* Network observability workspace */
 .network-filter-row{display:flex;flex-wrap:wrap;gap:14px;align-items:end;margin:12px 0}
 .network-filter-row label{display:flex;flex-direction:column;gap:6px;min-width:220px;font-size:12px;color:var(--muted)}
-.network-filter-row select{min-width:220px;max-width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)}
+.network-filter-row select{min-width:220px;max-width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--white);color:var(--ink)}
 .network-chart-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 .network-chart-grid .chart-wrap{min-height:260px}
 @media(max-width:900px){.network-chart-grid{grid-template-columns:1fr}.network-filter-row label,.network-filter-row select{width:100%;min-width:0}}
