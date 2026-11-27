@@ -517,3 +517,73 @@ def test_collection_health_exposes_persisted_node_collection_status(
     payload = response.json()
     assert len(payload["node_health"]) == 1
     assert payload["node_health"][0]["status"] == run_status
+
+
+def _insert_network_samples():
+    now = datetime.now(timezone.utc)
+    stamps = [
+        (now - timedelta(minutes=10)).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        (now - timedelta(minutes=5)).isoformat(timespec="seconds").replace("+00:00", "Z"),
+    ]
+    with transaction() as connection:
+        for idx, stamp in enumerate(stamps):
+            run_id = f"network-run-{idx}"
+            connection.execute(
+                """INSERT INTO node_health_runs
+                   (run_id,cluster_id,snapshot_ts,collected_at,node_count,drive_count)
+                   VALUES(?, 'cluster-1', ?, ?, 1, 0)""",
+                (run_id, stamp, stamp),
+            )
+            connection.execute(
+                """INSERT INTO network_health_metrics
+                   (run_id,cluster_id,node_name,instance,interface_name,
+                    rx_bytes_per_second,tx_bytes_per_second,
+                    rx_packets_per_second,tx_packets_per_second,
+                    rx_errors_per_second,tx_errors_per_second,
+                    rx_drops_per_second,tx_drops_per_second)
+                   VALUES(?, 'cluster-1', 'node-1', 'node-1:9100', 'eth0',
+                          ?, ?, ?, ?, NULL, 0, 0, 0)""",
+                (run_id, 100.0 + idx * 100, 50.0 + idx * 50, 10.0 + idx, 5.0 + idx),
+            )
+            connection.execute(
+                """INSERT INTO network_health_metrics
+                   (run_id,cluster_id,node_name,instance,interface_name,
+                    rx_bytes_per_second,tx_bytes_per_second)
+                   VALUES(?, 'cluster-1', 'node-1', 'node-1:9100', 'eth1', 25, 75)""",
+                (run_id,),
+            )
+
+
+def test_network_performance_endpoint_returns_interface_samples_and_statistics(viewer_client):
+    _insert_network_samples()
+    response = viewer_client.get("/api/analytics/clusters/cluster-1/network/performance-series?hours=2")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["sample_count"] == 4
+    assert payload["aggregation"].startswith("per-interface only")
+    assert {row["interface_name"] for row in payload["available_interfaces"]} == {"eth0", "eth1"}
+    eth0 = next(row for row in payload["statistics"] if row["interface_name"] == "eth0")
+    assert eth0["sample_count"] == 2
+    assert eth0["metrics"]["rx_bytes_per_second"]["average"] == 150
+    assert eth0["metrics"]["rx_bytes_per_second"]["latest"] == 200
+    assert eth0["metrics"]["rx_errors_per_second"]["sample_count"] == 0
+    assert eth0["metrics"]["rx_errors_per_second"]["latest"] is None
+
+
+def test_network_performance_endpoint_filters_node_and_interface(viewer_client):
+    _insert_network_samples()
+    response = viewer_client.get(
+        "/api/analytics/clusters/cluster-1/network/performance-series?hours=2&node_name=node-1&interface_name=eth1"
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selected_node"] == "node-1"
+    assert payload["selected_interface"] == "eth1"
+    assert payload["sample_count"] == 2
+    assert all(row["interface_name"] == "eth1" for row in payload["series"])
+
+
+def test_network_performance_endpoint_rejects_unsupported_window(viewer_client):
+    response = viewer_client.get("/api/analytics/clusters/cluster-1/network/performance-series?hours=3")
+    assert response.status_code == 422
+
