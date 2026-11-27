@@ -181,6 +181,7 @@ async function run() {
   await waitFor(() => window.document.querySelector('[data-drive-view="graphs"]'), "Drives graphs workspace");
   assert.equal(window.document.querySelector('[data-drive-view="graphs"]').getAttribute("aria-selected"), "true");
   assert.ok(window.document.querySelector("#infra-drive-availability"), "Graphs tab should retain drive availability panel");
+  await waitFor(()=>window.document.querySelector(".infra-compact-toolbar .time-range-dropdown"),"Drive graphs compact time toolbar");
   assert.ok(window.document.querySelector(".drives-subtabs")?.closest(".infra-compact-toolbar"),"Drive view tabs should share the compact contextual toolbar");
   assert.ok(window.document.querySelector(".infra-compact-toolbar .time-range-dropdown"),"Drive graph time range should be in the same toolbar");
   assert.equal(window.document.querySelectorAll(".infra-compact-toolbar").length,1,"Drive graphs should not create a separate time-range row");
