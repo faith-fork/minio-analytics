@@ -242,9 +242,13 @@ async function run() {
   // D1: the shared selector drives all timestamp-based Node Infrastructure charts.
   await window.showClusterTopology("test-cluster","network");
   assert.ok(window.document.querySelector("[data-historical-picker='network']"),"Network should use the shared time picker");
-  assert.ok(window.document.querySelector("[data-historical-range='1h']"),"Shared quick ranges should render");
+  assert.ok(window.document.querySelector("[data-historical-range='1h']"),"Shared quick ranges should render inside the compact dropdown");
+  assert.ok(window.document.querySelector(".time-range-dropdown"),"Time range control should use a compact dropdown");
+  assert.equal(window.document.querySelector(".historical-time-picker.panel"),null,"Time range should not occupy a dedicated panel");
+  assert.ok(window.document.querySelector(".infra-compact-toolbar [data-network-node-filter]"),"Network filters should share the compact toolbar row");
   assert.equal(window.document.querySelector("[data-network-range]"),null,"Network-local range buttons should not remain");
   assert.match(window.document.querySelector(".historical-time-picker").textContent,/5 min cadence/);
+  window.document.querySelector(".time-range-dropdown").open=true;
   window.document.querySelector("[data-historical-range='6h']").click();
   await waitFor(()=>window.document.querySelector("[data-historical-range='6h'].active"),"shared 6h range");
   assert.ok(window.__requests.some(url=>url.includes("/network/performance-series")&&url.includes("start_ts=")),"Network requests should use timestamps");
@@ -261,6 +265,7 @@ async function run() {
   nodeSelect.dispatchEvent(new window.Event("change",{bubbles:true}));
   await waitFor(()=>window.document.querySelector("[data-network-interface-filter]")?.value==="all","node change resets interface to All interfaces");
 
+  window.document.querySelector(".time-range-dropdown").open=true;
   const customFrom=window.document.querySelector("[data-historical-start]");
   const customTo=window.document.querySelector("[data-historical-end]");
   const customEndUtc=new Date(Date.now()-10*60*1000);
