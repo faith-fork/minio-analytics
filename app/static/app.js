@@ -651,9 +651,7 @@ async function showClusterTopology(id, section="infra-overview"){
     trendData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/topology/trends?"+trendParams.toString());
   }
   if(section==="drives"){
-    const trendParams=new URLSearchParams();
-    if(trendFilter.startDate)trendParams.set("start_date",trendFilter.startDate);
-    if(trendFilter.endDate)trendParams.set("end_date",trendFilter.endDate);
+    const trendParams=new URLSearchParams({start_ts:rangeBounds.startTs,end_ts:rangeBounds.endTs});
     trendData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/topology/trends?"+trendParams.toString());
   }
   if(section==="nodes"||section==="infra-overview"){
@@ -714,8 +712,8 @@ async function showClusterTopology(id, section="infra-overview"){
   const nodeFilterLabel=selectedCount===nodeCount?"All nodes":selectedCount===0?"No nodes":selectedCount+" of "+nodeCount+" nodes";
   const nodeFilter='<details class="report-column-menu node-performance-filter"><summary class="subtle-button"><span>Nodes · '+nodeFilterLabel+'</span> <span>▾</span></summary><div class="report-column-options"><div class="node-filter-actions"><button type="button" class="table-link" data-action="select-all-performance-nodes">All nodes</button><button type="button" class="table-link" data-action="clear-performance-nodes">Clear</button></div>'+(ps.available_nodes||[]).map(name=>'<label><input type="checkbox" data-performance-node value="'+esc(name)+'" '+(selectedNames.includes(name)?'checked':'')+'> <span>'+esc(name)+'</span></label>').join("")+'</div></details>';
   const timePresets=[["5m","Last 5m"],["15m","15m"],["30m","30m"],["1h","1h"],["3h","3h"],["6h","6h"],["12h","12h"],["24h","24h"],["2d","2d"],["7d","7d"],["30d","30d"]];
-  const perfRange='<div class="toolbar node-performance-range"><div class="node-performance-range-options"><span class="cell-muted">TIME RANGE</span>'+timePresets.filter(([v])=>({ "5m":1/12,"15m":1/4,"30m":1/2,"1h":1,"3h":3,"6h":6,"12h":12,"24h":24,"2d":48,"7d":168,"30d":720 }[v]||0)<=(Number(ps.retention_days||3)*24)).map(([v,label])=>'<button class="secondary-button '+((!state.performanceStart&&(state.dashboardTimeRangePreset||"1h")===v)?'active':'')+'" data-dashboard-range="'+v+'">'+label+'</button>').join("")+'<button class="secondary-button '+(state.performanceStart?'active':'')+'" data-performance-custom>Custom</button></div>'+nodeFilter+'</div>';
-  const customRange='<div class="toolbar"><label>FROM <input id="performance-start" type="datetime-local" value="'+esc(state.performanceStart)+'"></label><label>TO <input id="performance-end" type="datetime-local" value="'+esc(state.performanceEnd)+'"></label><button class="primary-small" data-action="apply-performance-range">Apply custom range</button><span class="cell-muted">IST · limited by telemetry retention</span></div>';
+  const perfRange=nodeFilter;
+  const customRange="";
   const metricTabsHtml='<div class="tabs">'+metricTabs.map(([key,label])=>'<button class="tab '+(state.performanceMetric===key?'active':'')+'" data-performance-metric="'+key+'">'+label+'</button>').join("")+'</div>';
   const metricLabels={cpu:["CPU utilization","%"],memory:["Memory utilization","%"],load:["System load",""],filesystem_utilization:["Filesystem utilization","%"]};
   const metricField={cpu:"cpu_utilization_pct",memory:"memory_used_pct",load:"load1"};
@@ -736,7 +734,7 @@ async function showClusterTopology(id, section="infra-overview"){
   }
   const perfGraph='<section class="panel"><div class="panel-header"><div><h3>'+metricLabels[state.performanceMetric][0]+'</h3><p>Raw recorded samples · '+fmt(ps.interval_minutes||5,0)+'-minute collection cadence · '+fmt(ps.sample_count||0,0)+' node samples</p></div></div>'+(graphLabels.length?'<div class="chart-wrap health-trend-chart"><canvas id="node-performance-explorer-chart"></canvas></div>':'<div class="chart-empty-state"><strong>No samples available</strong><p>No matching telemetry was recorded for this range and node selection.</p></div>')+'</section>';
   const perfStats=table("Per-node statistics","Average, minimum, maximum, latest value and sample count for the selected range.",["NODE / FILESYSTEM","AVG","MIN","MAX","LATEST","SAMPLES"],statRows);
-  const nodePerformanceBody=nodeFilter+metricTabsHtml+perfGraph+perfStats;
+  const nodePerformanceBody=metricTabsHtml+perfGraph+perfStats;
   const nodeHealthBody=table("Node availability","Node Exporter and MinIO scrape status are shown independently.",["NODE","NODE EXPORTER","MINIO TARGET","CPU (LATEST)","MEMORY (LATEST)","LOAD 1M","DRIVES UP","DRIVES DOWN"],nodeRows);
   const nodeCollectionBody=perfToolbar+perfCoverage+missingIntervalPanel+reliabilityPanel;
   const nodeReportsBody=perfToolbar+table("Node performance report","Average, minimum and peak values for each node over the selected window.",["NODE","CPU AVG / MIN / PEAK","MEMORY AVG / MIN / PEAK","LOAD AVG / PEAK","SAMPLES","EXPORTER AVAILABILITY"],perfNodes.map(n=>'<tr><td><span class="cell-strong">'+esc(n.node_name)+'</span></td><td>'+fmt(n.avg_cpu_pct,1)+'% / '+fmt(n.min_cpu_pct,1)+'% / '+fmt(n.max_cpu_pct,1)+'%</td><td>'+fmt(n.avg_memory_used_pct,1)+'% / '+fmt(n.min_memory_used_pct,1)+'% / '+fmt(n.max_memory_used_pct,1)+'%</td><td>'+fmt(n.avg_load1,2)+' / '+fmt(n.max_load1,2)+'</td><td>'+fmt(n.sample_count,0)+'</td><td>'+fmt(n.node_exporter_availability_pct,1)+'%</td></tr>'));
@@ -745,7 +743,7 @@ async function showClusterTopology(id, section="infra-overview"){
     trendPanel("MinIO scrape availability","Percentage of MinIO node targets reporting","infra-minio-availability")+
     '</div>'+nodeHealthBody:nodeSubsection==="performance"?nodePerformanceBody:nodeSubsection==="collection"?nodeCollectionBody:nodeReportsBody);
   const driveSubTabs='<div class="tabs drives-subtabs" role="tablist" aria-label="Drives and filesystems views"><button type="button" role="tab" aria-selected="'+(state.driveView==="graphs")+'" class="tab '+(state.driveView==="graphs"?"active":"")+'" data-drive-view="graphs">Graphs</button><button type="button" role="tab" aria-selected="'+(state.driveView==="inventory")+'" class="tab '+(state.driveView==="inventory"?"active":"")+'" data-drive-view="inventory">Drive Inventory</button></div>';
-  const driveGraphs='<div class="health-infra-trend-grid">'+
+  const driveGraphs=trendControls+'<div class="health-infra-trend-grid">'+
     trendPanel("Drive availability","MinIO-reported online and offline drive counts across the cluster","infra-drive-availability")+
     trendPanel("Drive error counters","Cumulative availability, I/O and timeout errors reported by drives","infra-drive-errors")+
     trendPanel("Filesystem utilization","Weighted utilization across monitored MinIO data filesystems","infra-filesystem-trend")+
@@ -1054,10 +1052,10 @@ document.addEventListener("click",async e=>{
     showClusterTopology(state.topologyClusterId,state.topologySection).catch(err=>toast(err.message,true));return;
   }
   if(action==="reset-historical-range"){setHistoricalPreset("1h");showClusterTopology(state.topologyClusterId,state.topologySection).catch(err=>toast(err.message,true));return;}
-  const performanceCustom=e.target.closest("[data-performance-custom]");if(performanceCustom){state.performanceStart=state.performanceStart||new Date(Date.now()-(({ "5m":300000,"15m":900000,"30m":1800000,"1h":3600000,"3h":10800000,"6h":21600000,"12h":43200000,"24h":86400000,"2d":172800000,"7d":604800000,"30d":2592000000 })[state.dashboardTimeRangePreset||"1h"]||3600000)).toLocaleString("sv-SE",{timeZone:"Asia/Kolkata"}).replace(" ","T").slice(0,16);state.performanceEnd=state.performanceEnd||new Date().toLocaleString("sv-SE",{timeZone:"Asia/Kolkata"}).replace(" ","T").slice(0,16);showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
+
   const performanceMetric=e.target.closest("[data-performance-metric]");if(performanceMetric){state.performanceMetric=performanceMetric.dataset.performanceMetric;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   const action=e.target.closest("[data-action]")?.dataset.action;
-  if(action==="apply-performance-range"){const from=$("#performance-start")?.value,to=$("#performance-end")?.value;if(!from||!to||new Date(to+":00+05:30")<=new Date(from+":00+05:30")){toast("Choose a valid custom start and end time.",true);return;}const check=validateHistoricalTimeRange(from,to,state.historicalTimeRetentionDays);if(!check.valid){toast(check.message,true);return;}state.performanceStart=from;state.performanceEnd=to;state.historicalTimeRange={mode:"absolute",preset:null,startTs:check.startTs,endTs:check.endTs,timezone:"Asia/Kolkata"};showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
+
   if(action==="select-all-performance-nodes"){state.performanceSelectedNodes=null;showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   if(action==="clear-performance-nodes"){state.performanceSelectedNodes=[];showClusterTopology(state.topologyClusterId,"nodes").catch(err=>toast(err.message,true));return;}
   if(action==="open-tenant-snapshots"){const c=state.snapshotContext;showTenantSnapshots(c.id,c.attribution,c.days,c.startDate,c.endDate).catch(err=>toast(err.message,true));return;}
