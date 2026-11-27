@@ -1520,7 +1520,7 @@ def network_performance_series(
     grouped: dict[str, dict] = {}
     accumulators: dict[str, dict[str, list[float]]] = {}
     for row in series:
-        key = f'{row["node_name"]} / {row["interface_name"]}'
+        key = (row["node_name"], row["instance"], row["interface_name"])
         group = grouped.setdefault(key, {
             "node_name": row["node_name"],
             "instance": row["instance"],
