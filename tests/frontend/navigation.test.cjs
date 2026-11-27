@@ -263,11 +263,15 @@ async function run() {
 
   const customFrom=window.document.querySelector("[data-historical-start]");
   const customTo=window.document.querySelector("[data-historical-end]");
-  customFrom.value="2026-11-27T10:00";
-  customTo.value="2026-11-27T11:00";
+  const customEndUtc=new Date(Date.now()-10*60*1000);
+  const customStartUtc=new Date(customEndUtc.getTime()-60*60*1000);
+  const utcToIstInput=value=>new Date(value.getTime()+5.5*60*60*1000).toISOString().slice(0,16);
+  customFrom.value=utcToIstInput(customStartUtc);
+  customTo.value=utcToIstInput(customEndUtc);
   window.document.querySelector("[data-action='apply-historical-range']").click();
-  await waitFor(()=>window.document.querySelector("[data-historical-picker='network']"),"custom absolute range");
-  assert.ok(window.__requests.some(url=>url.includes("/network/performance-series")&&url.includes("start_ts=2026-11-27T04%3A30%3A00.000Z")),"IST range should be normalized to UTC");
+  await waitFor(()=>window.__requests.some(url=>url.includes("/network/performance-series")&&url.includes("start_ts=")),"custom absolute range query");
+  const expectedStart=customStartUtc.toISOString();
+  assert.ok(window.__requests.some(url=>new window.URL(url,"http://localhost").searchParams.get("start_ts")===expectedStart),"IST range should be normalized to the expected UTC timestamp");
 
   await window.showClusterTopology("test-cluster","nodes");
   assert.ok(window.document.querySelector("[data-historical-picker='availability']"),"Availability trends should use shared range");
