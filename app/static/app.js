@@ -476,7 +476,7 @@ function renderNetworkWorkspace(data){
       '<td>'+ (m.rx_drops_per_second?.average==null?'—':fmt(m.rx_drops_per_second.average,3))+' / '+(m.tx_drops_per_second?.average==null?'—':fmt(m.tx_drops_per_second.average,3))+'</td>'+
       '<td>'+fmt(s.sample_count,0)+'</td></tr>';
   }).join("");
-  const charts=selected?'<div class="panel-grid network-chart-grid">'+
+  const charts=filtered.length?'<div class="panel-grid network-chart-grid">'+
     panel("Throughput","Receive and transmit · bytes/sec",'<div class="chart-wrap"><canvas id="network-throughput-chart"></canvas></div>')+
     panel("Packets","Receive and transmit · packets/sec",'<div class="chart-wrap"><canvas id="network-packets-chart"></canvas></div>')+
     panel("Errors","Receive and transmit · errors/sec",'<div class="chart-wrap"><canvas id="network-errors-chart"></canvas></div>')+
@@ -996,7 +996,7 @@ document.addEventListener("click",async e=>{
   const bucket=e.target.closest("[data-bucket]");if(bucket){try{await showBucket(bucket.dataset.bucket);}catch(err){toast(err.message,true);}return;}
   const assign=e.target.closest("[data-assign]");if(assign){assignBucketModal(Number(assign.dataset.assign));return;}
   const topologyTab=e.target.closest("[data-topology-tab]");if(topologyTab){showClusterTopology(state.topologyClusterId,topologyTab.dataset.topologyTab).catch(err=>toast(err.message,true));return;}
-  const networkHoursButton=e.target.closest("[data-network-hours]");if(networkHoursButton){state.networkHours=Number(networkHoursButton.dataset.networkHours)||6;state.networkSelectedInterface="";showClusterTopology(state.topologyClusterId,"network").catch(err=>toast(err.message,true));return;}
+  const networkRangeButton=e.target.closest("[data-network-range]");if(networkRangeButton){state.networkRangePreset=networkRangeButton.dataset.networkRange;showClusterTopology(state.topologyClusterId,"network").catch(err=>toast(err.message,true));return;}
   const driveViewTab=e.target.closest("[data-drive-view]");if(driveViewTab){state.driveView=driveViewTab.dataset.driveView;showClusterTopology(state.topologyClusterId,"drives").catch(err=>toast(err.message,true));return;}
   const driveExport=e.target.closest("[data-drive-export]");if(driveExport){const rows=[...$("#content").querySelectorAll("[data-drive-row][data-drive-filter-visible='1']")];if(!rows.length){toast("No matching drive rows to export.",true);return;}const csvCell=value=>'"'+String(value??"").replace(/"/g,'""')+'"';const headers=["Node","Drive / Path","Mountpoint","Filesystem","Capacity","Used","Free","Utilization","State","Availability Errors","I/O Errors","Timeout Errors"];const data=rows.map(row=>{const cells=[...row.cells].map(cell=>cell.textContent.replace(/\s+/g," ").trim());const errorParts=(cells[9]||"").split("/").map(value=>value.trim());return [...cells.slice(0,9),...errorParts];});const csv="\uFEFF"+[headers,...data].map(row=>row.map(csvCell).join(",")).join("\r\n");const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"}),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="drive-inventory-"+new Date().toISOString().slice(0,10)+".csv";document.body.append(link);link.click();link.remove();URL.revokeObjectURL(url);toast("Drive inventory CSV exported.");return;}
   const driveSort=e.target.closest("[data-drive-sort]");if(driveSort){if(state.driveSortKey===driveSort.dataset.driveSort)state.driveSortDirection*=-1;else{state.driveSortKey=driveSort.dataset.driveSort;state.driveSortDirection=1;}window.applyDriveInventoryTable();return;}
@@ -1110,7 +1110,7 @@ $("#content").addEventListener("submit",async e=>{
   }catch(err){toast(err.message,true);if(button){button.disabled=false;button.textContent="Save & recalculate";}}
 });
 $("#content").addEventListener("change",async e=>{
-  if(e.target.matches("[data-network-node-filter]")){state.networkNodeFilter=e.target.value;state.networkSelectedInterface="";showClusterTopology(state.topologyClusterId,"network").catch(err=>toast(err.message,true));return;}
+  if(e.target.matches("[data-network-node-filter]")){state.networkNodeFilter=e.target.value;state.networkSelectedInterface="all";showClusterTopology(state.topologyClusterId,"network").catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-network-interface-filter]")){state.networkSelectedInterface=e.target.value;showClusterTopology(state.topologyClusterId,"network").catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-drive-node-filter]")){state.driveNodeFilter=e.target.value;state.driveInventoryPage=1;showClusterTopology(state.topologyClusterId,"drives").catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-drive-state-filter]")){state.driveFsFilter=e.target.value;state.driveInventoryPage=1;window.applyDriveInventoryTable();return;}
