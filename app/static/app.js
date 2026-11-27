@@ -1,7 +1,7 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
 if(window.Chart&&window.ChartZoom){Chart.register(ChartZoom);Chart.defaults.plugins.zoom={pan:{enabled:true,mode:"x",modifierKey:"shift"},zoom:{wheel:{enabled:true,speed:0.08},drag:{enabled:true,backgroundColor:"rgba(19,165,139,.12)",borderColor:"#13a58b",borderWidth:1},pinch:{enabled:true},mode:"x"}};}
-const state = { user:null, view:"overview", masterConfigTab:"general", masterGeneralTab:"collection", backupPageSize:10, backupOffset:0, overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:null,driveView:"graphs",driveNodeFilter:"all",driveFsFilter:"all",driveInventoryPage:1,driveSortKey:"node",driveSortDirection:1 };
+const state = { user:null, view:"overview", masterConfigTab:"general", masterGeneralTab:"collection", backupPageSize:10, backupOffset:0, overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:null,driveView:"graphs",driveNodeFilter:"all",driveFsFilter:"all",driveInventoryPage:1,driveSortKey:"node",driveSortDirection:1,networkHours:6,networkNodeFilter:"all",networkSelectedInterface:"" };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
 const bytes = n => { if(n==null)return "—"; const value=Number(n); if(!Number.isFinite(value))return "—"; if(value>=1024**4)return (value/1024**4).toFixed(2)+" TiB"; if(value>=1024**3)return (value/1024**3).toFixed(1)+" GiB"; if(value>=1024**2)return (value/1024**2).toFixed(1)+" MiB"; if(value>=1024)return (value/1024).toFixed(1)+" KiB"; return value.toFixed(0)+" B"; };
 const tibValue = n => n == null ? "—" : (n/1024**4).toFixed(2);
@@ -429,7 +429,7 @@ async function showCluster(id,days=90,startDate=null,endDate=null){
   clearCharts();
   const section=(title,subtitle,content,tag="")=>'<section class="analytics-section"><div class="analytics-section-heading"><div><h2>'+title+'</h2><p>'+subtitle+'</p></div>'+(tag?'<span class="panel-tag">'+tag+'</span>':'')+'</div>'+content+'</section>';
   const healthBody='<div class="capacity-list"><div class="capacity-row"><span>Online nodes</span><strong>'+(x.nodes_online??"—")+'</strong></div><div class="capacity-row"><span>Offline nodes</span><strong>'+(x.nodes_offline??"—")+'</strong></div><div class="capacity-row"><span>30-day estimated growth</span><strong>'+(x.growth_bytes_per_day==null?"—":fmt(x.growth_bytes_per_day/1024**3)+" GiB/day")+'</strong></div><div class="capacity-row"><span>Snapshot date</span><strong>'+dateLabel(x.snapshot_date)+'</strong></div><div class="capacity-row"><span>Metrics</span><strong>'+pill(!!x.metrics_available)+'</strong></div></div>';
-  const topologyBody='<div class="cluster-experience-links"><article class="cluster-experience-card"><div class="cluster-action-icon">⌁</div><div><strong>Node Infrastructure</strong><p>Monitor node availability, CPU, memory, drive health and filesystem utilisation over time.</p><button class="primary-small" data-action="open-node-infrastructure">Explore infrastructure →</button></div></article><article class="cluster-experience-card"><div class="cluster-action-icon">▦</div><div><strong>Storage Topology</strong><p>Inspect storage pools, erasure sets, drive distribution and read/write quorum.</p><button class="primary-small" data-action="open-storage-topology">Explore topology →</button></div></article></div>';
+  const topologyBody='<div class="cluster-experience-links"><article class="cluster-experience-card"><div class="cluster-action-icon">⌁</div><div><strong>Node Infrastructure</strong><p>Monitor node availability, CPU, memory, drive health, filesystem utilisation and network performance over time.</p><button class="primary-small" data-action="open-node-infrastructure">Explore infrastructure →</button></div></article><article class="cluster-experience-card"><div class="cluster-action-icon">▦</div><div><strong>Storage Topology</strong><p>Inspect storage pools, erasure sets, drive distribution and read/write quorum.</p><button class="primary-small" data-action="open-storage-topology">Explore topology →</button></div></article></div>';
   $("#content").innerHTML=pageHead(esc(d.cluster.name),"Cluster · "+esc(d.cluster.location_name)+" · "+esc(id),'<button class="subtle-button" data-view="clusters">← All clusters</button>')+
     `<div class="detail-grid"><div class="detail-card"><small>RAW CAPACITY</small><strong>${bytes(x.raw_total_bytes)}</strong></div><div class="detail-card"><small>RAW FREE</small><strong>${bytes(x.raw_free_bytes)}</strong></div><div class="detail-card"><small>PROJECTED DAYS TO FULL</small><strong>${x.days_to_full==null||x.days_to_full<=0?"N/A":fmt(x.days_to_full,0)+" days"}</strong></div></div>`+
     section("Infrastructure status","See cluster availability first, then drill into nodes, drives, pools and erasure sets.",'<div class="panel-grid cluster-health-grid">'+
@@ -452,11 +452,56 @@ async function showCluster(id,days=90,startDate=null,endDate=null){
   chart("cluster-object-chart",series.map(r=>dateLabel(r.snapshot_date)),[{label:"Objects",data:series.map(r=>r.bucket_object_count),color:"#4779d8"}]);drawObjectSizeHistogram(hist);
 }
 
+function renderNetworkWorkspace(data){
+  const available=data.available_interfaces||[];
+  const nodes=[...new Set(available.map(x=>x.node_name))].sort((a,b)=>a.localeCompare(b));
+  if(state.networkNodeFilter!=="all"&&!nodes.includes(state.networkNodeFilter))state.networkNodeFilter="all";
+  const filtered=available.filter(x=>state.networkNodeFilter==="all"||x.node_name===state.networkNodeFilter);
+  const selectedKey=state.networkSelectedInterface;
+  const selected=filtered.find(x=>x.node_name+"|"+x.interface_name+"|"+x.instance===selectedKey)||filtered[0]||null;
+  if(selected)state.networkSelectedInterface=selected.node_name+"|"+selected.interface_name+"|"+selected.instance;
+  const selectOptions=filtered.map(x=>{
+    const key=x.node_name+"|"+x.interface_name+"|"+x.instance;
+    return '<option value="'+esc(key)+'" '+(selected&&key===state.networkSelectedInterface?'selected':'')+'>'+esc(x.node_name+' / '+x.interface_name+' / '+x.instance)+'</option>';
+  }).join("");
+  const nodeOptions='<option value="all">All nodes</option>'+nodes.map(n=>'<option value="'+esc(n)+'" '+(state.networkNodeFilter===n?'selected':'')+'>'+esc(n)+'</option>').join("");
+  const hourOptions=[2,6,12,24,48,72].filter(h=>h<=(Number(data.retention_days||3)*24)).map(h=>'<button class="tab '+(state.networkHours===h?'active':'')+'" data-network-hours="'+h+'">'+h+'h</button>').join("");
+  const stats=data.statistics||[];
+  const filteredStats=stats.filter(x=>state.networkNodeFilter==="all"||x.node_name===state.networkNodeFilter);
+  const fmtRate=v=>v==null?'—':bytes(v)+'/s';
+  const metricStat=(m,k)=>m&&m[k]!=null?fmtRate(m[k]):'—';
+  const rows=filteredStats.map(s=>{
+    const m=s.metrics||{};
+    return '<tr><td><span class="cell-strong">'+esc(s.node_name)+'</span></td><td>'+esc(s.interface_name)+'</td>'+
+      '<td>'+metricStat(m.rx_bytes_per_second,'average')+'</td><td>'+metricStat(m.tx_bytes_per_second,'average')+'</td>'+
+      '<td>'+ (m.rx_packets_per_second?.average==null?'—':fmt(m.rx_packets_per_second.average,1)+' pkt/s')+'</td>'+
+      '<td>'+ (m.tx_packets_per_second?.average==null?'—':fmt(m.tx_packets_per_second.average,1)+' pkt/s')+'</td>'+
+      '<td>'+ (m.rx_errors_per_second?.average==null?'—':fmt(m.rx_errors_per_second.average,3))+' / '+(m.tx_errors_per_second?.average==null?'—':fmt(m.tx_errors_per_second.average,3))+'</td>'+
+      '<td>'+ (m.rx_drops_per_second?.average==null?'—':fmt(m.rx_drops_per_second.average,3))+' / '+(m.tx_drops_per_second?.average==null?'—':fmt(m.tx_drops_per_second.average,3))+'</td>'+
+      '<td>'+fmt(s.sample_count,0)+'</td></tr>';
+  }).join("");
+  const charts=selected?'<div class="panel-grid network-chart-grid">'+
+    panel("Throughput","Receive and transmit · bytes/sec",'<div class="chart-wrap"><canvas id="network-throughput-chart"></canvas></div>')+
+    panel("Packets","Receive and transmit · packets/sec",'<div class="chart-wrap"><canvas id="network-packets-chart"></canvas></div>')+
+    panel("Errors","Receive and transmit · errors/sec",'<div class="chart-wrap"><canvas id="network-errors-chart"></canvas></div>')+
+    panel("Drops","Receive and transmit · drops/sec",'<div class="chart-wrap"><canvas id="network-drops-chart"></canvas></div>')+'</div>':
+    '<div class="chart-empty-state"><strong>No network interfaces in this range</strong><p>Network telemetry has not been recorded for the selected range or node.</p></div>';
+  return '<section class="panel network-filter-panel"><div class="panel-header"><div><h3>Network filters</h3><p>Historical per-interface telemetry · no cross-interface aggregation</p></div><div class="tabs">'+hourOptions+'</div></div>'+
+    '<div class="network-filter-row"><label>Node<select data-network-node-filter>'+nodeOptions+'</select></label><label>Interface<select data-network-interface-filter>'+selectOptions+'</select></label></div>'+
+    '<p class="muted">Samples: '+fmt(data.sample_count,0)+' · Collection interval: '+fmt(data.interval_minutes,0)+' min · Range: '+esc(timestampLabel(data.start_ts))+' to '+esc(timestampLabel(data.end_ts))+'</p></section>'+
+    (data.truncated?'<div class="detail-card"><strong>Data limited to 20,000 samples</strong><p class="muted">Statistics are based on the returned subset. Select a node/interface to narrow the query.</p></div>':'')+
+    (selected?charts:'')+
+    '<section class="panel table-panel"><div class="panel-header"><div><h3>Interface summary</h3><p>Average rates across the selected range; missing metric values remain unavailable.</p></div></div>'+
+    '<div class="table-wrap"><table><thead><tr><th>Node</th><th>Interface</th><th>RX avg</th><th>TX avg</th><th>RX packets</th><th>TX packets</th><th>Errors/s RX / TX</th><th>Drops/s RX / TX</th><th>Samples</th></tr></thead><tbody>'+
+    (rows||'<tr><td colspan="9" class="muted">No samples found.</td></tr>')+'</tbody></table></div></section>'+
+    (data.sample_count===0?'<div class="chart-empty-state"><strong>No samples available</strong><p>Try a longer time range or wait for the next collection.</p></div>':'');
+}
 async function showClusterTopology(id, section="infra-overview"){
+  if(section==="network"&&state.topologyClusterId!==id){state.networkNodeFilter="all";state.networkSelectedInterface="";}
   const d=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/topology");
   state.topologyClusterId=id;state.topologySection=section;
   const storageView=section==="storage-overview"||section==="pools"||section==="sets";
-  const tabs=storageView?[["storage-overview","Overview"],["pools","Pools"],["sets","Erasure Sets"]]:[["infra-overview","Overview"],["nodes","Node Health & Performance"],["drives","Drives & Filesystems"]];
+  const tabs=storageView?[["storage-overview","Overview"],["pools","Pools"],["sets","Erasure Sets"]]:[["infra-overview","Overview"],["nodes","Node Health & Performance"],["drives","Drives & Filesystems"],["network","Network"]];
   const tabHtml='<div class="tabs">'+tabs.map(([key,label])=>'<button class="tab '+(section===key?'active':'')+'" data-topology-tab="'+key+'">'+label+'</button>').join("")+'</div>';
   const nodeSubsection=state.nodeSubsection||"health";
   const nodeSubTabsHtml='<div class="tabs node-subtabs">'+[["health","Availability"],["performance","CPU & Memory Trends"],["collection","Collection Health"],["reports","Performance Reports"]].map(([key,label])=>'<button class="tab '+(nodeSubsection===key?'active':'')+'" data-node-subtab="'+key+'">'+label+'</button>').join("")+'</div>';
@@ -558,6 +603,23 @@ async function showClusterTopology(id, section="infra-overview"){
 
   let trendData=null,performanceData=null;
   const trendFilter=state.topologyTrendFilters?.[id]||{startDate:"",endDate:""};
+  let networkData=null;
+  if(section==="network"){
+    const networkParams=new URLSearchParams({hours:String(state.networkHours||6)});
+    if(state.networkNodeFilter!=="all")networkParams.set("node_name",state.networkNodeFilter);
+    if(state.networkSelectedInterface){const selectedParts=state.networkSelectedInterface.split("|");if(selectedParts.length===3){networkParams.set("node_name",selectedParts[0]);networkParams.set("interface_name",selectedParts[1]);networkParams.set("instance",selectedParts[2]);}}
+    networkData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/network/performance-series?"+networkParams.toString());
+    if(networkData.truncated&&!state.networkSelectedInterface){
+      const firstInterface=(networkData.available_interfaces||[]).find(x=>state.networkNodeFilter==="all"||x.node_name===state.networkNodeFilter);
+      if(firstInterface){
+        state.networkSelectedInterface=firstInterface.node_name+"|"+firstInterface.interface_name+"|"+firstInterface.instance;
+        networkParams.set("node_name",firstInterface.node_name);
+        networkParams.set("interface_name",firstInterface.interface_name);
+        networkParams.set("instance",firstInterface.instance);
+        networkData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/network/performance-series?"+networkParams.toString());
+      }
+    }
+  }
   if(section==="nodes"&&nodeSubsection==="health"){
     const trendParams=new URLSearchParams();
     if(trendFilter.startDate)trendParams.set("start_date",trendFilter.startDate);
@@ -666,14 +728,15 @@ async function showClusterTopology(id, section="infra-overview"){
     trendPanel("Filesystem utilization","Weighted utilization across monitored MinIO data filesystems","infra-filesystem-trend")+
     '</div>';
   if(section==="drives") body=driveSubTabs+(state.driveView==="graphs"?driveGraphs:driveInventoryHtml());
+  if(section==="network") body=renderNetworkWorkspace(networkData);
   if(section==="storage-overview") body=storageOverview;
   if(section==="pools") body=table("Storage pools","Pool capacity is not inferred where no pool-level capacity metric was discovered.",["POOL","ERASURE SETS","ONLINE DRIVES","HEALING DRIVES"],poolRows);
   if(section==="sets") body=table("Erasure sets","Status is shown as the raw MinIO metric value; quorum values are not interpreted as a health enum.",["POOL","SET","STATUS VALUE","ONLINE DRIVES","HEALING DRIVES","READ QUORUM","WRITE QUORUM"],setRows);
   const errors=Object.keys(d.family_errors||{}).length?'<div class="detail-card" style="margin-bottom:14px"><strong>Some topology metric families are unavailable</strong><p class="muted">'+esc(JSON.stringify(d.family_errors))+'</p></div>':'';
   clearCharts();
   const pageTitle=storageView?"Storage Topology":"Node Infrastructure";
-  const pageSubtitle=storageView?"MinIO storage pools, erasure sets and quorum topology":"Node availability, compute resources, drive health and filesystem telemetry";
-  const pageSnapshot='<span class="page-heading-snapshot">Snapshot '+esc(snapshotTimestampLabel(storageView?d.topology_snapshot_ts:d.node_snapshot_ts))+'</span>';
+  const pageSubtitle=storageView?"MinIO storage pools, erasure sets and quorum topology":"Node availability, compute resources, drive health, filesystem and network telemetry";
+  const pageSnapshot='<span class="page-heading-snapshot">'+(section==="network"?"Latest network sample ":"Snapshot ")+esc(snapshotTimestampLabel(storageView?d.topology_snapshot_ts:section==="network"?(networkData.series||[]).at(-1)?.snapshot_ts:d.node_snapshot_ts))+'</span>';
   $("#content").innerHTML=pageHead(esc(d.cluster.name)+" — "+pageTitle,pageSubtitle+pageSnapshot,'<button class="subtle-button" data-action="back-to-cluster-overview">← Back to cluster</button>')+errors+tabHtml+body;
   if(section==="drives"&&state.driveView==="inventory")applyDriveInventoryTable();
   if(performanceData?.samples?.length&&section==="infra-overview"){
@@ -696,6 +759,15 @@ async function showClusterTopology(id, section="infra-overview"){
       {label:"Failed",data:reliabilityTrend.map(x=>x.failed_intervals),color:"#d9534f"},
       {label:"Missing",data:reliabilityTrend.map(x=>x.missing_intervals),color:"#94a0af"}
     ],"line",0,"");
+  }
+  if(networkData&&section==="network"&&state.networkSelectedInterface){
+    const selectedKey=state.networkSelectedInterface.split("|");
+    const selectedRows=(networkData.series||[]).filter(x=>x.node_name===selectedKey[0]&&x.interface_name===selectedKey[1]&&x.instance===selectedKey[2]);
+    const labels=selectedRows.map(x=>timestampLabel(x.snapshot_ts));
+    chart("network-throughput-chart",labels,[{label:"RX bytes/s",data:selectedRows.map(x=>x.rx_bytes_per_second),color:"#16a085"},{label:"TX bytes/s",data:selectedRows.map(x=>x.tx_bytes_per_second),color:"#4776c7"}],"line",0,"bytes/s");
+    chart("network-packets-chart",labels,[{label:"RX packets/s",data:selectedRows.map(x=>x.rx_packets_per_second),color:"#16a085"},{label:"TX packets/s",data:selectedRows.map(x=>x.tx_packets_per_second),color:"#4776c7"}],"line",0,"packets/s");
+    chart("network-errors-chart",labels,[{label:"RX errors/s",data:selectedRows.map(x=>x.rx_errors_per_second),color:"#d99a35"},{label:"TX errors/s",data:selectedRows.map(x=>x.tx_errors_per_second),color:"#8b6ccf"}],"line",0,"errors/s");
+    chart("network-drops-chart",labels,[{label:"RX drops/s",data:selectedRows.map(x=>x.rx_drops_per_second),color:"#d99a35"},{label:"TX drops/s",data:selectedRows.map(x=>x.tx_drops_per_second),color:"#d9534f"}],"line",0,"drops/s");
   }
   if(trendSamples.length&&section==="drives"){
     chart("infra-drive-availability",trendLabels,[{label:"Drives online",data:trendSamples.map(x=>x.drives_online),color:"#16a085"},{label:"Drives offline",data:trendSamples.map(x=>x.drives_offline),color:"#d9534f"}],"line",0,"");
@@ -936,6 +1008,7 @@ document.addEventListener("click",async e=>{
   const bucket=e.target.closest("[data-bucket]");if(bucket){try{await showBucket(bucket.dataset.bucket);}catch(err){toast(err.message,true);}return;}
   const assign=e.target.closest("[data-assign]");if(assign){assignBucketModal(Number(assign.dataset.assign));return;}
   const topologyTab=e.target.closest("[data-topology-tab]");if(topologyTab){showClusterTopology(state.topologyClusterId,topologyTab.dataset.topologyTab).catch(err=>toast(err.message,true));return;}
+  const networkHoursButton=e.target.closest("[data-network-hours]");if(networkHoursButton){state.networkHours=Number(networkHoursButton.dataset.networkHours)||6;state.networkSelectedInterface="";showClusterTopology(state.topologyClusterId,"network").catch(err=>toast(err.message,true));return;}
   const driveViewTab=e.target.closest("[data-drive-view]");if(driveViewTab){state.driveView=driveViewTab.dataset.driveView;showClusterTopology(state.topologyClusterId,"drives").catch(err=>toast(err.message,true));return;}
   const driveExport=e.target.closest("[data-drive-export]");if(driveExport){const rows=[...$("#content").querySelectorAll("[data-drive-row][data-drive-filter-visible='1']")];if(!rows.length){toast("No matching drive rows to export.",true);return;}const csvCell=value=>'"'+String(value??"").replace(/"/g,'""')+'"';const headers=["Node","Drive / Path","Mountpoint","Filesystem","Capacity","Used","Free","Utilization","State","Availability Errors","I/O Errors","Timeout Errors"];const data=rows.map(row=>{const cells=[...row.cells].map(cell=>cell.textContent.replace(/\s+/g," ").trim());const errorParts=(cells[9]||"").split("/").map(value=>value.trim());return [...cells.slice(0,9),...errorParts];});const csv="\uFEFF"+[headers,...data].map(row=>row.map(csvCell).join(",")).join("\r\n");const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"}),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="drive-inventory-"+new Date().toISOString().slice(0,10)+".csv";document.body.append(link);link.click();link.remove();URL.revokeObjectURL(url);toast("Drive inventory CSV exported.");return;}
   const driveSort=e.target.closest("[data-drive-sort]");if(driveSort){if(state.driveSortKey===driveSort.dataset.driveSort)state.driveSortDirection*=-1;else{state.driveSortKey=driveSort.dataset.driveSort;state.driveSortDirection=1;}window.applyDriveInventoryTable();return;}
@@ -1049,6 +1122,8 @@ $("#content").addEventListener("submit",async e=>{
   }catch(err){toast(err.message,true);if(button){button.disabled=false;button.textContent="Save & recalculate";}}
 });
 $("#content").addEventListener("change",async e=>{
+  if(e.target.matches("[data-network-node-filter]")){state.networkNodeFilter=e.target.value;state.networkSelectedInterface="";showClusterTopology(state.topologyClusterId,"network").catch(err=>toast(err.message,true));return;}
+  if(e.target.matches("[data-network-interface-filter]")){state.networkSelectedInterface=e.target.value;showClusterTopology(state.topologyClusterId,"network").catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-drive-node-filter]")){state.driveNodeFilter=e.target.value;state.driveInventoryPage=1;showClusterTopology(state.topologyClusterId,"drives").catch(err=>toast(err.message,true));return;}
   if(e.target.matches("[data-drive-state-filter]")){state.driveFsFilter=e.target.value;state.driveInventoryPage=1;window.applyDriveInventoryTable();return;}
   if(e.target.id==="backup-page-size"){state.backupPageSize=Number(e.target.value)||10;state.backupOffset=0;renderMasterAdmin().catch(err=>toast(err.message,true));return;}

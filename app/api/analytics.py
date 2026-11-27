@@ -1425,6 +1425,147 @@ def node_performance_series(
     }
 
 
+@router.get("/clusters/{cluster_id}/network/performance-series")
+def network_performance_series(
+    cluster_id: str,
+    hours: int | None = Query(default=6, ge=1, le=72),
+    start_ts: str | None = Query(default=None),
+    end_ts: str | None = Query(default=None),
+    node_name: str | None = Query(default=None),
+    interface_name: str | None = Query(default=None),
+    instance: str | None = Query(default=None),
+    _: dict = Depends(get_current_user),
+) -> dict:
+    """Return bounded historical per-interface network telemetry."""
+    now = datetime.now(timezone.utc)
+    if bool(start_ts) != bool(end_ts):
+        raise HTTPException(status_code=422, detail="start_ts and end_ts must be supplied together")
+    if start_ts and end_ts:
+        try:
+            start = datetime.fromisoformat(start_ts.replace("Z", "+00:00"))
+            end = datetime.fromisoformat(end_ts.replace("Z", "+00:00"))
+            if start.tzinfo is None or end.tzinfo is None:
+                raise ValueError("Timezone offset is required")
+            start = start.astimezone(timezone.utc)
+            end = end.astimezone(timezone.utc)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Custom timestamps must be valid ISO-8601 values with timezone") from exc
+        if end <= start:
+            raise HTTPException(status_code=422, detail="end_ts must be later than start_ts")
+        if end > now:
+            raise HTTPException(status_code=422, detail="end_ts cannot be in the future")
+    else:
+        if hours not in (2, 6, 12, 24, 48, 72):
+            raise HTTPException(status_code=422, detail="hours must be 2, 6, 12, 24, 48 or 72")
+        end = now
+        start = now - timedelta(hours=hours)
+
+    start_text = start.isoformat(timespec="seconds").replace("+00:00", "Z")
+    end_text = end.isoformat(timespec="seconds").replace("+00:00", "Z")
+    max_samples = 20000
+    metrics = (
+        "rx_bytes_per_second", "tx_bytes_per_second",
+        "rx_packets_per_second", "tx_packets_per_second",
+        "rx_errors_per_second", "tx_errors_per_second",
+        "rx_drops_per_second", "tx_drops_per_second",
+    )
+    with transaction() as connection:
+        cluster = connection.execute(
+            "SELECT c.id,c.name,l.name AS location_name FROM clusters c JOIN locations l ON l.id=c.location_id WHERE c.id=? AND c.enabled=1",
+            (cluster_id,),
+        ).fetchone()
+        if cluster is None:
+            raise HTTPException(status_code=404, detail="Cluster not found or disabled")
+        retention_row = connection.execute(
+            "SELECT setting_value FROM app_settings WHERE setting_key='telemetry_retention_days'"
+        ).fetchone()
+        retention_days = max(1, int(retention_row["setting_value"])) if retention_row else 3
+        interval_row = connection.execute(
+            "SELECT setting_value FROM app_settings WHERE setting_key='node_interval_minutes'"
+        ).fetchone()
+        interval_minutes = max(1, int(interval_row["setting_value"])) if interval_row else 5
+        if (end - start) > timedelta(days=retention_days):
+            raise HTTPException(status_code=422, detail=f"Selected range exceeds configured telemetry retention of {retention_days} days")
+
+        sql = """
+            SELECT r.snapshot_ts, n.cluster_id, n.node_name, n.instance, n.interface_name,
+                   n.rx_bytes_per_second, n.tx_bytes_per_second,
+                   n.rx_packets_per_second, n.tx_packets_per_second,
+                   n.rx_errors_per_second, n.tx_errors_per_second,
+                   n.rx_drops_per_second, n.tx_drops_per_second
+            FROM node_health_runs r
+            JOIN network_health_metrics n ON n.run_id=r.run_id
+            WHERE r.cluster_id=? AND r.snapshot_ts>=? AND r.snapshot_ts<=?
+        """
+        params: list = [cluster_id, start_text, end_text]
+        if node_name and node_name.strip():
+            sql += " AND n.node_name=?"
+            params.append(node_name.strip())
+        if interface_name and interface_name.strip():
+            sql += " AND n.interface_name=?"
+            params.append(interface_name.strip())
+        rows = connection.execute(sql + " ORDER BY r.snapshot_ts,n.node_name,n.interface_name LIMIT ?", params + [max_samples + 1]).fetchall()
+        truncated = len(rows) > max_samples
+        if truncated:
+            rows = rows[:max_samples]
+        available_rows = connection.execute(
+            """
+            SELECT DISTINCT n.node_name,n.interface_name,n.instance
+            FROM node_health_runs r JOIN network_health_metrics n ON n.run_id=r.run_id
+            WHERE r.cluster_id=? AND r.snapshot_ts>=? AND r.snapshot_ts<=?
+            ORDER BY n.node_name,n.interface_name
+            """,
+            (cluster_id, start_text, end_text),
+        ).fetchall()
+
+    series = [dict(row) for row in rows]
+    grouped: dict[tuple[str, str, str], dict] = {}
+    accumulators: dict[tuple[str, str, str], dict[str, list[float]]] = {}
+    for row in series:
+        key = (row["node_name"], row["instance"], row["interface_name"])
+        group = grouped.setdefault(key, {
+            "node_name": row["node_name"],
+            "instance": row["instance"],
+            "interface_name": row["interface_name"],
+            "sample_count": 0,
+            "metrics": {},
+        })
+        accumulator = accumulators.setdefault(key, {metric: [] for metric in metrics})
+        group["sample_count"] += 1
+        for metric in metrics:
+            value = row[metric]
+            if value is not None:
+                accumulator[metric].append(value)
+    for key, group in grouped.items():
+        for metric, values in accumulators[key].items():
+            group["metrics"][metric] = {
+                "average": round(sum(values) / len(values), 3) if values else None,
+                "minimum": round(min(values), 3) if values else None,
+                "maximum": round(max(values), 3) if values else None,
+                "latest": values[-1] if values else None,
+                "sample_count": len(values),
+            }
+    return {
+        "cluster": dict(cluster),
+        "start_ts": start_text,
+        "end_ts": end_text,
+        "hours": round((end - start).total_seconds() / 3600, 2),
+        "retention_days": retention_days,
+        "interval_minutes": interval_minutes,
+        "selected_node": node_name,
+        "selected_interface": interface_name,
+        "selected_instance": instance,
+        "available_interfaces": [dict(row) for row in available_rows],
+        "series": series,
+        "statistics": list(grouped.values()),
+        "sample_count": len(series),
+        "truncated": truncated,
+        "data_warning": "Sample limit reached; statistics reflect the returned subset. Select a node/interface to narrow the query." if truncated else None,
+        "supported_metrics": list(metrics),
+        "aggregation": "per-interface only; no cross-interface aggregation",
+    }
+
+
 @router.get("/clusters/{cluster_id}/topology")
 def cluster_topology(cluster_id: str, _: dict = Depends(get_current_user)) -> dict:
     """Return latest high-frequency node/drive health and daily pool topology."""
