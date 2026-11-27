@@ -136,3 +136,34 @@ Exclude semantic date filters for daily snapshots, report periods, and static in
 - New telemetry collection frequencies
 - Changes to daily snapshot/report semantics
 
+
+
+## Source audit — existing historical chart surfaces
+
+The frontend/backend source audit identified these existing time-related controls and endpoints:
+
+| Workspace / surface | Current mechanism | Classification | D1 treatment |
+|---|---|---|---|
+| Node Infrastructure → Network | Independent 2/6/12/24/48/72h controls; API supports custom `start_ts/end_ts` but UI currently uses hours | Historical time-series | Migrate to shared selector; add All interfaces |
+| Node Infrastructure → Node Health & Performance → CPU/Memory trends | Independent 2/6/12/24/48/72h controls plus custom range; raw series endpoint supports `hours` or `start_ts/end_ts` | Historical time-series | Migrate to shared selector |
+| Node Infrastructure → Node Health & Performance → Availability/Collection trends | Date-based `start_date/end_date` filter to topology trends endpoint; default window is date-based | Historical time-series, currently day-oriented | Assess chart resolution and API needs; shared selector where supported and useful |
+| Node Infrastructure → Drives & Filesystems | Date-based trend filter to topology trends endpoint | Historical time-series, currently day-oriented | Assess chart resolution and API needs; shared selector where supported and useful |
+| Node Health & Performance summary table | Independent averaging window buttons (2/6/12/24h), API summary endpoint | Time-window summary, not chart range | Keep distinct only if explicitly labeled as averaging window; otherwise align/rename to avoid confusion |
+| Snapshot/consolidated reports | Snapshot dates / report period filters | Report/snapshot semantics | Do not automatically couple to global time picker |
+
+### API findings
+
+- Network historical series supports `hours` and timezone-aware `start_ts/end_ts`; retention is enforced server-side.
+- Node performance series supports `hours` and timezone-aware `start_ts/end_ts`; retention is enforced server-side.
+- Topology trends currently uses `start_date/end_date` with IST day boundaries and a date-oriented default window. It is not equivalent to the timestamp-range API and may need an API enhancement for finer relative ranges.
+- The existing frontend keeps separate state for network, node summary, and node performance time ranges. D1 should remove this duplication for applicable chart contexts.
+- The Network endpoint already accepts node/interface/instance filters. The UI currently chooses a single interface and may auto-select one when the response is truncated. All-interface mode must be implemented with bounded-query safeguards; if the response limit is exceeded, present a clear notice and encourage node/interface narrowing rather than silently selecting one interface.
+
+### Implementation risks / sequencing notes
+
+1. Build and test a shared time-range model/picker first.
+2. Migrate timestamp-capable endpoints (Network and node performance series) first.
+3. Review topology trend API resolution and bounds before migrating day-oriented charts; avoid presenting a 5-minute selector for daily/4-hour data if it cannot provide meaningful results.
+4. Keep the node summary's averaging window semantically distinct from chart range unless the UX explicitly combines them.
+5. Add All interfaces with explicit series identity and sample-bound handling; no cross-interface aggregation.
+6. Regression-test report/snapshot filters to prove they remain independent.
