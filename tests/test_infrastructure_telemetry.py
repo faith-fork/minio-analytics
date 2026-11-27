@@ -587,3 +587,25 @@ def test_network_performance_endpoint_rejects_unsupported_window(viewer_client):
     response = viewer_client.get("/api/analytics/clusters/cluster-1/network/performance-series?hours=3")
     assert response.status_code == 422
 
+
+def test_network_performance_endpoint_enforces_configured_retention(viewer_client):
+    with transaction() as connection:
+        connection.execute(
+            "UPDATE app_settings SET setting_value='1' WHERE setting_key='telemetry_retention_days'"
+        )
+    now = datetime.now(timezone.utc)
+    start = (now - timedelta(days=2)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    end = (now - timedelta(hours=1)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    response = viewer_client.get(
+        f"/api/analytics/clusters/cluster-1/network/performance-series?start_ts={start}&end_ts={end}"
+    )
+    assert response.status_code == 422
+    assert "retention" in response.json()["detail"].lower()
+
+
+def test_network_performance_endpoint_requires_timezone_for_custom_range(viewer_client):
+    response = viewer_client.get(
+        "/api/analytics/clusters/cluster-1/network/performance-series"
+        "?start_ts=2026-11-27T10:00:00&end_ts=2026-11-27T11:00:00"
+    )
+    assert response.status_code == 422
