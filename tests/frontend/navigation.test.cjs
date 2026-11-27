@@ -57,6 +57,16 @@ const topologyPayload = {
 window.fetch = async (url) => {
   const key = String(url);
   if (key.includes("/api/analytics/clusters/test-cluster/topology/trends")) return {ok:true,status:200,json:async()=>({sample_count:1,samples:[{snapshot_ts:"2026-11-25T10:00:00Z",drives_online:3,drives_offline:1,availability_errors:1,io_errors:2,timeout_errors:0,filesystem_used_pct:46,filesystem_weighted_used_pct:46}]})};
+  if (key.includes("/api/analytics/clusters/test-cluster/network/performance-series")) return {ok:true,status:200,json:async()=>({
+    cluster:{id:"test-cluster",name:"Test Cluster"},start_ts:"2026-11-27T08:00:00Z",end_ts:"2026-11-27T14:00:00Z",hours:6,retention_days:3,interval_minutes:5,selected_node:null,selected_interface:null,
+    available_interfaces:[{node_name:"node01",interface_name:"ens3"},{node_name:"node01",interface_name:"ens4"},{node_name:"node02",interface_name:"ens3"}],
+    series:[
+      {snapshot_ts:"2026-11-27T13:55:00Z",node_name:"node01",interface_name:"ens3",rx_bytes_per_second:100,tx_bytes_per_second:50,rx_packets_per_second:10,tx_packets_per_second:5,rx_errors_per_second:0,tx_errors_per_second:0,rx_drops_per_second:0,tx_drops_per_second:0},
+      {snapshot_ts:"2026-11-27T14:00:00Z",node_name:"node01",interface_name:"ens3",rx_bytes_per_second:200,tx_bytes_per_second:100,rx_packets_per_second:20,tx_packets_per_second:10,rx_errors_per_second:0,tx_errors_per_second:0,rx_drops_per_second:0,tx_drops_per_second:0},
+    ],
+    statistics:[{node_name:"node01",interface_name:"ens3",sample_count:2,metrics:{rx_bytes_per_second:{average:150,minimum:100,maximum:200,latest:200,sample_count:2},tx_bytes_per_second:{average:75,minimum:50,maximum:100,latest:100,sample_count:2},rx_packets_per_second:{average:15,minimum:10,maximum:20,latest:20,sample_count:2},tx_packets_per_second:{average:7.5,minimum:5,maximum:10,latest:10,sample_count:2},rx_errors_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2},tx_errors_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2},rx_drops_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2},tx_drops_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2}}}],
+    sample_count:2,truncated:false,supported_metrics:[],aggregation:"per-interface only"
+  })};
   if (key.includes("/api/analytics/clusters/test-cluster/topology")) return {ok:true,status:200,json:async()=>topologyPayload};
   const body = payloads[key] ?? { items: [] };
   return {ok:true,status:200,json:async()=>body};
@@ -154,7 +164,7 @@ async function run() {
   // from collection reliability so CPU/memory telemetry stays in Node Infrastructure.
   const appSource = fs.readFileSync(path.join(root, "app/static/app.js"), "utf8");
   assert.match(appSource, /Node Health & Performance/);
-  assert.match(appSource, /Drives & Filesystems/);
+  assert.match(appSource, /Drives & Filesystems/);\n  assert.match(appSource, /Network/);\n  assert.match(appSource, /network-performance-series/);
   assert.match(appSource, /CPU & Memory Trends/);
   assert.match(appSource, /infra-overview-cpu/);
   assert.match(appSource, /infra-overview-memory/);
@@ -172,7 +182,7 @@ async function run() {
   assert.equal(window.document.querySelectorAll("[data-drive-row]").length, 30, "All drives should be rows");
   assert.ok(window.document.querySelector("[data-drive-export]"), "Inventory should provide CSV export");
   assert.ok(window.document.querySelector("[data-drive-page-size]"), "Inventory should provide page-size selection");
-  assert.ok(window.document.querySelector("[data-drive-sort=capacity]"), "Capacity should be sortable");
+  assert.ok(window.document.querySelector("[data-drive-sort=capacity]"), "Capacity should be sortable");\n  // Network workspace is a peer Node Infrastructure section and renders per-interface telemetry.\n  await window.showClusterTopology("test-cluster", "network");\n  await waitFor(() => window.document.querySelector("[data-network-node-filter]"), "Network workspace");\n  assert.ok(window.document.querySelector("[data-network-interface-filter]"), "Network interface selector should render");\n  assert.ok(window.document.querySelector("#network-throughput-chart"), "Throughput chart should render");\n  assert.ok(window.document.querySelector("#network-packets-chart"), "Packets chart should render");\n  assert.ok(window.document.querySelector("#network-errors-chart"), "Errors chart should render");\n  assert.ok(window.document.querySelector("#network-drops-chart"), "Drops chart should render");\n  assert.match(window.document.querySelector(".table-panel").textContent, /ens3/);\n
   assert.match(window.document.querySelector(".drive-inventory-summary").textContent, /30/);
   assert.match(window.document.querySelector("[data-drive-page-summary]").textContent,/1–25 of 30/);
   window.document.querySelector("[data-drive-page=next]").click();
