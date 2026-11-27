@@ -88,6 +88,9 @@ async function waitFor(predicate, description) {
 }
 
 async function run() {
+  const cssSource=fs.readFileSync(path.join(root,"app/static/app.css"),"utf8");
+  assert.ok(cssSource.includes(".infra-compact-toolbar .time-range-popover,.heading-actions .time-range-popover,.panel-header-actions .time-range-popover{left:auto;right:0}"),"Right-aligned popovers should stay aligned within the viewport");
+  assert.ok(fs.readFileSync(path.join(root,"app/static/app.js"),"utf8").includes('panel("Bucket usage and quota trend"'),"Bucket trend controls should be rendered in the chart header");
   window.eval(fs.readFileSync(path.join(root, "app/static/app.js"), "utf8"));
   window.eval(fs.readFileSync(path.join(root, "app/static/prometheus-connections.js"), "utf8"));
   window.eval(fs.readFileSync(path.join(root, "app/static/backfill-jobs.js"), "utf8"));
