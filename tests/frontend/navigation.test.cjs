@@ -268,12 +268,13 @@ async function run() {
   const utcToIstInput=value=>new Date(value.getTime()+5.5*60*60*1000).toISOString().slice(0,16);
   customFrom.value=utcToIstInput(customStartUtc);
   customTo.value=utcToIstInput(customEndUtc);
+  const requestsBeforeCustomRange=window.__requests.length;
   window.document.querySelector("[data-action='apply-historical-range']").click();
-  await waitFor(()=>window.__requests.some(url=>url.includes("/network/performance-series")&&url.includes("start_ts=")),"custom absolute range query");
-  const enteredIstStart=utcToIstInput(customStartUtc);
+  await waitFor(()=>window.__requests.slice(requestsBeforeCustomRange).some(url=>url.includes("/network/performance-series")&&url.includes("start_ts=")),"custom absolute range query");
+  const enteredIstStart=customFrom.value;
   const expectedStartMs=Date.parse(enteredIstStart+":00Z")-5.5*60*60*1000;
-  const lastNetworkRequest=[...window.__requests].reverse().find(url=>url.includes("/network/performance-series"));
-  const actualStart=lastNetworkRequest?new window.URL(lastNetworkRequest,"http://localhost").searchParams.get("start_ts"):null;
+  const customNetworkRequests=window.__requests.slice(requestsBeforeCustomRange).filter(url=>url.includes("/network/performance-series"));
+  const actualStart=customNetworkRequests.length?new window.URL(customNetworkRequests[customNetworkRequests.length-1],"http://localhost").searchParams.get("start_ts"):null;
   assert.equal(Date.parse(actualStart),expectedStartMs,"IST range should be normalized to the entered minute");
 
   await window.showClusterTopology("test-cluster","nodes");
