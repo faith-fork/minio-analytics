@@ -741,11 +741,12 @@ async function showClusterTopology(id, section="infra-overview"){
   }
   const perfGraph='<section class="panel"><div class="panel-header"><div><h3>'+metricLabels[state.performanceMetric][0]+'</h3><p>Raw recorded samples · '+fmt(ps.interval_minutes||5,0)+'-minute collection cadence · '+fmt(ps.sample_count||0,0)+' node samples</p></div></div>'+(graphLabels.length?'<div class="chart-wrap health-trend-chart"><canvas id="node-performance-explorer-chart"></canvas></div>':'<div class="chart-empty-state"><strong>No samples available</strong><p>No matching telemetry was recorded for this range and node selection.</p></div>')+'</section>';
   const perfStats=table("Per-node statistics","Average, minimum, maximum, latest value and sample count for the selected range.",["NODE / FILESYSTEM","AVG","MIN","MAX","LATEST","SAMPLES"],statRows);
-  const nodePerformanceBody='<div class="infra-compact-toolbar"><div class="infra-toolbar-left">'+metricTabsHtml+'</div>__HIST_PICKER__</div>'+perfGraph+perfStats;
+  const nodePerformancePicker=historicalRangePicker(performanceSeriesData?.retention_days||3,performanceSeriesData?.interval_minutes||5,"performance");
+  const nodePerformanceBody='<div class="infra-compact-toolbar"><div class="infra-toolbar-left">'+metricTabsHtml+'</div>'+nodePerformancePicker+'</div>'+perfGraph+perfStats;
   const nodeHealthBody=table("Node availability","Node Exporter and MinIO scrape status are shown independently.",["NODE","NODE EXPORTER","MINIO TARGET","CPU (LATEST)","MEMORY (LATEST)","LOAD 1M","DRIVES UP","DRIVES DOWN"],nodeRows);
   const nodeCollectionBody=perfToolbar+perfCoverage+missingIntervalPanel+reliabilityPanel;
   const nodeReportsBody=perfToolbar+table("Node performance report","Average, minimum and peak values for each node over the selected window.",["NODE","CPU AVG / MIN / PEAK","MEMORY AVG / MIN / PEAK","LOAD AVG / PEAK","SAMPLES","EXPORTER AVAILABILITY"],perfNodes.map(n=>'<tr><td><span class="cell-strong">'+esc(n.node_name)+'</span></td><td>'+fmt(n.avg_cpu_pct,1)+'% / '+fmt(n.min_cpu_pct,1)+'% / '+fmt(n.max_cpu_pct,1)+'%</td><td>'+fmt(n.avg_memory_used_pct,1)+'% / '+fmt(n.min_memory_used_pct,1)+'% / '+fmt(n.max_memory_used_pct,1)+'%</td><td>'+fmt(n.avg_load1,2)+' / '+fmt(n.max_load1,2)+'</td><td>'+fmt(n.sample_count,0)+'</td><td>'+fmt(n.node_exporter_availability_pct,1)+'%</td></tr>'));
-  if(section==="nodes") body=nodeSubTabsHtml+(nodeSubsection==="health"?'<div class="infra-compact-toolbar">__HIST_PICKER__'+trendControls+'</div><div class="health-infra-trend-grid">'+
+  if(section==="nodes") body=nodeSubTabsHtml+(nodeSubsection==="health"?'<div class="infra-compact-toolbar">'+historicalRangePicker(trendData?.retention_days||3,trendData?.interval_minutes||5,"availability")+trendControls+'</div><div class="health-infra-trend-grid">'+
     trendPanel("Node Exporter availability","Percentage of nodes reporting successfully","infra-node-availability")+
     trendPanel("MinIO scrape availability","Percentage of MinIO node targets reporting","infra-minio-availability")+
     '</div>'+nodeHealthBody:nodeSubsection==="performance"?nodePerformanceBody:nodeSubsection==="collection"?nodeCollectionBody:nodeReportsBody);
@@ -755,7 +756,7 @@ async function showClusterTopology(id, section="infra-overview"){
     trendPanel("Drive error counters","Cumulative availability, I/O and timeout errors reported by drives","infra-drive-errors")+
     trendPanel("Filesystem utilization","Weighted utilization across monitored MinIO data filesystems","infra-filesystem-trend")+
     '</div>';
-  if(section==="drives") body=state.driveView==="graphs"?'<div class="infra-compact-toolbar"><div class="infra-toolbar-left">'+driveSubTabs+trendControls+'</div>__HIST_PICKER__</div>'+driveGraphs.replace(trendControls,""):driveSubTabs+driveInventoryHtml();
+  if(section==="drives") body=state.driveView==="graphs"?'<div class="infra-compact-toolbar"><div class="infra-toolbar-left">'+driveSubTabs+trendControls+'</div>'+historicalRangePicker(trendData?.retention_days||3,trendData?.interval_minutes||5,"drives")+'</div>'+driveGraphs.replace(trendControls,""):driveSubTabs+driveInventoryHtml();
   if(section==="network") body=renderNetworkWorkspace(networkData);
   if(section==="storage-overview") body=storageOverview;
   if(section==="pools") body=table("Storage pools","Pool capacity is not inferred where no pool-level capacity metric was discovered.",["POOL","ERASURE SETS","ONLINE DRIVES","HEALING DRIVES"],poolRows);
