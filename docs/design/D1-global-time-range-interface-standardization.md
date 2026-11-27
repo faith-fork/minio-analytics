@@ -167,3 +167,24 @@ The frontend/backend source audit identified these existing time-related control
 4. Keep the node summary's averaging window semantically distinct from chart range unless the UX explicitly combines them.
 5. Add All interfaces with explicit series identity and sample-bound handling; no cross-interface aggregation.
 6. Regression-test report/snapshot filters to prove they remain independent.
+
+
+## Implementation checkpoint — initial D1 slice
+
+Implemented on the design branch:
+
+- Shared dashboard preset state is now used by Network and Node Performance historical charts.
+- Presets: 5m, 15m, 30m, 1h, 3h, 6h, 12h, 24h, 2d, 7d, 30d.
+- Network queries use explicit UTC ISO start/end timestamps, allowing ranges shorter than the API's hours-based minimum.
+- Network interface selector includes **All interfaces** and per-interface options.
+- All-interface chart mode displays RX/TX series separately for each node/interface identity. No cross-interface sums are created.
+- Interface selection filters the summary table as well as the chart series.
+- Changing the selected node resets interface selection to All interfaces.
+- Node Performance historical series uses the same quick-range preset and timestamp query contract; custom absolute range remains supported there.
+
+### Known remaining D1 work
+
+- Audit/migrate Drive & Filesystem and Collection/Availability historical trend charts. Their current API is date/day-oriented and requires a resolution/API review before exposing short ranges.
+- Add a custom absolute range control to Network.
+- Validate retention messaging, bounded response behavior, and empty-range behavior.
+- Complete automated tests/CI and lab validation.
