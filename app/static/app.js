@@ -904,6 +904,7 @@ async function showClusterTopology(id, section="infra-overview"){
 
 async function showClusterSnapshots(id,days=90,startDate=null,endDate=null){
   state.snapshotClusterId=id;state.snapshotRange={days,startDate,endDate};state.clusterDetailTab="snapshots";
+  const section=(title,subtitle,content,toolbar="")=>'<section class="analytics-section"><div class="analytics-section-heading"><div><h2>'+title+'</h2><p>'+subtitle+'</p></div>'+toolbar+'</div>'+content+'</section>';
   const d=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"?"+trendQuery(days,startDate,endDate));
   const rows=(d.series||[]).map(r=>`<tr><td>${dateLabel(r.snapshot_date)}</td><td>${bytes(r.raw_total_bytes)}</td><td>${bytes(r.raw_free_bytes)}</td><td>${bytes(r.usable_total_bytes)}</td><td>${bytes(r.usable_free_bytes)}</td><td>${r.nodes_online??"—"}</td><td>${r.nodes_offline??"—"}</td><td>${r.bucket_object_count==null?"—":fmt(r.bucket_object_count,0)}</td><td>${r.bucket_version_count==null?"—":fmt(r.bucket_version_count,0)}</td><td>${r.bucket_delete_marker_count==null?"—":fmt(r.bucket_delete_marker_count,0)}</td><td>${r.growth_bytes_per_day==null?"—":fmt(r.growth_bytes_per_day/1024**3)+" GiB"}</td><td>${r.days_to_full==null?"—":fmt(r.days_to_full,0)+" days"}</td><td>${pill(!!r.metrics_available)}</td></tr>`);
   clearCharts();
