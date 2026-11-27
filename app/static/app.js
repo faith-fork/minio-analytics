@@ -455,6 +455,7 @@ async function showCluster(id,days=90,startDate=null,endDate=null){
 function renderNetworkWorkspace(data){
   const available=data.available_interfaces||[];
   const nodes=[...new Set(available.map(x=>x.node_name))].sort((a,b)=>a.localeCompare(b));
+  if(state.networkNodeFilter!=="all"&&!nodes.includes(state.networkNodeFilter))state.networkNodeFilter="all";
   const filtered=available.filter(x=>state.networkNodeFilter==="all"||x.node_name===state.networkNodeFilter);
   const selectedKey=state.networkSelectedInterface;
   const selected=filtered.find(x=>x.node_name+"|"+x.interface_name===selectedKey)||filtered[0]||null;
