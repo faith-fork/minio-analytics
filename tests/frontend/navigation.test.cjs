@@ -76,8 +76,8 @@ window.fetch = async (url) => {
     latest_bucket_summary:{snapshot_date:"2026-11-27",active_bucket_count:3,objects:600,versions:900,delete_markers:30},
     days:90,start_date:"2026-08-29",end_date:"2026-11-27",
     series:[
-      {snapshot_date:"2026-11-26",raw_total_bytes:1000,raw_free_bytes:450,usable_total_bytes:800,usable_free_bytes:350,nodes_online:2,nodes_offline:0,growth_bytes_per_day:10,days_to_full:45,metrics_available:true,active_bucket_count:3,bucket_quota_bytes:900,bucket_object_count:500,bucket_version_count:850,bucket_delete_marker_count:25,version_bucket_count:3,delete_marker_bucket_count:3},
-      {snapshot_date:"2026-11-27",raw_total_bytes:1000,raw_free_bytes:400,usable_total_bytes:800,usable_free_bytes:300,nodes_online:2,nodes_offline:0,growth_bytes_per_day:10,days_to_full:40,metrics_available:true,active_bucket_count:3,bucket_quota_bytes:900,bucket_object_count:600,bucket_version_count:900,bucket_delete_marker_count:30,version_bucket_count:3,delete_marker_bucket_count:3}
+      {snapshot_date:"2026-11-26",raw_total_bytes:1000,raw_free_bytes:450,usable_total_bytes:800,usable_free_bytes:350,nodes_online:2,nodes_offline:0,growth_bytes_per_day:10,days_to_full:45,metrics_available:true,active_bucket_count:3,quota_bucket_count:3,bucket_quota_bytes:900,bucket_object_count:500,bucket_version_count:850,bucket_delete_marker_count:25,version_bucket_count:3,delete_marker_bucket_count:3},
+      {snapshot_date:"2026-11-27",raw_total_bytes:1000,raw_free_bytes:400,usable_total_bytes:800,usable_free_bytes:300,nodes_online:2,nodes_offline:0,growth_bytes_per_day:10,days_to_full:40,metrics_available:true,active_bucket_count:3,quota_bucket_count:3,bucket_quota_bytes:900,bucket_object_count:600,bucket_version_count:900,bucket_delete_marker_count:30,version_bucket_count:3,delete_marker_bucket_count:3}
     ]
   })};
   if (key.includes("/api/analytics/object-size-distribution/cluster/test-cluster")) {
