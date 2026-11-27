@@ -748,14 +748,18 @@ async function showClusterTopology(id, section="infra-overview"){
       {label:"Missing",data:reliabilityTrend.map(x=>x.missing_intervals),color:"#94a0af"}
     ],"line",0,"");
   }
-  if(networkData&&section==="network"&&state.networkSelectedInterface){
-    const selectedKey=state.networkSelectedInterface.split("|");
-    const selectedRows=(networkData.series||[]).filter(x=>x.node_name===selectedKey[0]&&x.interface_name===selectedKey[1]&&x.instance===selectedKey[2]);
-    const labels=selectedRows.map(x=>timestampLabel(x.snapshot_ts));
-    chart("network-throughput-chart",labels,[{label:"RX bytes/s",data:selectedRows.map(x=>x.rx_bytes_per_second),color:"#16a085"},{label:"TX bytes/s",data:selectedRows.map(x=>x.tx_bytes_per_second),color:"#4776c7"}],"line",0,"bytes/s");
-    chart("network-packets-chart",labels,[{label:"RX packets/s",data:selectedRows.map(x=>x.rx_packets_per_second),color:"#16a085"},{label:"TX packets/s",data:selectedRows.map(x=>x.tx_packets_per_second),color:"#4776c7"}],"line",0,"packets/s");
-    chart("network-errors-chart",labels,[{label:"RX errors/s",data:selectedRows.map(x=>x.rx_errors_per_second),color:"#d99a35"},{label:"TX errors/s",data:selectedRows.map(x=>x.tx_errors_per_second),color:"#8b6ccf"}],"line",0,"errors/s");
-    chart("network-drops-chart",labels,[{label:"RX drops/s",data:selectedRows.map(x=>x.rx_drops_per_second),color:"#d99a35"},{label:"TX drops/s",data:selectedRows.map(x=>x.tx_drops_per_second),color:"#d9534f"}],"line",0,"drops/s");
+  if(networkData&&section==="network"){
+    const allSeries=networkData.series||[];
+    const series=state.networkSelectedInterface==="all"?allSeries:allSeries.filter(x=>(x.node_name+"|"+x.interface_name+"|"+x.instance)===state.networkSelectedInterface);
+    const keys=[...new Set(series.map(x=>x.node_name+"|"+x.interface_name+"|"+x.instance))];
+    const colors=["#16a085","#4776c7","#d99a35","#8b6ccf","#d9534f","#2d9cdb","#6b9e40","#b05aa2"];
+    const stamps=[...new Set(series.map(x=>x.snapshot_ts))].sort();
+    const labels=stamps.map(timestampLabel);
+    const datasets=(rx,tx,unit)=>keys.flatMap((key,i)=>{const group=series.filter(x=>(x.node_name+"|"+x.interface_name+"|"+x.instance)===key);const iface=key.split("|");const name=state.networkSelectedInterface==="all"?iface[0]+" / "+iface[1]:iface[1];return [{label:name+" RX",data:stamps.map(ts=>group.find(x=>x.snapshot_ts===ts)?.[rx]??null),color:colors[(i*2)%colors.length]},{label:name+" TX",data:stamps.map(ts=>group.find(x=>x.snapshot_ts===ts)?.[tx]??null),color:colors[(i*2+1)%colors.length]}];});
+    chart("network-throughput-chart",labels,datasets("rx_bytes_per_second","tx_bytes_per_second","bytes/s"),"line",0,"bytes/s");
+    chart("network-packets-chart",labels,datasets("rx_packets_per_second","tx_packets_per_second","packets/s"),"line",0,"packets/s");
+    chart("network-errors-chart",labels,datasets("rx_errors_per_second","tx_errors_per_second","errors/s"),"line",0,"errors/s");
+    chart("network-drops-chart",labels,datasets("rx_drops_per_second","tx_drops_per_second","drops/s"),"line",0,"drops/s");
   }
   if(trendSamples.length&&section==="drives"){
     chart("infra-drive-availability",trendLabels,[{label:"Drives online",data:trendSamples.map(x=>x.drives_online),color:"#16a085"},{label:"Drives offline",data:trendSamples.map(x=>x.drives_offline),color:"#d9534f"}],"line",0,"");
