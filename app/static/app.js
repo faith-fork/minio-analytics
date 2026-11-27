@@ -1,7 +1,7 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
 if(window.Chart&&window.ChartZoom){Chart.register(ChartZoom);Chart.defaults.plugins.zoom={pan:{enabled:true,mode:"x",modifierKey:"shift"},zoom:{wheel:{enabled:true,speed:0.08},drag:{enabled:true,backgroundColor:"rgba(19,165,139,.12)",borderColor:"#13a58b",borderWidth:1},pinch:{enabled:true},mode:"x"}};}
-const state = { user:null, view:"overview", masterConfigTab:"general", masterGeneralTab:"collection", backupPageSize:10, backupOffset:0, overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:null,driveView:"graphs",driveNodeFilter:"all",driveFsFilter:"all",driveInventoryPage:1,driveSortKey:"node",driveSortDirection:1,networkHours:6,networkNodeFilter:"all",networkSelectedInterface:"" };
+const state = { user:null, view:"overview", masterConfigTab:"general", masterGeneralTab:"collection", backupPageSize:10, backupOffset:0, overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:null,driveView:"graphs",driveNodeFilter:"all",driveFsFilter:"all",driveInventoryPage:1,driveSortKey:"node",driveSortDirection:1,networkHours:1,networkRangePreset:"1h",networkNodeFilter:"all",networkSelectedInterface:"all" };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
 const bytes = n => { if(n==null)return "—"; const value=Number(n); if(!Number.isFinite(value))return "—"; if(value>=1024**4)return (value/1024**4).toFixed(2)+" TiB"; if(value>=1024**3)return (value/1024**3).toFixed(1)+" GiB"; if(value>=1024**2)return (value/1024**2).toFixed(1)+" MiB"; if(value>=1024)return (value/1024).toFixed(1)+" KiB"; return value.toFixed(0)+" B"; };
 const tibValue = n => n == null ? "—" : (n/1024**4).toFixed(2);
@@ -605,20 +605,12 @@ async function showClusterTopology(id, section="infra-overview"){
   const trendFilter=state.topologyTrendFilters?.[id]||{startDate:"",endDate:""};
   let networkData=null;
   if(section==="network"){
-    const networkParams=new URLSearchParams({hours:String(state.networkHours||6)});
+    const presets={"5m":300000,"15m":900000,"30m":1800000,"1h":3600000,"3h":10800000,"6h":21600000,"12h":43200000,"24h":86400000,"2d":172800000,"7d":604800000,"30d":2592000000};
+    const rangeMs=presets[state.networkRangePreset||"1h"]||3600000;
+    const networkParams=new URLSearchParams({start_ts:new Date(Date.now()-rangeMs).toISOString(),end_ts:new Date().toISOString()});
     if(state.networkNodeFilter!=="all")networkParams.set("node_name",state.networkNodeFilter);
-    if(state.networkSelectedInterface){const selectedParts=state.networkSelectedInterface.split("|");if(selectedParts.length===3){networkParams.set("node_name",selectedParts[0]);networkParams.set("interface_name",selectedParts[1]);networkParams.set("instance",selectedParts[2]);}}
+    if(state.networkSelectedInterface&&state.networkSelectedInterface!=="all"){const p=state.networkSelectedInterface.split("|");if(p.length===3){networkParams.set("node_name",p[0]);networkParams.set("interface_name",p[1]);networkParams.set("instance",p[2]);}}
     networkData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/network/performance-series?"+networkParams.toString());
-    if(networkData.truncated&&!state.networkSelectedInterface){
-      const firstInterface=(networkData.available_interfaces||[]).find(x=>state.networkNodeFilter==="all"||x.node_name===state.networkNodeFilter);
-      if(firstInterface){
-        state.networkSelectedInterface=firstInterface.node_name+"|"+firstInterface.interface_name+"|"+firstInterface.instance;
-        networkParams.set("node_name",firstInterface.node_name);
-        networkParams.set("interface_name",firstInterface.interface_name);
-        networkParams.set("instance",firstInterface.instance);
-        networkData=await api("/api/analytics/clusters/"+encodeURIComponent(id)+"/network/performance-series?"+networkParams.toString());
-      }
-    }
   }
   if(section==="nodes"&&nodeSubsection==="health"){
     const trendParams=new URLSearchParams();
