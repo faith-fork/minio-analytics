@@ -609,6 +609,10 @@ def test_object_size_distribution_honors_exact_snapshot_date(
                            '2026-01-02T00:05:00Z',100,1000,?,?,1)""",
                 (bucket_id,"cluster-1",name,count,json.dumps({"LESS_THAN_1KB":count})),
             )
+        connection.execute(
+            "UPDATE bucket_daily_metrics SET object_size_distribution_json=? WHERE snapshot_date='2026-01-01'",
+            (json.dumps({"LESS_THAN_1KB":10}),),
+        )
 
     latest = admin_client.get("/api/analytics/object-size-distribution/cluster/cluster-1")
     assert latest.status_code == 200
