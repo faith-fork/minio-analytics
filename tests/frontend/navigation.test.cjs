@@ -70,6 +70,21 @@ window.fetch = async (url) => {
     statistics:[{node_name:"node01",instance:"node01:9100",interface_name:"ens3",sample_count:2,metrics:{rx_bytes_per_second:{average:150,minimum:100,maximum:200,latest:200,sample_count:2},tx_bytes_per_second:{average:75,minimum:50,maximum:100,latest:100,sample_count:2},rx_packets_per_second:{average:15,minimum:10,maximum:20,latest:20,sample_count:2},tx_packets_per_second:{average:7.5,minimum:5,maximum:10,latest:10,sample_count:2},rx_errors_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2},tx_errors_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2},rx_drops_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2},tx_drops_per_second:{average:0,minimum:0,maximum:0,latest:0,sample_count:2}}},{node_name:"node01",instance:"node01:9100",interface_name:"ens4",sample_count:1,metrics:{rx_bytes_per_second:{average:55,minimum:55,maximum:55,latest:55,sample_count:1},tx_bytes_per_second:{average:25,minimum:25,maximum:25,latest:25,sample_count:1}}}],
     sample_count:2,truncated:false,supported_metrics:[],aggregation:"per-interface only"
   })};
+  if (key.includes("/api/analytics/clusters/test-cluster?")) return {ok:true,status:200,json:async()=>({
+    cluster:{id:"test-cluster",name:"Test Cluster",location_name:"Test Location"},
+    latest:{snapshot_date:"2026-11-27",metrics_available:true,raw_total_bytes:1000,raw_free_bytes:400,usable_total_bytes:800,usable_free_bytes:300,nodes_online:2,nodes_offline:0,growth_bytes_per_day:10,days_to_full:40},
+    latest_bucket_summary:{snapshot_date:"2026-11-27",active_bucket_count:3,objects:600,versions:900,delete_markers:30},
+    days:90,start_date:"2026-08-29",end_date:"2026-11-27",
+    series:[
+      {snapshot_date:"2026-11-26",raw_total_bytes:1000,raw_free_bytes:450,usable_total_bytes:800,usable_free_bytes:350,nodes_online:2,nodes_offline:0,growth_bytes_per_day:10,days_to_full:45,metrics_available:true,active_bucket_count:3,bucket_quota_bytes:900,bucket_object_count:500,bucket_version_count:850,bucket_delete_marker_count:25,version_bucket_count:3,delete_marker_bucket_count:3},
+      {snapshot_date:"2026-11-27",raw_total_bytes:1000,raw_free_bytes:400,usable_total_bytes:800,usable_free_bytes:300,nodes_online:2,nodes_offline:0,growth_bytes_per_day:10,days_to_full:40,metrics_available:true,active_bucket_count:3,bucket_quota_bytes:900,bucket_object_count:600,bucket_version_count:900,bucket_delete_marker_count:30,version_bucket_count:3,delete_marker_bucket_count:3}
+    ]
+  })};
+  if (key.includes("/api/analytics/object-size-distribution/cluster/test-cluster")) {
+    const selected=new URL(key,"https://minio-analytics.test/").searchParams.get("snapshot_date");
+    const date=selected||"2026-11-27";
+    return {ok:true,status:200,json:async()=>({scope:"cluster",entity:{id:"test-cluster",name:"Test Cluster"},snapshot_date:date,available_dates:["2026-11-27","2026-11-26"],distribution:[{range:"LESS_THAN_1KB",object_count:600,percentage:60},{range:"BETWEEN_1KB_AND_64KB",object_count:400,percentage:40}],total_objects:1000,buckets_expected:3,buckets_available:3,buckets_missing:0,status:"available"})};
+  }
   if (key.includes("/api/analytics/clusters/test-cluster/topology")) return {ok:true,status:200,json:async()=>topologyPayload};
   const body = payloads[key] ?? { items: [] };
   return {ok:true,status:200,json:async()=>body};
@@ -99,6 +114,33 @@ async function run() {
     () => window.document.querySelector("#content .metric-grid") !== null,
     "initial authenticated dashboard render",
   );
+
+  // Cluster Detail now has four workspaces and a grouped infrastructure KPI dashboard.
+  await window.showCluster("test-cluster",90,null,null,"infra");
+  await waitFor(()=>window.document.querySelector("[data-cluster-detail-tab='infra'].active"),"cluster infrastructure workspace");
+  assert.equal(window.document.querySelectorAll(".cluster-kpi-card").length,18,"Infrastructure should show the 18 requested KPI cards");
+  assert.equal(window.document.querySelectorAll(".cluster-kpi-group").length,3,"KPIs should be grouped rather than a single wall");
+  assert.match(window.document.querySelector(".cluster-infrastructure-kpis").textContent,/REPLICATION RULES/);
+  assert.match(window.document.querySelector(".cluster-infrastructure-kpis").textContent,/NODES ONLINE/);
+  assert.equal(window.document.querySelector(".cluster-health-grid"),null,"Old Cluster Health panel should be removed");
+  assert.ok(window.document.querySelector("[data-cluster-detail-tab='capacity']"));
+  window.document.querySelector("[data-cluster-detail-tab='capacity']").click();
+  await waitFor(()=>window.document.querySelector("#cluster-chart"),"Capacity & Forecast workspace");
+  assert.ok(window.document.querySelector("#cluster-quota-chart"));
+  assert.ok(window.document.querySelector("#cluster-growth-chart"));
+  assert.ok(window.document.querySelector("#cluster-days-full-chart"));
+  window.document.querySelector("[data-cluster-detail-tab='objects']").click();
+  await waitFor(()=>window.document.querySelector("#cluster-version-chart"),"Object & Bucket Analysis workspace");
+  assert.ok(window.document.querySelector("#cluster-object-chart"));
+  assert.ok(window.document.querySelector("#cluster-delete-marker-chart"));
+  assert.ok(window.document.querySelector("[data-cluster-hist-date]"),"Object-size histogram should have a historical date picker");
+  const histDate=window.document.querySelector("[data-cluster-hist-date]");
+  histDate.value="2026-11-26";histDate.dispatchEvent(new window.Event("change",{bubbles:true}));
+  await waitFor(()=>window.__requests.some(url=>url.includes("object-size-distribution/cluster/test-cluster")&&url.includes("snapshot_date=2026-11-26")),"exact-date histogram request");
+  window.document.querySelector("[data-cluster-detail-tab='snapshots']").click();
+  await waitFor(()=>window.document.querySelector("[data-cluster-detail-tab='snapshots'].active"),"Daily Snapshots workspace");
+  assert.ok(window.document.querySelector(".table-panel"),"Snapshot tab should render the snapshot history table");
+  assert.match(window.document.querySelector(".table-panel").textContent,/VERSIONS|DELETE MARKERS/);
 
   // Exercise the real delegated sidebar click and the multi-element nav selector.
   window.document.querySelector('.nav-link[data-view="master-config"]').click();
