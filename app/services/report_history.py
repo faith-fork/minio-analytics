@@ -23,6 +23,11 @@ def _bounds(start_date: date | None, end_date: date | None, days: int = 90) -> t
     return start.isoformat(), end.isoformat()
 
 
+def _days(start: str, end: str) -> list[str]:
+    first, last = date.fromisoformat(start), date.fromisoformat(end)
+    return [(first + timedelta(days=i)).isoformat() for i in range((last-first).days+1)]
+
+
 def _series_point(day: str, *, coverage: dict, complete: bool, values: dict) -> dict:
     return {"date": day, "complete": complete, "coverage": coverage, **values}
 
@@ -61,14 +66,21 @@ def get_provisioned_report_history(start_date: date | None = None, end_date: dat
                                THEN b.used_bytes ELSE NULL END) AS used_bytes,
                       SUM(CASE WHEN b.metrics_available=1 AND b.quota_bytes IS NOT NULL
                                THEN b.quota_bytes ELSE NULL END) AS quota_bytes,
-                      MAX(r.status) AS collection_status
+                      r.status AS collection_status
                FROM bucket_daily_metrics b
                JOIN clusters c ON c.id=b.cluster_id AND c.enabled=1
                JOIN locations l ON l.id=c.location_id AND l.enabled=1
-               LEFT JOIN collection_runs r ON r.cluster_id=b.cluster_id
-                    AND r.snapshot_date=b.snapshot_date
+               LEFT JOIN (
+                    SELECT cluster_id, snapshot_date, status,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY cluster_id, snapshot_date
+                               ORDER BY started_at DESC, id DESC
+                           ) AS rn
+                    FROM collection_runs
+                ) r ON r.cluster_id=b.cluster_id
+                    AND r.snapshot_date=b.snapshot_date AND r.rn=1
                WHERE b.snapshot_date BETWEEN ? AND ?
-               GROUP BY b.snapshot_date, b.cluster_id
+               GROUP BY b.snapshot_date, b.cluster_id, r.status
                ORDER BY b.snapshot_date, b.cluster_id""",
             (start, end),
         ).fetchall()
@@ -80,7 +92,7 @@ def get_provisioned_report_history(start_date: date | None = None, end_date: dat
     for row in bucket_rows:
         bucket_by_day.setdefault(row["snapshot_date"], []).append(row)
 
-    dates = sorted(set(by_day) | set(bucket_by_day))
+    dates = _days(start, end)
     points = []
     for day in dates:
         clusters = by_day.get(day, [])
@@ -178,7 +190,7 @@ def get_bucket_usage_report_history(start_date: date | None = None, end_date: da
     for row in rows:
         by_day.setdefault(row["snapshot_date"], []).append(row)
     points = []
-    for day, clusters in sorted(by_day.items()):
+    for day in _days(start, end):\n        clusters = by_day.get(day, [])
         usage_complete = bool(clusters) and all(
             r["collection_status"] == "success" and r["usage_available"] == r["observed_buckets"]
             and r["observed_buckets"] > 0 for r in clusters
@@ -211,4 +223,53 @@ def get_bucket_usage_report_history(start_date: date | None = None, end_date: da
         "effective_range": {"start_date": points[0]["date"] if points else None, "end_date": points[-1]["date"] if points else None},
         "points": points,
         "coverage_limitation": "Historical expected bucket inventory and per-cluster successful collection coverage are not persisted consistently. Values are withheld unless all observed bucket records have metrics and a successful collection run; totals are not guaranteed to include buckets missing from observed records.",
+    }
+
+
+def get_raw_capacity_report_history(start_date: date | None = None, end_date: date | None = None) -> dict:
+    start, end = _bounds(start_date, end_date)
+    with transaction() as connection:
+        cluster_count = _active_cluster_count(connection)
+        rows = connection.execute(
+            """SELECT m.snapshot_date, m.cluster_id, m.metrics_available,
+                      m.raw_total_bytes, m.raw_free_bytes
+               FROM cluster_daily_metrics m
+               JOIN clusters c ON c.id=m.cluster_id AND c.enabled=1
+               JOIN locations l ON l.id=c.location_id AND l.enabled=1
+               WHERE m.snapshot_date BETWEEN ? AND ?
+               ORDER BY m.snapshot_date, m.cluster_id""",
+            (start, end),
+        ).fetchall()
+    by_day: dict[str, list] = {}
+    for row in rows:
+        by_day.setdefault(row["snapshot_date"], []).append(row)
+    points = []
+    for day in _days(start, end):
+        clusters = by_day.get(day, [])
+        valid = [r for r in clusters if r["metrics_available"] == 1 and
+                 r["raw_total_bytes"] is not None and r["raw_free_bytes"] is not None]
+        complete = cluster_count > 0 and len(clusters) == cluster_count and len(valid) == cluster_count
+        if complete:
+            total = sum(float(r["raw_total_bytes"]) for r in valid)
+            free = sum(float(r["raw_free_bytes"]) for r in valid)
+            used = total - free
+            utilization = used / total * 100 if total > 0 else None
+        else:
+            total = free = used = utilization = None
+        points.append({
+            "date": day,
+            "complete": complete,
+            "coverage": {"enabled_clusters": cluster_count, "snapshots": len(clusters), "metrics_available": len(valid)},
+            "raw_total_bytes": total,
+            "raw_free_bytes": free,
+            "raw_used_bytes": used,
+            "raw_used_pct": utilization,
+        })
+    return {
+        "report": "raw_capacity",
+        "generated_from": "sqlite_daily_snapshots",
+        "requested_range": {"start_date": start, "end_date": end},
+        "effective_range": {"start_date": points[0]["date"] if points else None, "end_date": points[-1]["date"] if points else None},
+        "enabled_cluster_count": cluster_count,
+        "points": points,
     }
