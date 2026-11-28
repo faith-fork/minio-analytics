@@ -129,75 +129,42 @@ async function renderReportHistory(reportKey){
   const content=section.querySelector(".report-history-content");
   content.innerHTML='<div class="loading-state">Loading historical trends…</div>';
   try{
-    const data=await api(url),points=data.points||[],labels=reportHistoryDates(points);
-    let cards="",notice="";
+    const data=await api(url),points=data.points||[],labels=reportHistoryDates(points),ti=1024**4;
+    const defs=[];
     if(reportKey==="provisioned"){
-      const ti=1024**4;
-      cards=reportHistoryPanel("Capacity Composition","Usable used and free capacity · installed capacity overlay","report-provisioned-capacity")+
-        reportHistoryPanel("Utilization Trend","Fleet used capacity ÷ installed capacity · 70% and 80% thresholds","report-provisioned-utilization")+
-        reportHistoryPanel("Bucket Consumption vs Quota","Observed historical bucket metrics · quota/usage availability may be incomplete","report-provisioned-buckets");
-      if(!reportHistoryNoData(points,["usable_used_bytes","usable_free_bytes"])){
-        reportHistoryChart("report-provisioned-capacity",labels,[
-          {label:"Usable Used (TiB)",data:reportHistoryValues(points,"usable_used_bytes",ti),color:"#13a58b",fill:true,stack:"usable"},
-          {label:"Usable Free (TiB)",data:reportHistoryValues(points,"usable_free_bytes",ti),color:"#4779d8",fill:true,stack:"usable"},
-          {label:"Installed (TiB)",data:reportHistoryValues(points,"installed_capacity_bytes",ti),color:"#d9922e",fill:false,width:2}
-        ]," TiB");
-      }
-      if(!reportHistoryNoData(points,["utilization_pct"])){
-        reportHistoryChart("report-provisioned-utilization",labels,[
-          {label:"Fleet Utilization %",data:reportHistoryValues(points,"utilization_pct"),color:"#13a58b"},
-          {label:"70% Threshold",data:points.map(()=>70),color:"#d9922e",dash:[6,4],width:1},
-          {label:"80% Threshold",data:points.map(()=>80),color:"#d45b5b",dash:[6,4],width:1}
-        ],"%");
-      }
-      if(!reportHistoryNoData(points,["bucket_used_bytes","bucket_quota_bytes"])){
-        reportHistoryChart("report-provisioned-buckets",labels,[
-          {label:"Used Bucket (TiB)",data:reportHistoryValues(points,"bucket_used_bytes",ti),color:"#13a58b"},
-          {label:"Quota (TiB)",data:reportHistoryValues(points,"bucket_quota_bytes",ti),color:"#4779d8"},
-          {label:"Remaining Quota (TiB)",data:reportHistoryValues(points,"bucket_quota_remaining_bytes",ti),color:"#d9922e"}
-        ]," TiB");
-      }
-      notice=data.bucket_history_limitation||"";
+      defs.push({id:"report-provisioned-capacity",title:"Capacity Composition",subtitle:"Usable used and free capacity · installed capacity overlay",unit:" TiB",datasets:[
+        {label:"Usable Used (TiB)",data:reportHistoryValues(points,"usable_used_bytes",ti),color:"#13a58b",fill:true,stack:"usable"},
+        {label:"Usable Free (TiB)",data:reportHistoryValues(points,"usable_free_bytes",ti),color:"#4779d8",fill:true,stack:"usable"},
+        {label:"Installed (TiB)",data:reportHistoryValues(points,"installed_capacity_bytes",ti),color:"#d9922e",width:2}
+      ],keys:["usable_used_bytes","usable_free_bytes"]});
+      defs.push({id:"report-provisioned-utilization",title:"Utilization Trend",subtitle:"Fleet used capacity ÷ installed capacity · 70% and 80% thresholds",unit:"%",datasets:[
+        {label:"Fleet Utilization %",data:reportHistoryValues(points,"utilization_pct"),color:"#13a58b"},
+        {label:"70% Threshold",data:points.map(()=>70),color:"#d9922e",dash:[6,4],width:1},
+        {label:"80% Threshold",data:points.map(()=>80),color:"#d45b5b",dash:[6,4],width:1}
+      ],keys:["utilization_pct"]});
+      defs.push({id:"report-provisioned-buckets",title:"Bucket Consumption vs Quota",subtitle:"Historical observed bucket metrics · coverage may be incomplete",unit:" TiB",datasets:[
+        {label:"Used Bucket (TiB)",data:reportHistoryValues(points,"bucket_used_bytes",ti),color:"#13a58b"},
+        {label:"Quota (TiB)",data:reportHistoryValues(points,"bucket_quota_bytes",ti),color:"#4779d8"},
+        {label:"Remaining Quota (TiB)",data:reportHistoryValues(points,"bucket_quota_remaining_bytes",ti),color:"#d9922e"}
+      ],keys:["bucket_used_bytes","bucket_quota_bytes"]});
     }else if(reportKey==="bucket-usage"){
-      const ti=1024**4;
-      cards=reportHistoryPanel("Bucket Consumption Trend","Total observed bucket used capacity","report-bucket-used")+
-        reportHistoryPanel("Quota vs Consumption","Observed bucket usage compared with quota","report-bucket-quota")+
-        reportHistoryPanel("Quota Utilization","Used ÷ quota · available only when both metrics are valid","report-bucket-utilization");
-      if(!reportHistoryNoData(points,["used_bytes"]))reportHistoryChart("report-bucket-used",labels,[{label:"Used (TiB)",data:reportHistoryValues(points,"used_bytes",ti),color:"#13a58b"}]," TiB");
-      if(!reportHistoryNoData(points,["used_bytes","quota_bytes"]))reportHistoryChart("report-bucket-quota",labels,[{label:"Used (TiB)",data:reportHistoryValues(points,"used_bytes",ti),color:"#13a58b"},{label:"Quota (TiB)",data:reportHistoryValues(points,"quota_bytes",ti),color:"#4779d8"}]," TiB");
-      if(!reportHistoryNoData(points,["utilization_pct"]))reportHistoryChart("report-bucket-utilization",labels,[{label:"Quota Utilization %",data:reportHistoryValues(points,"utilization_pct"),color:"#d9922e"}],"%");
-      notice=data.coverage_limitation||"";
+      defs.push({id:"report-bucket-used",title:"Bucket Consumption Trend",subtitle:"Historical observed bucket used capacity",unit:" TiB",datasets:[{label:"Used (TiB)",data:reportHistoryValues(points,"used_bytes",ti),color:"#13a58b"}],keys:["used_bytes"]});
+      defs.push({id:"report-bucket-quota",title:"Quota vs Consumption",subtitle:"Observed bucket usage compared with quota",unit:" TiB",datasets:[{label:"Used (TiB)",data:reportHistoryValues(points,"used_bytes",ti),color:"#13a58b"},{label:"Quota (TiB)",data:reportHistoryValues(points,"quota_bytes",ti),color:"#4779d8"}],keys:["used_bytes","quota_bytes"]});
+      defs.push({id:"report-bucket-utilization",title:"Quota Utilization",subtitle:"Used ÷ quota · available only when both metrics are valid",unit:"%",datasets:[{label:"Quota Utilization %",data:reportHistoryValues(points,"utilization_pct"),color:"#d9922e"}],keys:["utilization_pct"]});
     }else{
-      const ti=1024**4;
-      cards=reportHistoryPanel("RAW Capacity Composition","Raw used and free capacity · total capacity overlay","report-raw-capacity")+
-        reportHistoryPanel("RAW Utilization Trend","Raw used ÷ raw total capacity","report-raw-utilization")+
-        reportHistoryPanel("RAW Consumption and Capacity","Used capacity versus total capacity changes","report-raw-used-capacity");
-      if(!reportHistoryNoData(points,["raw_used_bytes","raw_free_bytes"]))reportHistoryChart("report-raw-capacity",labels,[
+      defs.push({id:"report-raw-capacity",title:"RAW Capacity Composition",subtitle:"Raw used and free capacity · total capacity overlay",unit:" TiB",datasets:[
         {label:"Raw Used (TiB)",data:reportHistoryValues(points,"raw_used_bytes",ti),color:"#13a58b",fill:true,stack:"raw"},
         {label:"Raw Free (TiB)",data:reportHistoryValues(points,"raw_free_bytes",ti),color:"#4779d8",fill:true,stack:"raw"},
-        {label:"Raw Total (TiB)",data:reportHistoryValues(points,"raw_total_bytes",ti),color:"#d9922e",fill:false,width:2}
-      ]," TiB");
-      if(!reportHistoryNoData(points,["raw_used_pct"]))reportHistoryChart("report-raw-utilization",labels,[{label:"Raw Utilization %",data:reportHistoryValues(points,"raw_used_pct"),color:"#13a58b"}],"%");
-      if(!reportHistoryNoData(points,["raw_used_bytes","raw_total_bytes"]))reportHistoryChart("report-raw-used-capacity",labels,[{label:"Raw Used (TiB)",data:reportHistoryValues(points,"raw_used_bytes",ti),color:"#13a58b"},{label:"Raw Total (TiB)",data:reportHistoryValues(points,"raw_total_bytes",ti),color:"#4779d8"}]," TiB");
+        {label:"Raw Total (TiB)",data:reportHistoryValues(points,"raw_total_bytes",ti),color:"#d9922e",width:2}
+      ],keys:["raw_used_bytes","raw_free_bytes"]});
+      defs.push({id:"report-raw-utilization",title:"RAW Utilization Trend",subtitle:"Raw used ÷ raw total capacity",unit:"%",datasets:[{label:"Raw Utilization %",data:reportHistoryValues(points,"raw_used_pct"),color:"#13a58b"}],keys:["raw_used_pct"]});
+      defs.push({id:"report-raw-used-capacity",title:"RAW Consumption and Capacity",subtitle:"Used capacity versus total capacity changes",unit:" TiB",datasets:[{label:"Raw Used (TiB)",data:reportHistoryValues(points,"raw_used_bytes",ti),color:"#13a58b"},{label:"Raw Total (TiB)",data:reportHistoryValues(points,"raw_total_bytes",ti),color:"#4779d8"}],keys:["raw_used_bytes","raw_total_bytes"]});
     }
-    const coverage=points.length?'<div class="report-history-coverage"><strong>Historical range:</strong> '+esc(bounds.startDate)+' → '+esc(bounds.endDate)+' · '+fmt(points.length,0)+' daily points'+(data.enabled_cluster_count!=null?' · '+fmt(data.enabled_cluster_count,0)+' enabled clusters':'')+'</div>':'';
-    content.innerHTML=(reportHistoryNoData(points,reportKey==="provisioned"?["usable_used_bytes","usable_free_bytes","bucket_used_bytes"]:reportKey==="bucket-usage"?["used_bytes","quota_bytes"]:["raw_used_bytes","raw_free_bytes","raw_total_bytes"])?'<div class="empty-state">No complete historical snapshots are available in the selected period.</div>':cards)+coverage+(notice?'<div class="report-history-note">'+esc(notice)+'</div>':'');
-    // Re-render charts after the canvas elements have been inserted.
-    if(cards&&content.querySelector("canvas")){
-      if(reportKey==="provisioned"){
-        if(!reportHistoryNoData(points,["usable_used_bytes","usable_free_bytes"]))reportHistoryChart("report-provisioned-capacity",labels,[{label:"Usable Used (TiB)",data:reportHistoryValues(points,"usable_used_bytes",1024**4),color:"#13a58b",fill:true,stack:"usable"},{label:"Usable Free (TiB)",data:reportHistoryValues(points,"usable_free_bytes",1024**4),color:"#4779d8",fill:true,stack:"usable"},{label:"Installed (TiB)",data:reportHistoryValues(points,"installed_capacity_bytes",1024**4),color:"#d9922e"}]," TiB");
-        if(!reportHistoryNoData(points,["utilization_pct"]))reportHistoryChart("report-provisioned-utilization",labels,[{label:"Fleet Utilization %",data:reportHistoryValues(points,"utilization_pct"),color:"#13a58b"},{label:"70% Threshold",data:points.map(()=>70),color:"#d9922e",dash:[6,4],width:1},{label:"80% Threshold",data:points.map(()=>80),color:"#d45b5b",dash:[6,4],width:1},"%");
-        if(!reportHistoryNoData(points,["bucket_used_bytes","bucket_quota_bytes"]))reportHistoryChart("report-provisioned-buckets",labels,[{label:"Used Bucket (TiB)",data:reportHistoryValues(points,"bucket_used_bytes",1024**4),color:"#13a58b"},{label:"Quota (TiB)",data:reportHistoryValues(points,"bucket_quota_bytes",1024**4),color:"#4779d8"},{label:"Remaining Quota (TiB)",data:reportHistoryValues(points,"bucket_quota_remaining_bytes",1024**4),color:"#d9922e"}]," TiB");
-      }else if(reportKey==="bucket-usage"){
-        if(!reportHistoryNoData(points,["used_bytes"]))reportHistoryChart("report-bucket-used",labels,[{label:"Used (TiB)",data:reportHistoryValues(points,"used_bytes",1024**4),color:"#13a58b"}]," TiB");
-        if(!reportHistoryNoData(points,["used_bytes","quota_bytes"]))reportHistoryChart("report-bucket-quota",labels,[{label:"Used (TiB)",data:reportHistoryValues(points,"used_bytes",1024**4),color:"#13a58b"},{label:"Quota (TiB)",data:reportHistoryValues(points,"quota_bytes",1024**4),color:"#4779d8"}]," TiB");
-        if(!reportHistoryNoData(points,["utilization_pct"]))reportHistoryChart("report-bucket-utilization",labels,[{label:"Quota Utilization %",data:reportHistoryValues(points,"utilization_pct"),color:"#d9922e"}],"%");
-      }else{
-        if(!reportHistoryNoData(points,["raw_used_bytes","raw_free_bytes"]))reportHistoryChart("report-raw-capacity",labels,[{label:"Raw Used (TiB)",data:reportHistoryValues(points,"raw_used_bytes",1024**4),color:"#13a58b",fill:true,stack:"raw"},{label:"Raw Free (TiB)",data:reportHistoryValues(points,"raw_free_bytes",1024**4),color:"#4779d8",fill:true,stack:"raw"},{label:"Raw Total (TiB)",data:reportHistoryValues(points,"raw_total_bytes",1024**4),color:"#d9922e"}]," TiB");
-        if(!reportHistoryNoData(points,["raw_used_pct"]))reportHistoryChart("report-raw-utilization",labels,[{label:"Raw Utilization %",data:reportHistoryValues(points,"raw_used_pct"),color:"#13a58b"}],"%");
-        if(!reportHistoryNoData(points,["raw_used_bytes","raw_total_bytes"]))reportHistoryChart("report-raw-used-capacity",labels,[{label:"Raw Used (TiB)",data:reportHistoryValues(points,"raw_used_bytes",1024**4),color:"#13a58b"},{label:"Raw Total (TiB)",data:reportHistoryValues(points,"raw_total_bytes",1024**4),color:"#4779d8"}]," TiB");
-      }
-    }
+    const available=defs.filter(d=>!reportHistoryNoData(points,d.keys));
+    const coverage='<div class="report-history-coverage"><strong>Selected period:</strong> '+esc(bounds.startDate)+' → '+esc(bounds.endDate)+' · '+fmt(points.length,0)+' calendar days'+(data.enabled_cluster_count!=null?' · '+fmt(data.enabled_cluster_count,0)+' enabled clusters':'')+'</div>';
+    const notice=reportKey==="provisioned"?data.bucket_history_limitation:reportKey==="bucket-usage"?data.coverage_limitation:"";
+    content.innerHTML=(available.length?'<div class="report-history-grid">'+defs.map(d=>reportHistoryNoData(points,d.keys)?panel(d.title,d.subtitle,'<div class="report-history-empty">No complete data for this chart in the selected range.</div>'):reportHistoryPanel(d.title,d.subtitle,d.id)).join("")+'</div>':'<div class="empty-state">No complete historical snapshots are available in the selected period.</div>')+coverage+(notice?'<div class="report-history-note">'+esc(notice)+'</div>':'');
+    available.forEach(d=>reportHistoryChart(d.id,labels,d.datasets,d.unit));
   }catch(err){
     content.innerHTML='<div class="empty-state report-history-error">Historical trends could not be loaded: '+esc(err.message)+' <button type="button" class="subtle-button" data-report-history-retry="'+reportKey+'">Retry</button></div>';
   }
