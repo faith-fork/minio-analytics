@@ -92,6 +92,19 @@ async function run() {
   assert.ok(cssSource.includes(".infra-compact-toolbar .time-range-popover,.heading-actions .time-range-popover,.panel-header-actions .time-range-popover{left:auto;right:0}"),"Right-aligned popovers should stay aligned within the viewport");
   assert.ok(fs.readFileSync(path.join(root,"app/static/app.js"),"utf8").includes('panel("Bucket usage and quota trend"'),"Bucket trend controls should be rendered in the chart header");
   window.eval(fs.readFileSync(path.join(root, "app/static/app.js"), "utf8"));
+
+  // Reports historical filters use the compact dashboard dropdown, with custom dates hidden until requested.
+  const defaultReportRangeMarkup=window.reportHistoryToolbar("provisioned");
+  assert.ok(defaultReportRangeMarkup.includes('class="report-history-dropdown"'),"Report history selector should use compact dropdown UX");
+  assert.ok(defaultReportRangeMarkup.includes("Last 90 days"),"Default report range should be shown in the selector summary");
+  assert.equal(defaultReportRangeMarkup.includes('type="date"'),false,"Custom date inputs should not be permanently visible");
+  window.state.reportHistoryRanges.provisioned={custom:true,startDate:"2026-09-01",endDate:"2026-11-28"};
+  const customReportRangeMarkup=window.reportHistoryToolbar("provisioned");
+  assert.ok(customReportRangeMarkup.includes('data-report-history-custom-toggle="provisioned"'),"Custom range should be available from the dropdown");
+  assert.ok(customReportRangeMarkup.includes('type="date"'),"Date fields should appear only after Custom is selected");
+  assert.ok(customReportRangeMarkup.includes('open>'),"Custom selection should expand the range popover");
+  window.state.reportHistoryRanges.provisioned={preset:"90d",custom:false};
+
   window.eval(fs.readFileSync(path.join(root, "app/static/prometheus-connections.js"), "utf8"));
   window.eval(fs.readFileSync(path.join(root, "app/static/backfill-jobs.js"), "utf8"));
 
