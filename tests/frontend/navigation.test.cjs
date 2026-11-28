@@ -104,6 +104,13 @@ async function run() {
   assert.ok(customReportRangeMarkup.includes('type="date"'),"Date fields should appear only after Custom is selected");
   assert.ok(customReportRangeMarkup.includes('open>'),"Custom selection should expand the range popover");
   window.state.reportHistoryRanges.provisioned={preset:"90d",custom:false};
+  window.document.querySelector("#content").innerHTML='<section id="report-history"><div class="report-history-toolbar">'+window.reportHistoryToolbar("provisioned")+'</div></section>';
+  window.document.querySelector("[data-report-history-custom-toggle='provisioned']").click();
+  const openedCustomRange=window.document.querySelector("[data-report-history-custom='provisioned']");
+  assert.ok(openedCustomRange,"Clicking Custom should reveal the date form");
+  assert.equal(openedCustomRange.elements.start_date.value,window.reportHistoryBounds("provisioned").startDate,"Custom range should initialize from the selected preset's start date");
+  assert.equal(openedCustomRange.elements.end_date.value,window.reportHistoryBounds("provisioned").endDate,"Custom range should initialize from the selected preset's end date");
+  assert.equal(window.document.querySelector(".report-history-dropdown").open,true,"Custom selection should open the dropdown");
 
   window.eval(fs.readFileSync(path.join(root, "app/static/prometheus-connections.js"), "utf8"));
   window.eval(fs.readFileSync(path.join(root, "app/static/backfill-jobs.js"), "utf8"));
