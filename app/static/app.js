@@ -134,10 +134,9 @@ async function renderReportHistory(reportKey){
     const data=await api(url),points=data.points||[],labels=reportHistoryDates(points),ti=1024**4;
     const defs=[];
     if(reportKey==="provisioned"){
-      defs.push({id:"report-provisioned-capacity",title:"Capacity Composition",subtitle:"Usable used and free capacity · installed capacity overlay",unit:" TiB",datasets:[
+      defs.push({id:"report-provisioned-capacity",title:"Capacity Composition",subtitle:"Usable capacity composition: used and free",unit:" TiB",datasets:[
         {label:"Usable Used (TiB)",data:reportHistoryValues(points,"usable_used_bytes",ti),color:"#13a58b",fill:true,stack:"usable"},
         {label:"Usable Free (TiB)",data:reportHistoryValues(points,"usable_free_bytes",ti),color:"#4779d8",fill:true,stack:"usable"},
-        {label:"Installed (TiB)",data:reportHistoryValues(points,"installed_capacity_bytes",ti),color:"#d9922e",width:2}
       ],keys:["usable_used_bytes","usable_free_bytes"]});
       defs.push({id:"report-provisioned-utilization",title:"Utilization Trend",subtitle:"Fleet used capacity ÷ installed capacity · 70% and 80% thresholds",unit:"%",datasets:[
         {label:"Fleet Utilization %",data:reportHistoryValues(points,"utilization_pct"),color:"#13a58b"},
@@ -154,10 +153,9 @@ async function renderReportHistory(reportKey){
       defs.push({id:"report-bucket-quota",title:"Quota vs Consumption",subtitle:"Observed bucket usage compared with quota",unit:" TiB",datasets:[{label:"Used (TiB)",data:reportHistoryValues(points,"used_bytes",ti),color:"#13a58b"},{label:"Quota (TiB)",data:reportHistoryValues(points,"quota_bytes",ti),color:"#4779d8"}],keys:["used_bytes","quota_bytes"]});
       defs.push({id:"report-bucket-utilization",title:"Quota Utilization",subtitle:"Used ÷ quota · available only when both metrics are valid",unit:"%",datasets:[{label:"Quota Utilization %",data:reportHistoryValues(points,"utilization_pct"),color:"#d9922e"}],keys:["utilization_pct"]});
     }else{
-      defs.push({id:"report-raw-capacity",title:"RAW Capacity Composition",subtitle:"Raw used and free capacity · total capacity overlay",unit:" TiB",datasets:[
+      defs.push({id:"report-raw-capacity",title:"RAW Capacity Composition",subtitle:"Raw capacity composition: used and free",unit:" TiB",datasets:[
         {label:"Raw Used (TiB)",data:reportHistoryValues(points,"raw_used_bytes",ti),color:"#13a58b",fill:true,stack:"raw"},
         {label:"Raw Free (TiB)",data:reportHistoryValues(points,"raw_free_bytes",ti),color:"#4779d8",fill:true,stack:"raw"},
-        {label:"Raw Total (TiB)",data:reportHistoryValues(points,"raw_total_bytes",ti),color:"#d9922e",width:2}
       ],keys:["raw_used_bytes","raw_free_bytes"]});
       defs.push({id:"report-raw-utilization",title:"RAW Utilization Trend",subtitle:"Raw used ÷ raw total capacity",unit:"%",datasets:[{label:"Raw Utilization %",data:reportHistoryValues(points,"raw_used_pct"),color:"#13a58b"}],keys:["raw_used_pct"]});
       defs.push({id:"report-raw-used-capacity",title:"RAW Consumption and Capacity",subtitle:"Used capacity versus total capacity changes",unit:" TiB",datasets:[{label:"Raw Used (TiB)",data:reportHistoryValues(points,"raw_used_bytes",ti),color:"#13a58b"},{label:"Raw Total (TiB)",data:reportHistoryValues(points,"raw_total_bytes",ti),color:"#4779d8"}],keys:["raw_used_bytes","raw_total_bytes"]});
