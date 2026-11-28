@@ -86,7 +86,7 @@ function reportHistoryToolbar(reportKey){
 }
 function refreshReportHistoryToolbar(reportKey){const section=$("#report-history"),toolbar=section?.querySelector(".report-history-toolbar");if(toolbar)toolbar.outerHTML=reportHistoryToolbar(reportKey);}
 function reportHistorySection(reportKey){
-  return '<section id="report-history" class="report-history-section"><div class="report-history-heading"><div><h2>Historical Trends</h2><p>Daily SQLite snapshots · historical graphs only (current KPIs and table are unchanged)</p></div></div>'+reportHistoryToolbar(reportKey)+'<div class="report-history-content"><div class="loading-state">Loading historical trends…</div></div></section>';
+  return '<section id="report-history" class="report-history-section"><div class="report-history-heading"><div><h2>Historical Trends</h2><p>Daily SQLite snapshots · historical graphs only (current KPIs and table are unchanged)</p></div>'+reportHistoryToolbar(reportKey)+'</div><div class="report-history-content"><div class="loading-state">Loading historical trends…</div></div></section>';
 }
 function destroyReportHistoryCharts(){
   const ids=new Set(state.reportHistoryChartIds||[]);

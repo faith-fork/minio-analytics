@@ -251,3 +251,19 @@ This is a D1 defect correction, not a relaxation of the future-range contract.
 - Tenant detail: the daily-snapshot range selector shares the page-heading action row with ownership mode controls; redundant history-window card is removed.
 - Bucket detail: the daily-snapshot range selector is placed in the trend chart header, alongside chart actions rather than consuming a separate row.
 - Snapshot-table date filters remain separate because they filter table records and are not graph controls.
+
+
+## Consolidated Reports — Historical Trends selector placement (approved UX)
+
+The Historical Trends date-range selector in Consolidated Reports is a **contextual chart control** and must follow the same placement pattern as other chart workspaces:
+
+- The `Historical Trends` section title and explanatory subtitle remain on the **left**.
+- The compact selected-range dropdown is aligned to the **right side of the same heading row**.
+- Presets and Custom date range are available inside the dropdown popover; custom date inputs remain hidden unless Custom date range is selected.
+- The popover is right-aligned to the selector trigger (`right: 0`, `left: auto`) so it opens toward the left and stays within the viewport.
+- Do not render the range selector as a separate full-width row, card, or left-aligned toolbar below the section heading.
+- On narrow screens, the heading row may wrap; the selector should remain right-aligned when possible and the popover must stay within viewport bounds.
+
+This applies to all three Consolidated Reports tabs (Provisioned, Bucket Usage, RAW Capacity) and their Historical Trends graph sets. The report date-range selector is separate from the current KPI cards and table, which remain unchanged.
+
+**Design review lesson:** Compact controls should be anchored in the contextual heading/action row, with the chart content receiving priority. Reuse this placement pattern for future historical chart filters unless a workspace has a documented semantic reason to differ.
