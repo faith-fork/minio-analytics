@@ -111,12 +111,12 @@ def get_provisioned_report_history(start_date: date | None = None, end_date: dat
 
         buckets = bucket_by_day.get(day, [])
         observed = sum(int(r["observed_buckets"] or 0) for r in buckets)
-        usage_complete = bool(buckets) and all(
+        usage_complete = bool(buckets) and len(buckets) == cluster_count and all(
             r["collection_status"] == "success" and
             r["usage_available"] == r["observed_buckets"] and r["observed_buckets"] > 0
             for r in buckets
         )
-        quota_complete = bool(buckets) and all(
+        quota_complete = bool(buckets) and len(buckets) == cluster_count and all(
             r["collection_status"] == "success" and
             r["quota_available"] == r["observed_buckets"] and r["observed_buckets"] > 0
             for r in buckets
@@ -199,11 +199,11 @@ def get_bucket_usage_report_history(start_date: date | None = None, end_date: da
     points = []
     for day in _days(start, end):
         clusters = by_day.get(day, [])
-        usage_complete = bool(clusters) and all(
+        usage_complete = bool(clusters) and len(clusters) == cluster_count and all(
             r["collection_status"] == "success" and r["usage_available"] == r["observed_buckets"]
             and r["observed_buckets"] > 0 for r in clusters
         )
-        quota_complete = bool(clusters) and all(
+        quota_complete = bool(clusters) and len(clusters) == cluster_count and all(
             r["collection_status"] == "success" and r["quota_available"] == r["observed_buckets"]
             and r["observed_buckets"] > 0 for r in clusters
         )
