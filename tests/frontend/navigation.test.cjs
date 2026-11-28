@@ -92,6 +92,20 @@ async function run() {
   assert.ok(cssSource.includes(".infra-compact-toolbar .time-range-popover,.heading-actions .time-range-popover,.panel-header-actions .time-range-popover{left:auto;right:0}"),"Right-aligned popovers should stay aligned within the viewport");
   assert.ok(fs.readFileSync(path.join(root,"app/static/app.js"),"utf8").includes('panel("Bucket usage and quota trend"'),"Bucket trend controls should be rendered in the chart header");
   window.eval(fs.readFileSync(path.join(root, "app/static/app.js"), "utf8"));
+
+  // Reports historical filters use the compact dashboard dropdown, with custom dates hidden until requested.
+  const defaultReportRangeMarkup=window.reportHistoryToolbar("provisioned");
+  assert.ok(defaultReportRangeMarkup.includes('class="report-history-dropdown"'),"Report history selector should use compact dropdown UX");
+  assert.ok(defaultReportRangeMarkup.includes("Last 90 days"),"Default report range should be shown in the selector summary");
+  assert.equal(defaultReportRangeMarkup.includes('type="date"'),false,"Custom date inputs should not be permanently visible");
+  window.document.querySelector("#content").innerHTML='<section id="report-history"><div class="report-history-toolbar">'+defaultReportRangeMarkup+'</div></section>';
+  window.document.querySelector("[data-report-history-custom-toggle='provisioned']").click();
+  const openedCustomRange=window.document.querySelector("[data-report-history-custom='provisioned']");
+  assert.ok(openedCustomRange,"Clicking Custom should reveal the date form");
+  assert.ok(openedCustomRange.elements.start_date.value,"Custom range start should initialize from the active preset");
+  assert.ok(openedCustomRange.elements.end_date.value,"Custom range end should initialize from the active preset");
+  assert.equal(window.document.querySelector(".report-history-dropdown").open,true,"Custom selection should open the dropdown");
+
   window.eval(fs.readFileSync(path.join(root, "app/static/prometheus-connections.js"), "utf8"));
   window.eval(fs.readFileSync(path.join(root, "app/static/backfill-jobs.js"), "utf8"));
 
