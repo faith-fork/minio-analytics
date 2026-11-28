@@ -13,6 +13,11 @@ from app.database.database import transaction
 from app.services.capacity_report import get_consolidated_capacity_report, get_capacity_factors
 from app.services.bucket_usage_report import get_consolidated_bucket_usage_report
 from app.services.raw_capacity_report import get_consolidated_raw_capacity_report
+from app.services.report_history import (
+    get_provisioned_report_history,
+    get_bucket_usage_report_history,
+    get_raw_capacity_report_history,
+)
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -176,6 +181,45 @@ def overview(_: dict = Depends(get_current_user)) -> dict:
         },
         "cluster_items": [_dict(r) for r in cluster_rows],
     }
+
+
+@router.get("/capacity-report/history")
+def consolidated_capacity_report_history(
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    _: dict = Depends(get_current_user),
+) -> dict:
+    """Historical consolidated provisioned report series."""
+    try:
+        return get_provisioned_report_history(start_date, end_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/bucket-usage-report/history")
+def consolidated_bucket_usage_report_history(
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    _: dict = Depends(get_current_user),
+) -> dict:
+    """Historical consolidated bucket usage series."""
+    try:
+        return get_bucket_usage_report_history(start_date, end_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/raw-capacity-report/history")
+def consolidated_raw_capacity_report_history(
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    _: dict = Depends(get_current_user),
+) -> dict:
+    """Historical consolidated raw capacity series."""
+    try:
+        return get_raw_capacity_report_history(start_date, end_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/capacity-report")
