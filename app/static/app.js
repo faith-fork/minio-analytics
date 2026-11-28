@@ -72,7 +72,7 @@ function reportHistoryBounds(reportKey){
   const range=state.reportHistoryRanges[reportKey]||{preset:"90d",custom:false};
   const today=new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Kolkata"});
   const end=range.custom?range.endDate:today;
-  const start=range.custom?range.startDate:(()=>{const d=new Date(end+"T00:00:00+05:30");d.setUTCDate(d.getUTCDate()-(REPORT_HISTORY_PRESETS.find(x=>x[0]===range.preset)?.[1]||90)+1);return d.toISOString().slice(0,10);})();
+  const start=range.custom?range.startDate:(()=>{const d=new Date(end+"T00:00:00Z");d.setUTCDate(d.getUTCDate()-(REPORT_HISTORY_PRESETS.find(x=>x[0]===range.preset)?.[1]||90)+1);return d.toISOString().slice(0,10);})();
   return {startDate:start,endDate:end};
 }
 function reportHistoryToolbar(reportKey){
