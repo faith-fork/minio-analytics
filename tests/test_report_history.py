@@ -81,3 +81,17 @@ def test_bucket_history_is_withheld_without_successful_collection_run(viewer_cli
     assert point["used_bytes"]==600
     assert point["quota_bytes"]==3000
     assert point["utilization_pct"]==20
+
+def test_bucket_history_withholds_fleet_total_when_cluster_coverage_is_missing(viewer_client: TestClient):
+    with transaction() as connection:
+        connection.execute("INSERT INTO clusters(id,location_id,name) VALUES('cluster-2','LOC1','Cluster 2')")
+        connection.execute(
+            """INSERT INTO collection_runs(run_id,snapshot_date,cluster_id,started_at,finished_at,status,metrics_collected)
+               VALUES('run-1','2026-01-01','cluster-1','2026-01-01T00:00:00Z','2026-01-01T00:10:00Z','success',3)"""
+        )
+    data=viewer_client.get("/api/analytics/bucket-usage-report/history",params={"start_date":"2026-01-01","end_date":"2026-01-01"}).json()
+    point=data["points"][0]
+    assert point["coverage"]["enabled_clusters"]==2
+    assert point["coverage"]["clusters_with_bucket_records"]==1
+    assert point["used_bytes"] is None
+    assert point["quota_bytes"] is None
