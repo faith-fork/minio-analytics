@@ -95,3 +95,16 @@ def test_bucket_history_withholds_fleet_total_when_cluster_coverage_is_missing(v
     assert point["coverage"]["clusters_with_bucket_records"]==1
     assert point["used_bytes"] is None
     assert point["quota_bytes"] is None
+
+def test_bucket_history_handles_zero_quota_without_division(viewer_client: TestClient):
+    with transaction() as connection:
+        connection.execute("UPDATE bucket_daily_metrics SET quota_bytes=0")
+        connection.execute(
+            """INSERT INTO collection_runs(run_id,snapshot_date,cluster_id,started_at,finished_at,status,metrics_collected)
+               VALUES('run-zero-quota','2026-01-01','cluster-1','2026-01-01T00:00:00Z','2026-01-01T00:10:00Z','success',3)"""
+        )
+    data=viewer_client.get("/api/analytics/bucket-usage-report/history",params={"start_date":"2026-01-01","end_date":"2026-01-01"}).json()
+    point=data["points"][0]
+    assert point["used_bytes"]==600
+    assert point["quota_bytes"]==0
+    assert point["utilization_pct"] is None
