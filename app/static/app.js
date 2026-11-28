@@ -569,6 +569,7 @@ async function showCluster(id,days=90,startDate=null,endDate=null,tab=state.clus
     return;
   }
   if(tab==="objects"){
+    const toolbar=rangeControl(days,"cluster",id);
     const labels=series.map(r=>dateLabel(r.snapshot_date));
     const objectTrend=series.map(r=>r.bucket_object_count);
     const versionTrend=series.map(r=>r.bucket_version_count);
