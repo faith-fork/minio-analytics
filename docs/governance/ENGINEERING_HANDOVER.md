@@ -605,3 +605,22 @@ Do not mark a candidate as the new baseline unless the Product Owner confirms ac
 - Workflow run **46113533961** (run #1338) completed successfully on handover commit `68112b8824e255a2a0c7281b7a251c60774af12e`: Python 3.12 tests and frontend syntax/DOM regression jobs both passed.
 - The PR branch subsequently received a documentation-only Preservation Ledger update at head `54c90294a14da700aa8e4f54270e7b3f3e6ddffe`. No workflow run was returned for this latest exact head; therefore CI is **not verified on the latest PR head**.
 - PR #77 remains open/draft and is not merged. No application deployment is involved.
+
+
+## 26. Detailed branch ancestry audit — 28 Nov 2026
+
+GitHub compare results establish:
+- Cluster workspace branch `feature/cluster-detail-workspace` is **26 commits ahead** of `feature/auth-foundation` (merge base is auth-foundation SHA `50a610f879c97cb008ecc2e9d16a20c66a4bad04`).
+- Reports alignment branch `fix/report-history-filter-right-alignment` is **32 commits ahead** of the same auth-foundation baseline.
+- Comparing Cluster branch to Reports alignment branch is **diverged**: 32 commits ahead on Reports side and 26 commits behind, with the same merge base. This confirms neither feature branch contains the other.
+- GitHub reports both PR #71 and PR #76 as open and mergeable at metadata level. That is not a conflict-free code merge guarantee.
+
+### Recovery merge design
+- Recovery target must be a separate branch, not `feature/auth-foundation`, either PR branch, or lab-validation branch.
+- Recommended starting tree: PR #71 head, because this restores the previously approved Cluster workspace structure as the baseline for integration.
+- Integrate the full Reports selector branch (`fix/report-history-filter-right-alignment`, which includes #74, #75, #76) as a second parent/merge operation in a local Git workspace.
+- Resolve shared files intentionally: `app/api/analytics.py`, `app/static/app.js`, `app/static/app.css`, `tests/frontend/navigation.test.cjs`. Preserve non-overlapping report-history service/tests/design docs and cluster collector/persistence/tests/design docs.
+- Do not use GitHub API file overwrites as a substitute for three-way merge.
+
+### Workspace limitation and next action
+The current assistant container cannot resolve GitHub DNS (verified by failed `git ls-remote`), and the connected GitHub API tools do not expose a merge-capable checkout or conflict-resolution runner. A full safe reconciliation cannot be completed in this workspace. The lab VM previously demonstrated working `git fetch/pull`, so the next safe step is to create a **separate recovery clone directory** on that VM (not the live app directory), fetch both branches, create a recovery branch from PR #71, and perform a no-commit merge of the Reports branch. If conflicts occur, provide their status and conflict hunks for reviewed resolution. No files in the live deployment directory should be modified, and no service should be restarted.
