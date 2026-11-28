@@ -98,18 +98,18 @@ async function run() {
   assert.ok(defaultReportRangeMarkup.includes('class="report-history-dropdown"'),"Report history selector should use compact dropdown UX");
   assert.ok(defaultReportRangeMarkup.includes("Last 90 days"),"Default report range should be shown in the selector summary");
   assert.equal(defaultReportRangeMarkup.includes('type="date"'),false,"Custom date inputs should not be permanently visible");
-  window.state.reportHistoryRanges.provisioned={custom:true,startDate:"2026-09-01",endDate:"2026-11-28"};
+  window.eval('state.reportHistoryRanges.provisioned={custom:true,startDate:"2026-09-01",endDate:"2026-11-28"}');
   const customReportRangeMarkup=window.reportHistoryToolbar("provisioned");
   assert.ok(customReportRangeMarkup.includes('data-report-history-custom-toggle="provisioned"'),"Custom range should be available from the dropdown");
   assert.ok(customReportRangeMarkup.includes('type="date"'),"Date fields should appear only after Custom is selected");
   assert.ok(customReportRangeMarkup.includes('open>'),"Custom selection should expand the range popover");
-  window.state.reportHistoryRanges.provisioned={preset:"90d",custom:false};
+  window.eval('state.reportHistoryRanges.provisioned={preset:"90d",custom:false}');
   window.document.querySelector("#content").innerHTML='<section id="report-history"><div class="report-history-toolbar">'+window.reportHistoryToolbar("provisioned")+'</div></section>';
   window.document.querySelector("[data-report-history-custom-toggle='provisioned']").click();
   const openedCustomRange=window.document.querySelector("[data-report-history-custom='provisioned']");
   assert.ok(openedCustomRange,"Clicking Custom should reveal the date form");
-  assert.equal(openedCustomRange.elements.start_date.value,window.reportHistoryBounds("provisioned").startDate,"Custom range should initialize from the selected preset's start date");
-  assert.equal(openedCustomRange.elements.end_date.value,window.reportHistoryBounds("provisioned").endDate,"Custom range should initialize from the selected preset's end date");
+  assert.equal(openedCustomRange.elements.start_date.value,window.eval('reportHistoryBounds("provisioned").startDate'),"Custom range should initialize from the selected preset's start date");
+  assert.equal(openedCustomRange.elements.end_date.value,window.eval('reportHistoryBounds("provisioned").endDate'),"Custom range should initialize from the selected preset's end date");
   assert.equal(window.document.querySelector(".report-history-dropdown").open,true,"Custom selection should open the dropdown");
 
   window.eval(fs.readFileSync(path.join(root, "app/static/prometheus-connections.js"), "utf8"));
