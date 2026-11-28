@@ -11,6 +11,8 @@ from app.config.loader import ClusterConfig, LocationConfig
 BUCKET_USAGE_METRIC = "minio_cluster_usage_buckets_total_bytes"
 BUCKET_QUOTA_METRIC = "minio_cluster_usage_buckets_quota_total_bytes"
 BUCKET_OBJECTS_METRIC = "minio_cluster_usage_buckets_objects_count"
+BUCKET_VERSIONS_METRIC = "minio_cluster_usage_buckets_versions_count"
+BUCKET_DELETE_MARKERS_METRIC = "minio_cluster_usage_buckets_delete_markers_count"
 BUCKET_OBJECT_SIZE_METRIC = "minio_cluster_usage_buckets_object_size_distribution"
 BUCKET_VERSION_DISTRIBUTION_METRIC = (
     "minio_cluster_usage_buckets_object_version_count_distribution"
@@ -29,6 +31,8 @@ class BucketSnapshot:
     used_bytes: float
     quota_bytes: Optional[float]
     object_count: Optional[int]
+    version_count: Optional[int] = None
+    delete_marker_count: Optional[int] = None
     object_size_distribution: dict[str, int] = field(default_factory=dict)
     version_count_distribution: dict[str, int] = field(default_factory=dict)
     metrics_available: bool = True
@@ -124,6 +128,12 @@ def collect_bucket_snapshots(
         objects = _deduplicate(
             prom, BUCKET_OBJECTS_METRIC, selector, ("bucket",), timestamp
         )
+        versions = _deduplicate(
+            prom, BUCKET_VERSIONS_METRIC, selector, ("bucket",), timestamp
+        )
+        delete_markers = _deduplicate(
+            prom, BUCKET_DELETE_MARKERS_METRIC, selector, ("bucket",), timestamp
+        )
         object_sizes = _deduplicate(
             prom,
             BUCKET_OBJECT_SIZE_METRIC,
@@ -168,6 +178,12 @@ def collect_bucket_snapshots(
                     quota_bytes=quotas.get((bucket_name,)),
                     object_count=(
                         int(object_value) if object_value is not None else None
+                    ),
+                    version_count=(
+                        int(versions[(bucket_name,)]) if (bucket_name,) in versions else None
+                    ),
+                    delete_marker_count=(
+                        int(delete_markers[(bucket_name,)]) if (bucket_name,) in delete_markers else None
                     ),
                     object_size_distribution=size_distribution,
                     version_count_distribution=version_counts,

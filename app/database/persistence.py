@@ -112,6 +112,8 @@ def persist_bucket_snapshots(
                 "used_bytes": item.used_bytes,
                 "quota_bytes": item.quota_bytes,
                 "object_count": item.object_count,
+                "version_count": item.version_count,
+                "delete_marker_count": item.delete_marker_count,
                 "metrics_available": int(bool(item.metrics_available)),
                 "error_text": item.error_text,
                 "object_size_distribution_json": json.dumps(
@@ -182,13 +184,15 @@ def persist_bucket_snapshots(
                     version_count_distribution_json,
                     metrics_available, error_text
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(snapshot_date, bucket_id) DO UPDATE SET
                     snapshot_ts = excluded.snapshot_ts,
                     collected_at = excluded.collected_at,
                     used_bytes = excluded.used_bytes,
                     quota_bytes = excluded.quota_bytes,
                     object_count = excluded.object_count,
+                    version_count = excluded.version_count,
+                    delete_marker_count = excluded.delete_marker_count,
                     object_size_distribution_json =
                         excluded.object_size_distribution_json,
                     version_count_distribution_json =
@@ -207,6 +211,8 @@ def persist_bucket_snapshots(
                     row["used_bytes"],
                     row["quota_bytes"],
                     row["object_count"],
+                    row["version_count"],
+                    row["delete_marker_count"],
                     row["object_size_distribution_json"],
                     row["version_count_distribution_json"],
                     row["metrics_available"],
