@@ -599,3 +599,9 @@ Before the next candidate is accepted, verify in the same deployed build:
 - [ ] CI passed on exact candidate SHA and complete diff reviewed
 
 Do not mark a candidate as the new baseline unless the Product Owner confirms acceptance after these checks.
+
+
+### Documentation PR validation update — 28 Nov 2026
+- Workflow run **46113533961** (run #1338) completed successfully on handover commit `68112b8824e255a2a0c7281b7a251c60774af12e`: Python 3.12 tests and frontend syntax/DOM regression jobs both passed.
+- The PR branch subsequently received a documentation-only Preservation Ledger update at head `54c90294a14da700aa8e4f54270e7b3f3e6ddffe`. No workflow run was returned for this latest exact head; therefore CI is **not verified on the latest PR head**.
+- PR #77 remains open/draft and is not merged. No application deployment is involved.
