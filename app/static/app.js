@@ -67,7 +67,7 @@ function showLogin(){state.user=null;$("#app-shell").classList.add("hidden");$("
 function showApp(user){state.user=user;$("#login-screen").classList.add("hidden");$("#app-shell").classList.remove("hidden");$("#user-name").textContent=user.username;$("#user-role").textContent=user.role.toUpperCase();$("#user-avatar").textContent=user.username.slice(0,1).toUpperCase();$$(".admin-only").forEach(el=>el.classList.toggle("hidden",user.role!=="admin"));$$(".master-admin-only").forEach(el=>el.classList.toggle("hidden",!user.is_master_admin));}
 function pageHead(title,subtitle,actions=""){return `<div class="page-heading"><div><h1>${title}</h1><p>${subtitle}</p></div><div class="heading-actions">${actions}</div></div>`;}
 
-const REPORT_HISTORY_PRESETS=[["7d",7,"7 days"],["30d",30,"30 days"],["90d",90,"90 days"],["6m",183,"6 months"],["1y",365,"1 year"],["2y",730,"2 years"],["5y",1825,"5 years"],["10y",3650,"All history"]];
+const REPORT_HISTORY_PRESETS=[["7d",7,"7 days"],["30d",30,"30 days"],["90d",90,"90 days"],["6m",183,"6 months"],["1y",365,"1 year"],["2y",730,"2 years"],["5y",1825,"5 years"],["10y",3650,"10 years / all available"]];
 function reportHistoryBounds(reportKey){
   const range=state.reportHistoryRanges[reportKey]||{preset:"90d",custom:false};
   const today=new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Kolkata"});
