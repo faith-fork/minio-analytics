@@ -1,7 +1,7 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
 if(window.Chart&&window.ChartZoom){Chart.register(ChartZoom);Chart.defaults.plugins.zoom={pan:{enabled:true,mode:"x",modifierKey:"shift"},zoom:{wheel:{enabled:true,speed:0.08},drag:{enabled:true,backgroundColor:"rgba(19,165,139,.12)",borderColor:"#13a58b",borderWidth:1},pinch:{enabled:true},mode:"x"}};}
-const state = { user:null, view:"overview", masterConfigTab:"general", masterGeneralTab:"collection", backupPageSize:10, backupOffset:0, overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:null,driveView:"graphs",driveNodeFilter:"all",driveFsFilter:"all",driveInventoryPage:1,driveSortKey:"node",driveSortDirection:1,networkHours:1,dashboardTimeRangePreset:"1h",historicalTimeRange:{mode:"relative",preset:"1h",startTs:null,endTs:null,timezone:"Asia/Kolkata"},historicalTimeRetentionDays:3,networkNodeFilter:"all",networkSelectedInterface:"all" };
+const state = { user:null, view:"overview", masterConfigTab:"general", masterGeneralTab:"collection", backupPageSize:10, backupOffset:0, overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, reportHistoryRanges:{}, reportHistoryChartIds:[], bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:null,driveView:"graphs",driveNodeFilter:"all",driveFsFilter:"all",driveInventoryPage:1,driveSortKey:"node",driveSortDirection:1,networkHours:1,dashboardTimeRangePreset:"1h",historicalTimeRange:{mode:"relative",preset:"1h",startTs:null,endTs:null,timezone:"Asia/Kolkata"},historicalTimeRetentionDays:3,networkNodeFilter:"all",networkSelectedInterface:"all" };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
 
 const HISTORICAL_TIME_PRESETS = [
@@ -66,6 +66,143 @@ function toast(message,error=false){const el=document.createElement("div");el.cl
 function showLogin(){state.user=null;$("#app-shell").classList.add("hidden");$("#login-screen").classList.remove("hidden");}
 function showApp(user){state.user=user;$("#login-screen").classList.add("hidden");$("#app-shell").classList.remove("hidden");$("#user-name").textContent=user.username;$("#user-role").textContent=user.role.toUpperCase();$("#user-avatar").textContent=user.username.slice(0,1).toUpperCase();$$(".admin-only").forEach(el=>el.classList.toggle("hidden",user.role!=="admin"));$$(".master-admin-only").forEach(el=>el.classList.toggle("hidden",!user.is_master_admin));}
 function pageHead(title,subtitle,actions=""){return `<div class="page-heading"><div><h1>${title}</h1><p>${subtitle}</p></div><div class="heading-actions">${actions}</div></div>`;}
+
+const REPORT_HISTORY_PRESETS=[["7d",7,"7 days"],["30d",30,"30 days"],["90d",90,"90 days"],["6m",183,"6 months"],["1y",365,"1 year"],["2y",730,"2 years"],["5y",1825,"5 years"],["10y",3650,"All history"]];
+function reportHistoryBounds(reportKey){
+  const range=state.reportHistoryRanges[reportKey]||{preset:"90d",custom:false};
+  const today=new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Kolkata"});
+  const end=range.custom?range.endDate:today;
+  const start=range.custom?range.startDate:(()=>{const d=new Date(end+"T00:00:00+05:30");d.setDate(d.getDate()-(REPORT_HISTORY_PRESETS.find(x=>x[0]===range.preset)?.[1]||90)+1);return d.toLocaleDateString("en-CA",{timeZone:"Asia/Kolkata"});})();
+  return {startDate:start,endDate:end};
+}
+function reportHistoryToolbar(reportKey){
+  const range=state.reportHistoryRanges[reportKey]||{preset:"90d",custom:false};
+  const bounds=reportHistoryBounds(reportKey);
+  return '<div class="report-history-toolbar"><div class="report-history-presets">'+REPORT_HISTORY_PRESETS.map(([key,,label])=>'<button type="button" data-report-history-range="'+key+'" data-report-history-key="'+reportKey+'" class="'+(!range.custom&&range.preset===key?'active':'')+'">'+label+'</button>').join("")+'</div><form class="report-history-custom" data-report-history-custom="'+reportKey+'"><label>From<input type="date" name="start_date" value="'+bounds.startDate+'" required></label><label>To<input type="date" name="end_date" value="'+bounds.endDate+'" required></label><button class="subtle-button" type="submit">Apply</button></form></div>';
+}
+function reportHistorySection(reportKey){
+  return '<section id="report-history" class="report-history-section"><div class="report-history-heading"><div><h2>Historical Trends</h2><p>Daily SQLite snapshots · historical graphs only (current KPIs and table are unchanged)</p></div></div>'+reportHistoryToolbar(reportKey)+'<div class="report-history-content"><div class="loading-state">Loading historical trends…</div></div></section>';
+}
+function destroyReportHistoryCharts(){
+  const ids=new Set(state.reportHistoryChartIds||[]);
+  state.charts=state.charts.filter(instance=>{if(ids.has(instance.canvas?.id)){instance.destroy();return false;}return true;});
+  state.reportHistoryChartIds=[];
+}
+function reportHistoryChart(id,labels,datasets,unit=""){
+  const canvas=$("#"+id);if(!canvas||!window.Chart)return;
+  const colors=["#13a58b","#4779d8","#d9922e","#7a66d1","#d45b5b"];
+  const cfg={
+    type:"line",
+    data:{labels,datasets:datasets.map((d,i)=>({
+      label:d.label,data:d.data,borderColor:d.color||colors[i%colors.length],
+      backgroundColor:d.color||colors[i%colors.length],
+      borderWidth:d.width||2,pointRadius:labels.length>60?1:2.5,pointHoverRadius:4,
+      tension:0.18,fill:!!d.fill,stack:d.stack, borderDash:d.dash||[],
+      spanGaps:false
+    }))},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
+      plugins:{legend:{position:"bottom",labels:{usePointStyle:true,boxWidth:7,font:{size:10}}},
+        tooltip:{callbacks:{label:ctx=>ctx.dataset.label+": "+(ctx.parsed.y==null?"—":new Intl.NumberFormat("en-IN",{maximumFractionDigits:2}).format(ctx.parsed.y)+unit)}}},
+      scales:{x:{grid:{display:false},ticks:{autoSkip:true,maxTicksLimit:12,maxRotation:45,minRotation:0,font:{size:9},color:"#94a0af"}},
+        y:{stacked:datasets.some(d=>d.stack),grid:{color:"#edf1f5"},ticks:{font:{size:9},color:"#94a0af",callback:v=>new Intl.NumberFormat("en-IN",{maximumFractionDigits:2}).format(v)+unit}}}}
+  };
+  const instance=new Chart(canvas,cfg);state.charts.push(instance);state.reportHistoryChartIds.push(id);ensureChartControls(instance);
+}
+function reportHistoryDates(points){
+  return points.map(p=>new Date(p.date+"T00:00:00+05:30").toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"2-digit",timeZone:"Asia/Kolkata"}));
+}
+function reportHistoryValues(points,key,divisor=1){
+  return points.map(p=>p[key]==null?null:Number(p[key])/divisor);
+}
+function reportHistoryNoData(points,keys){
+  return !points.length||keys.every(key=>points.every(p=>p[key]==null));
+}
+function reportHistoryPanel(title,subtitle,chartId){
+  return panel(title,subtitle,'<div class="chart-wrap report-history-chart"><canvas id="'+chartId+'"></canvas></div>');
+}
+async function renderReportHistory(reportKey){
+  const section=$("#report-history");if(!section)return;
+  destroyReportHistoryCharts();
+  const bounds=reportHistoryBounds(reportKey);
+  const apiKey=reportKey==="provisioned"?"capacity-report":reportKey==="bucket-usage"?"bucket-usage-report":"raw-capacity-report";
+  const url="/api/analytics/"+apiKey+"/history?start_date="+encodeURIComponent(bounds.startDate)+"&end_date="+encodeURIComponent(bounds.endDate);
+  const content=section.querySelector(".report-history-content");
+  content.innerHTML='<div class="loading-state">Loading historical trends…</div>';
+  try{
+    const data=await api(url),points=data.points||[],labels=reportHistoryDates(points);
+    let cards="",notice="";
+    if(reportKey==="provisioned"){
+      const ti=1024**4;
+      cards=reportHistoryPanel("Capacity Composition","Usable used and free capacity · installed capacity overlay","report-provisioned-capacity")+
+        reportHistoryPanel("Utilization Trend","Fleet used capacity ÷ installed capacity · 70% and 80% thresholds","report-provisioned-utilization")+
+        reportHistoryPanel("Bucket Consumption vs Quota","Observed historical bucket metrics · quota/usage availability may be incomplete","report-provisioned-buckets");
+      if(!reportHistoryNoData(points,["usable_used_bytes","usable_free_bytes"])){
+        reportHistoryChart("report-provisioned-capacity",labels,[
+          {label:"Usable Used (TiB)",data:reportHistoryValues(points,"usable_used_bytes",ti),color:"#13a58b",fill:true,stack:"usable"},
+          {label:"Usable Free (TiB)",data:reportHistoryValues(points,"usable_free_bytes",ti),color:"#4779d8",fill:true,stack:"usable"},
+          {label:"Installed (TiB)",data:reportHistoryValues(points,"installed_capacity_bytes",ti),color:"#d9922e",fill:false,width:2}
+        ]," TiB");
+      }
+      if(!reportHistoryNoData(points,["utilization_pct"])){
+        reportHistoryChart("report-provisioned-utilization",labels,[
+          {label:"Fleet Utilization %",data:reportHistoryValues(points,"utilization_pct"),color:"#13a58b"},
+          {label:"70% Threshold",data:points.map(()=>70),color:"#d9922e",dash:[6,4],width:1},
+          {label:"80% Threshold",data:points.map(()=>80),color:"#d45b5b",dash:[6,4],width:1}
+        ],"%");
+      }
+      if(!reportHistoryNoData(points,["bucket_used_bytes","bucket_quota_bytes"])){
+        reportHistoryChart("report-provisioned-buckets",labels,[
+          {label:"Used Bucket (TiB)",data:reportHistoryValues(points,"bucket_used_bytes",ti),color:"#13a58b"},
+          {label:"Quota (TiB)",data:reportHistoryValues(points,"bucket_quota_bytes",ti),color:"#4779d8"},
+          {label:"Remaining Quota (TiB)",data:reportHistoryValues(points,"bucket_quota_remaining_bytes",ti),color:"#d9922e"}
+        ]," TiB");
+      }
+      notice=data.bucket_history_limitation||"";
+    }else if(reportKey==="bucket-usage"){
+      const ti=1024**4;
+      cards=reportHistoryPanel("Bucket Consumption Trend","Total observed bucket used capacity","report-bucket-used")+
+        reportHistoryPanel("Quota vs Consumption","Observed bucket usage compared with quota","report-bucket-quota")+
+        reportHistoryPanel("Quota Utilization","Used ÷ quota · available only when both metrics are valid","report-bucket-utilization");
+      if(!reportHistoryNoData(points,["used_bytes"]))reportHistoryChart("report-bucket-used",labels,[{label:"Used (TiB)",data:reportHistoryValues(points,"used_bytes",ti),color:"#13a58b"}]," TiB");
+      if(!reportHistoryNoData(points,["used_bytes","quota_bytes"]))reportHistoryChart("report-bucket-quota",labels,[{label:"Used (TiB)",data:reportHistoryValues(points,"used_bytes",ti),color:"#13a58b"},{label:"Quota (TiB)",data:reportHistoryValues(points,"quota_bytes",ti),color:"#4779d8"}]," TiB");
+      if(!reportHistoryNoData(points,["utilization_pct"]))reportHistoryChart("report-bucket-utilization",labels,[{label:"Quota Utilization %",data:reportHistoryValues(points,"utilization_pct"),color:"#d9922e"}],"%");
+      notice=data.coverage_limitation||"";
+    }else{
+      const ti=1024**4;
+      cards=reportHistoryPanel("RAW Capacity Composition","Raw used and free capacity · total capacity overlay","report-raw-capacity")+
+        reportHistoryPanel("RAW Utilization Trend","Raw used ÷ raw total capacity","report-raw-utilization")+
+        reportHistoryPanel("RAW Consumption and Capacity","Used capacity versus total capacity changes","report-raw-used-capacity");
+      if(!reportHistoryNoData(points,["raw_used_bytes","raw_free_bytes"]))reportHistoryChart("report-raw-capacity",labels,[
+        {label:"Raw Used (TiB)",data:reportHistoryValues(points,"raw_used_bytes",ti),color:"#13a58b",fill:true,stack:"raw"},
+        {label:"Raw Free (TiB)",data:reportHistoryValues(points,"raw_free_bytes",ti),color:"#4779d8",fill:true,stack:"raw"},
+        {label:"Raw Total (TiB)",data:reportHistoryValues(points,"raw_total_bytes",ti),color:"#d9922e",fill:false,width:2}
+      ]," TiB");
+      if(!reportHistoryNoData(points,["raw_used_pct"]))reportHistoryChart("report-raw-utilization",labels,[{label:"Raw Utilization %",data:reportHistoryValues(points,"raw_used_pct"),color:"#13a58b"}],"%");
+      if(!reportHistoryNoData(points,["raw_used_bytes","raw_total_bytes"]))reportHistoryChart("report-raw-used-capacity",labels,[{label:"Raw Used (TiB)",data:reportHistoryValues(points,"raw_used_bytes",ti),color:"#13a58b"},{label:"Raw Total (TiB)",data:reportHistoryValues(points,"raw_total_bytes",ti),color:"#4779d8"}]," TiB");
+    }
+    const coverage=points.length?'<div class="report-history-coverage"><strong>Historical range:</strong> '+esc(bounds.startDate)+' → '+esc(bounds.endDate)+' · '+fmt(points.length,0)+' daily points'+(data.enabled_cluster_count!=null?' · '+fmt(data.enabled_cluster_count,0)+' enabled clusters':'')+'</div>':'';
+    content.innerHTML=(reportHistoryNoData(points,reportKey==="provisioned"?["usable_used_bytes","usable_free_bytes","bucket_used_bytes"]:reportKey==="bucket-usage"?["used_bytes","quota_bytes"]:["raw_used_bytes","raw_free_bytes","raw_total_bytes"])?'<div class="empty-state">No complete historical snapshots are available in the selected period.</div>':cards)+coverage+(notice?'<div class="report-history-note">'+esc(notice)+'</div>':'');
+    // Re-render charts after the canvas elements have been inserted.
+    if(cards&&content.querySelector("canvas")){
+      if(reportKey==="provisioned"){
+        if(!reportHistoryNoData(points,["usable_used_bytes","usable_free_bytes"]))reportHistoryChart("report-provisioned-capacity",labels,[{label:"Usable Used (TiB)",data:reportHistoryValues(points,"usable_used_bytes",1024**4),color:"#13a58b",fill:true,stack:"usable"},{label:"Usable Free (TiB)",data:reportHistoryValues(points,"usable_free_bytes",1024**4),color:"#4779d8",fill:true,stack:"usable"},{label:"Installed (TiB)",data:reportHistoryValues(points,"installed_capacity_bytes",1024**4),color:"#d9922e"}]," TiB");
+        if(!reportHistoryNoData(points,["utilization_pct"]))reportHistoryChart("report-provisioned-utilization",labels,[{label:"Fleet Utilization %",data:reportHistoryValues(points,"utilization_pct"),color:"#13a58b"},{label:"70% Threshold",data:points.map(()=>70),color:"#d9922e",dash:[6,4],width:1},{label:"80% Threshold",data:points.map(()=>80),color:"#d45b5b",dash:[6,4],width:1},"%");
+        if(!reportHistoryNoData(points,["bucket_used_bytes","bucket_quota_bytes"]))reportHistoryChart("report-provisioned-buckets",labels,[{label:"Used Bucket (TiB)",data:reportHistoryValues(points,"bucket_used_bytes",1024**4),color:"#13a58b"},{label:"Quota (TiB)",data:reportHistoryValues(points,"bucket_quota_bytes",1024**4),color:"#4779d8"},{label:"Remaining Quota (TiB)",data:reportHistoryValues(points,"bucket_quota_remaining_bytes",1024**4),color:"#d9922e"}]," TiB");
+      }else if(reportKey==="bucket-usage"){
+        if(!reportHistoryNoData(points,["used_bytes"]))reportHistoryChart("report-bucket-used",labels,[{label:"Used (TiB)",data:reportHistoryValues(points,"used_bytes",1024**4),color:"#13a58b"}]," TiB");
+        if(!reportHistoryNoData(points,["used_bytes","quota_bytes"]))reportHistoryChart("report-bucket-quota",labels,[{label:"Used (TiB)",data:reportHistoryValues(points,"used_bytes",1024**4),color:"#13a58b"},{label:"Quota (TiB)",data:reportHistoryValues(points,"quota_bytes",1024**4),color:"#4779d8"}]," TiB");
+        if(!reportHistoryNoData(points,["utilization_pct"]))reportHistoryChart("report-bucket-utilization",labels,[{label:"Quota Utilization %",data:reportHistoryValues(points,"utilization_pct"),color:"#d9922e"}],"%");
+      }else{
+        if(!reportHistoryNoData(points,["raw_used_bytes","raw_free_bytes"]))reportHistoryChart("report-raw-capacity",labels,[{label:"Raw Used (TiB)",data:reportHistoryValues(points,"raw_used_bytes",1024**4),color:"#13a58b",fill:true,stack:"raw"},{label:"Raw Free (TiB)",data:reportHistoryValues(points,"raw_free_bytes",1024**4),color:"#4779d8",fill:true,stack:"raw"},{label:"Raw Total (TiB)",data:reportHistoryValues(points,"raw_total_bytes",1024**4),color:"#d9922e"}]," TiB");
+        if(!reportHistoryNoData(points,["raw_used_pct"]))reportHistoryChart("report-raw-utilization",labels,[{label:"Raw Utilization %",data:reportHistoryValues(points,"raw_used_pct"),color:"#13a58b"}],"%");
+        if(!reportHistoryNoData(points,["raw_used_bytes","raw_total_bytes"]))reportHistoryChart("report-raw-used-capacity",labels,[{label:"Raw Used (TiB)",data:reportHistoryValues(points,"raw_used_bytes",1024**4),color:"#13a58b"},{label:"Raw Total (TiB)",data:reportHistoryValues(points,"raw_total_bytes",1024**4),color:"#4779d8"}]," TiB");
+      }
+    }
+  }catch(err){
+    content.innerHTML='<div class="empty-state report-history-error">Historical trends could not be loaded: '+esc(err.message)+' <button type="button" class="subtle-button" data-report-history-retry="'+reportKey+'">Retry</button></div>';
+  }
+}
+
 function reportTabs(active){const tabs=[["capacity-report","Consolidated Provisioned"],["bucket-usage-report","Consolidated Bucket Usage"],["raw-capacity-report","Consolidated RAW Capacity"]];return '<div class="report-tabs" role="tablist" aria-label="Consolidated reports">'+tabs.map(([view,label])=>'<button type="button" role="tab" aria-selected="'+(active===view)+'" class="'+(active===view?"active":"")+'" data-report-view="'+view+'">'+label+'</button>').join("")+'</div>';}
 function metric(label,value,foot,icon="◈",good=false){return `<div class="metric-card"><div class="metric-top"><span>${label}</span><span class="metric-icon">${icon}</span></div><div class="metric-value">${value}</div><div class="metric-foot ${good?"good":""}">${foot}</div></div>`;}
 function pill(status){const cls=status==="success"||status===true?"":status==="partial"?"warn":status==="failed"||status===false?"bad":"neutral";const label=status===true?"Available":status===false?"Unavailable":String(status??"Unknown");return `<span class="status-pill ${cls}"><i></i>${esc(label)}</span>`;}
