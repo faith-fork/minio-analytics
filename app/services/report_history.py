@@ -197,7 +197,8 @@ def get_bucket_usage_report_history(start_date: date | None = None, end_date: da
     for row in rows:
         by_day.setdefault(row["snapshot_date"], []).append(row)
     points = []
-    for day in _days(start, end):\n        clusters = by_day.get(day, [])
+    for day in _days(start, end):
+        clusters = by_day.get(day, [])
         usage_complete = bool(clusters) and all(
             r["collection_status"] == "success" and r["usage_available"] == r["observed_buckets"]
             and r["observed_buckets"] > 0 for r in clusters
