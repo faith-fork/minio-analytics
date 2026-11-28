@@ -174,14 +174,21 @@ def get_bucket_usage_report_history(start_date: date | None = None, end_date: da
                                THEN b.used_bytes ELSE NULL END) AS used_bytes,
                       SUM(CASE WHEN b.metrics_available=1 AND b.quota_bytes IS NOT NULL
                                THEN b.quota_bytes ELSE NULL END) AS quota_bytes,
-                      MAX(r.status) AS collection_status
+                      r.status AS collection_status
                FROM bucket_daily_metrics b
                JOIN clusters c ON c.id=b.cluster_id AND c.enabled=1
                JOIN locations l ON l.id=c.location_id AND l.enabled=1
-               LEFT JOIN collection_runs r ON r.cluster_id=b.cluster_id
-                    AND r.snapshot_date=b.snapshot_date
+               LEFT JOIN (
+                    SELECT cluster_id, snapshot_date, status,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY cluster_id, snapshot_date
+                               ORDER BY started_at DESC, id DESC
+                           ) AS rn
+                    FROM collection_runs
+                ) r ON r.cluster_id=b.cluster_id
+                    AND r.snapshot_date=b.snapshot_date AND r.rn=1
                WHERE b.snapshot_date BETWEEN ? AND ?
-               GROUP BY b.snapshot_date, b.cluster_id
+               GROUP BY b.snapshot_date, b.cluster_id, r.status
                ORDER BY b.snapshot_date, b.cluster_id""",
             (start, end),
         ).fetchall()
