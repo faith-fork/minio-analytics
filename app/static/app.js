@@ -88,6 +88,7 @@ function destroyReportHistoryCharts(){
   state.charts=state.charts.filter(instance=>{if(ids.has(instance.canvas?.id)){instance.destroy();return false;}return true;});
   state.reportHistoryChartIds=[];
 }
+function reportHistoryFillColor(hex){const value=String(hex||"#13a58b").replace("#","");const r=parseInt(value.slice(0,2),16),g=parseInt(value.slice(2,4),16),b=parseInt(value.slice(4,6),16);return "rgba("+r+","+g+","+b+",0.13)";}
 function reportHistoryChart(id,labels,datasets,unit=""){
   const canvas=$("#"+id);if(!canvas||!window.Chart)return;
   const colors=["#13a58b","#4779d8","#d9922e","#7a66d1","#d45b5b"];
@@ -95,7 +96,7 @@ function reportHistoryChart(id,labels,datasets,unit=""){
     type:"line",
     data:{labels,datasets:datasets.map((d,i)=>({
       label:d.label,data:d.data,borderColor:d.color||colors[i%colors.length],
-      backgroundColor:d.color||colors[i%colors.length],
+      backgroundColor:d.fill?reportHistoryFillColor(d.color||colors[i%colors.length]):(d.color||colors[i%colors.length]),
       borderWidth:d.width||2,pointRadius:labels.length>60?1:2.5,pointHoverRadius:4,
       tension:0.18,fill:!!d.fill,stack:d.stack, borderDash:d.dash||[],
       spanGaps:false
