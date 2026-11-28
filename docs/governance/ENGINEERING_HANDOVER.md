@@ -563,3 +563,39 @@ After recovery/reconciliation, perform a full graph/filter inventory and impleme
 
 ### Merge/deployment boundary
 PR #77 is documentation only and remains draft. The recovery and time-range feature work is authorized, but no existing PR merge, branch rewrite, or lab deployment is authorized without a separate explicit approval at the appropriate gate.
+
+
+## 25. Preservation ledger for the current UI work — 28 November 2026
+
+| Capability/change | Reference | Evidence/status | Preservation requirement |
+|---|---|---|---|
+| Cluster Detail four-workspace redesign | PR #71, head `89604dea786438103c7d684d8fcb28e04a2726cb` | CI passed run 46105289555; open/draft; separately developed on cluster-workspace branch; lab evidence is historical and must be re-confirmed against the currently deployed SHA | Must be present in any recovery candidate; all four workspaces and their routes/content must survive |
+| Cluster Object & Bucket Analysis trend filter correction | Commit in PR #71 head | Commit description records lab validation/browser acceptance | Keep daily range and custom date filtering; histogram exact-date picker remains independent |
+| Reports historical analytics | PR #74, head `0cbc27fa1ba9123825ec2752e38819ebbd4c7a52` | CI passed run 1332; 234 Python tests and frontend syntax/DOM tests passed; lab deployment evidence exists in the current conversation | Keep historical graph sets and API coverage semantics; latest KPI/table/filter/export behavior unchanged |
+| Reports compact filter UX | PR #75, head `25f78b2059f80ceda99877f997e53975474a002a` | CI passed run 1336; user previously accepted the deployed behavior | Keep presets in dropdown; custom fields hidden until requested; preset immediate apply; custom explicit Apply |
+| Reports selector right placement | PR #76, head `6e1e4206238a0eaf15b5b67c8ce0f7db8c215550` | Lab deployed and screenshot evidence provided in current conversation; exact-head CI not verified by returned workflow lookup | Keep selector in the Historical Trends heading row, right-aligned; popover right-aligned and viewport-safe |
+| Common historical/live time-range UX | Product Owner approval in current conversation; recorded in PR #77 handover | Design/implementation pending | Apply approved presets and shared UX only after baseline reconciliation; live and historical semantics must not be conflated |
+
+### Lab branch checkpoint (reported, not independently queried from VM)
+- Branch: `lab/report-history-filter-right-alignment-validation`
+- Commit: `6e1e4206238a0eaf15b5b67c8ce0f7db8c215550`
+- Service: reported active after restart.
+- Screenshot: Reports Historical Trends shows the selector aligned to the right of its section heading; custom-range popover opens from the right-aligned trigger.
+- **This checkpoint does not contain the PR #71 Cluster Detail workspace redesign.** Therefore it is a feature-validation deployment, not a product baseline.
+
+### Candidate acceptance checklist (mandatory)
+Before the next candidate is accepted, verify in the same deployed build:
+- [ ] Cluster overview infrastructure status and all KPI/summary cards
+- [ ] Capacity & Forecast workspace and all existing charts
+- [ ] Object & Bucket Analysis workspace, object/version/delete-marker trends, date filter, and exact-date histogram
+- [ ] Daily Snapshots workspace/table
+- [ ] Node Infrastructure navigation and all tabs/workspaces
+- [ ] Drives & Filesystems workspace and graph/inventory views
+- [ ] Network workspace
+- [ ] Consolidated Reports: all three report tabs, existing tables/filters/exports, and historical charts
+- [ ] Report historical filter preset and custom-range behavior/placement
+- [ ] Other existing navigation (Overview, Tenants, Buckets, Collection Health, Master Configuration, User Administration)
+- [ ] No API/data regression; missing metrics remain unavailable, not zero
+- [ ] CI passed on exact candidate SHA and complete diff reviewed
+
+Do not mark a candidate as the new baseline unless the Product Owner confirms acceptance after these checks.
