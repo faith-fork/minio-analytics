@@ -523,3 +523,43 @@ No merge or deployment is authorized by this checkpoint.
 - Combined with deployment-stage 1–3 evidence, **browser functional acceptance is passed for the displayed views**.
 - Browser Console error status and explicit Network-panel verification of fingerprinted asset requests were not included in the evidence; these remain unverified, but do not block the demonstrated navigation/UI acceptance.
 - Deployment/runtime acceptance for PR #59 is therefore recorded as passed for the checks evidenced by terminal output and screenshots. No further deployment is requested by this checkpoint.
+
+
+## 24. Baseline-preservation incident and recovery checkpoint — 28 November 2026
+
+### Product Owner directive
+The Product Owner explicitly approved the addition of a mandatory change-control/baseline-preservation policy and authorized the recovery audit and subsequent feature work. The requirement is to prevent previously approved changes from disappearing because new features are developed or deployed from incomplete/divergent branches.
+
+### Governance document added
+- PR #77: https://github.com/faith-fork/minio-analytics/pull/77
+- Branch: `docs/baseline-preservation-governance`
+- Head: `ec44b2068c530f5240832dba3f8c8cb2df1568e5`
+- Base: `feature/auth-foundation` at `50a610f879c97cb008ecc2e9d16a20c66a4bad04`
+- New document: `docs/governance/CHANGE_CONTROL_AND_BASELINE_PRESERVATION.md`
+- Documentation-only; draft/open; no merge or deployment.
+- Policy includes verified baseline checks, branch dependency integrity, Preservation Matrix for every application PR, exact-SHA CI/lab gates, checkpoint ledger, incident-response steps and no accidental downgrade deployments.
+
+### Branch incident evidence
+- **PR #71 — Cluster Detail workspace redesign** remains open/draft, not merged. Base: `feature/auth-foundation` at `50a610f879c97cb008ecc2e9d16a20c66a4bad04`; head branch `feature/cluster-detail-workspace`; head `89604dea786438103c7d684d8fcb28e04a2726cb`. PR #71's recorded CI run **46105289555** completed successfully. It includes the approved four workspaces: Infrastructure Status, Capacity & Forecast, Object & Bucket Analysis, and Daily Snapshots. The head commit is based on the PR #71 implementation head `786e71a87a1cef8eb71ded5952446557393b04a2` and adds the object-analysis trend filter. The commit description records prior lab validation/browser acceptance for that filter fix.
+- **PR #74 — Consolidated Reports historical analytics** is open, not merged. Head `0cbc27fa1ba9123825ec2752e38819ebbd4c7a52`; base `feature/auth-foundation`.
+- **PR #75 — Report history selector UX** is open/draft. Head `25f78b2059f80ceda99877f997e53975474a002a`; stacked on #74.
+- **PR #76 — Report history selector alignment** is open/draft. Head `6e1e4206238a0eaf15b5b67c8ce0f7db8c215550`; stacked on #75.
+- The PR #74–#76 chain is based on the auth-foundation baseline and does not contain PR #71's Cluster Detail workspace changes. The latest lab deployment reported by the user was branch `lab/report-history-filter-right-alignment-validation` at `6e1e4206238a0eaf15b5b67c8ce0f7db8c215550`. This explains the likely regression: the lab was switched to a Reports feature chain whose baseline omitted the unmerged Cluster Detail redesign. This is a branch/baseline selection problem, not evidence that the PR #71 code was deleted.
+- The PR #71 head changed nine files: analytics API, bucket collector, persistence, CSS, JS, design doc, frontend tests, API tests, bucket collector tests. The Report PR chain also modifies overlapping frontend files and report-specific analytics/tests, so integration requires full-file/diff reconciliation—not blind branch switching or cherry-picking.
+
+### Important state distinction
+PR #71 is a successful CI feature branch and contains the workspace redesign, but it is **not merged into the designated integration branch**. The reports chain is independently validated, but it also is not merged. No single verified integration baseline currently contains both feature sets. The exact lab-accepted baseline must be confirmed from current VM evidence; this checkpoint records the latest reported lab commit, not a live VM inspection.
+
+### Recovery work authorized; status
+1. Reconcile the actual lab branch/commit and working tree from user terminal evidence. **Pending current VM verification.**
+2. Audit PR #71 and #74–#76 complete patches, overlapping files, dependency ancestry, and approved capabilities. **Started; detailed integration analysis pending.**
+3. Create a dedicated recovery/integration candidate preserving Cluster workspaces plus Reports historical analytics/filter UX. **Not yet created.**
+4. Resolve overlapping files, add integration regression tests and a Preservation Matrix, run CI on the exact candidate. **Pending.**
+5. Lab deploy only after candidate SHA, complete diff, CI and preservation checklist are verified. **Not authorized yet.**
+6. Record user acceptance before marking the candidate as the new lab-accepted baseline. **Pending.**
+
+### Next approved feature work
+After recovery/reconciliation, perform a full graph/filter inventory and implement a shared historical-range UX. Approved historical presets: 7, 30, 60, and 90 days; 6 months; 1, 2, and 5 years; 10 years/all available; and Custom. Historical default is 90 days unless a documented metric-specific exception applies. Live telemetry ranges remain semantically distinct but should share the selector's UX pattern. This feature must be based on the reconciled baseline, never on a branch that omits approved capabilities.
+
+### Merge/deployment boundary
+PR #77 is documentation only and remains draft. The recovery and time-range feature work is authorized, but no existing PR merge, branch rewrite, or lab deployment is authorized without a separate explicit approval at the appropriate gate.
