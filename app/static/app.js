@@ -1156,7 +1156,7 @@ document.addEventListener("click",async e=>{
   const masterConfigTab=e.target.closest("[data-master-config-tab]");if(masterConfigTab){setMasterConfigTab(masterConfigTab.dataset.masterConfigTab);return;}
   const reportView=e.target.closest("[data-report-view]");if(reportView){setView(reportView.dataset.reportView);return;}
   const historyCustomToggle=e.target.closest("[data-report-history-custom-toggle]");
-  if(historyCustomToggle){const key=historyCustomToggle.dataset.reportHistoryCustomToggle,range=state.reportHistoryRanges[key]||{preset:"90d",custom:false};state.reportHistoryRanges[key]={...range,custom:true};refreshReportHistoryToolbar(key);return;}
+  if(historyCustomToggle){const key=historyCustomToggle.dataset.reportHistoryCustomToggle,range=state.reportHistoryRanges[key]||{preset:"90d",custom:false},bounds=reportHistoryBounds(key);state.reportHistoryRanges[key]={...range,custom:true,startDate:range.startDate||bounds.startDate,endDate:range.endDate||bounds.endDate};refreshReportHistoryToolbar(key);return;}
   const historyPreset=e.target.closest("[data-report-history-range]");
   if(historyPreset){const key=historyPreset.dataset.reportHistoryKey;state.reportHistoryRanges[key]={preset:historyPreset.dataset.reportHistoryRange,custom:false};refreshReportHistoryToolbar(key);renderReportHistory(key).catch(err=>toast(err.message,true));return;}
   const historyRetry=e.target.closest("[data-report-history-retry]");
