@@ -96,6 +96,9 @@ async function run() {
   // Reports historical filters use the compact dashboard dropdown, with custom dates hidden until requested.
   const defaultReportRangeMarkup=window.reportHistoryToolbar("provisioned");
   assert.ok(defaultReportRangeMarkup.includes('class="report-history-dropdown"'),"Report history selector should use compact dropdown UX");
+  assert.ok(fs.readFileSync(path.join(root,"app/static/app.css"),"utf8").includes(".report-history-toolbar{display:flex;align-items:center;justify-content:flex-end"),"Historical selector should right-align in the section heading toolbar");
+  const reportHistoryMarkup=window.reportHistorySection("provisioned");
+  assert.ok(reportHistoryMarkup.indexOf("Historical Trends")<reportHistoryMarkup.indexOf("report-history-toolbar"),"Selector should be placed in the Historical Trends heading row, after the title/subtitle");
   assert.ok(defaultReportRangeMarkup.includes("Last 90 days"),"Default report range should be shown in the selector summary");
   assert.equal(defaultReportRangeMarkup.includes('type="date"'),false,"Custom date inputs should not be permanently visible");
   window.document.querySelector("#content").innerHTML='<section id="report-history"><div class="report-history-toolbar">'+defaultReportRangeMarkup+'</div></section>';
