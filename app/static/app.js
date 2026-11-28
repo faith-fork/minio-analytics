@@ -1,7 +1,7 @@
 const $ = (selector, root=document) => root.querySelector(selector);
 const $$ = (selector, root=document) => [...root.querySelectorAll(selector)];
 if(window.Chart&&window.ChartZoom){Chart.register(ChartZoom);Chart.defaults.plugins.zoom={pan:{enabled:true,mode:"x",modifierKey:"shift"},zoom:{wheel:{enabled:true,speed:0.08},drag:{enabled:true,backgroundColor:"rgba(19,165,139,.12)",borderColor:"#13a58b",borderWidth:1},pinch:{enabled:true},mode:"x"}};}
-const state = { user:null, view:"overview", masterConfigTab:"general", masterGeneralTab:"collection", backupPageSize:10, backupOffset:0, overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:null,driveView:"graphs",driveNodeFilter:"all",driveFsFilter:"all",driveInventoryPage:1,driveSortKey:"node",driveSortDirection:1,networkHours:1,dashboardTimeRangePreset:"1h",historicalTimeRange:{mode:"relative",preset:"1h",startTs:null,endTs:null,timezone:"Asia/Kolkata"},historicalTimeRetentionDays:3,networkNodeFilter:"all",networkSelectedInterface:"all" };
+const state = { user:null, view:"overview", masterConfigTab:"general", masterGeneralTab:"collection", backupPageSize:10, backupOffset:0, overview:null, clusters:[], tenants:[], buckets:[], selectedBuckets:[], reportColumns:{used_usable:true,used_bkt:true}, reportColumnVisibility:{}, reportHistoryRanges:{}, reportHistoryChartIds:[], bucketUsageFilters:{cluster:[],location:[],tenant:[]}, bucketUsageFilterDraft:{cluster:[],location:[],tenant:[]}, health:null, healthFilters:{startDate:"",endDate:"",status:"",page:1,pageSize:20}, charts:[], snapshotClusterId:null, snapshotRange:{days:90,startDate:null,endDate:null}, snapshotContext:{type:null,id:null,attribution:"current",days:90,startDate:null,endDate:null},nodeSubsection:"health",nodePerformanceHours:6,performanceRangeHours:2,performanceStart:"",performanceEnd:"",performanceMetric:"cpu",performanceSelectedNodes:null,driveView:"graphs",driveNodeFilter:"all",driveFsFilter:"all",driveInventoryPage:1,driveSortKey:"node",driveSortDirection:1,networkHours:1,dashboardTimeRangePreset:"1h",historicalTimeRange:{mode:"relative",preset:"1h",startTs:null,endTs:null,timezone:"Asia/Kolkata"},historicalTimeRetentionDays:3,networkNodeFilter:"all",networkSelectedInterface:"all" };
 const fmt = (n, digits=2) => n == null ? "—" : new Intl.NumberFormat("en-IN",{maximumFractionDigits:digits}).format(n);
 
 const HISTORICAL_TIME_PRESETS = [
@@ -66,6 +66,111 @@ function toast(message,error=false){const el=document.createElement("div");el.cl
 function showLogin(){state.user=null;$("#app-shell").classList.add("hidden");$("#login-screen").classList.remove("hidden");}
 function showApp(user){state.user=user;$("#login-screen").classList.add("hidden");$("#app-shell").classList.remove("hidden");$("#user-name").textContent=user.username;$("#user-role").textContent=user.role.toUpperCase();$("#user-avatar").textContent=user.username.slice(0,1).toUpperCase();$$(".admin-only").forEach(el=>el.classList.toggle("hidden",user.role!=="admin"));$$(".master-admin-only").forEach(el=>el.classList.toggle("hidden",!user.is_master_admin));}
 function pageHead(title,subtitle,actions=""){return `<div class="page-heading"><div><h1>${title}</h1><p>${subtitle}</p></div><div class="heading-actions">${actions}</div></div>`;}
+
+const REPORT_HISTORY_PRESETS=[["7d",7,"7 days"],["30d",30,"30 days"],["90d",90,"90 days"],["6m",183,"6 months"],["1y",365,"1 year"],["2y",730,"2 years"],["5y",1825,"5 years"],["10y",3650,"10 years / all available"]];
+function reportHistoryBounds(reportKey){
+  const range=state.reportHistoryRanges[reportKey]||{preset:"90d",custom:false};
+  const today=new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Kolkata"});
+  const end=range.custom?range.endDate:today;
+  const start=range.custom?range.startDate:(()=>{const d=new Date(end+"T00:00:00Z");d.setUTCDate(d.getUTCDate()-(REPORT_HISTORY_PRESETS.find(x=>x[0]===range.preset)?.[1]||90)+1);return d.toISOString().slice(0,10);})();
+  return {startDate:start,endDate:end};
+}
+function reportHistoryToolbar(reportKey){
+  const range=state.reportHistoryRanges[reportKey]||{preset:"90d",custom:false};
+  const bounds=reportHistoryBounds(reportKey);
+  return '<div class="report-history-toolbar"><div class="report-history-presets">'+REPORT_HISTORY_PRESETS.map(([key,,label])=>'<button type="button" data-report-history-range="'+key+'" data-report-history-key="'+reportKey+'" class="'+(!range.custom&&range.preset===key?'active':'')+'">'+label+'</button>').join("")+'</div><form class="report-history-custom" data-report-history-custom="'+reportKey+'"><label>From<input type="date" name="start_date" value="'+bounds.startDate+'" required></label><label>To<input type="date" name="end_date" value="'+bounds.endDate+'" required></label><button class="subtle-button" type="submit">Apply</button></form></div>';
+}
+function refreshReportHistoryToolbar(reportKey){const section=$("#report-history"),toolbar=section?.querySelector(".report-history-toolbar");if(toolbar)toolbar.outerHTML=reportHistoryToolbar(reportKey);}
+function reportHistorySection(reportKey){
+  return '<section id="report-history" class="report-history-section"><div class="report-history-heading"><div><h2>Historical Trends</h2><p>Daily SQLite snapshots · historical graphs only (current KPIs and table are unchanged)</p></div></div>'+reportHistoryToolbar(reportKey)+'<div class="report-history-content"><div class="loading-state">Loading historical trends…</div></div></section>';
+}
+function destroyReportHistoryCharts(){
+  const ids=new Set(state.reportHistoryChartIds||[]);
+  state.charts=state.charts.filter(instance=>{if(ids.has(instance.canvas?.id)){instance.destroy();return false;}return true;});
+  state.reportHistoryChartIds=[];
+}
+function reportHistoryFillColor(hex){const value=String(hex||"#13a58b").replace("#","");const r=parseInt(value.slice(0,2),16),g=parseInt(value.slice(2,4),16),b=parseInt(value.slice(4,6),16);return "rgba("+r+","+g+","+b+",0.13)";}
+function reportHistoryChart(id,labels,datasets,unit=""){
+  const canvas=$("#"+id);if(!canvas||!window.Chart)return;
+  const colors=["#13a58b","#4779d8","#d9922e","#7a66d1","#d45b5b"];
+  const cfg={
+    type:"line",
+    data:{labels,datasets:datasets.map((d,i)=>({
+      label:d.label,data:d.data,borderColor:d.color||colors[i%colors.length],
+      backgroundColor:d.fill?reportHistoryFillColor(d.color||colors[i%colors.length]):(d.color||colors[i%colors.length]),
+      borderWidth:d.width||2,pointRadius:labels.length>60?1:2.5,pointHoverRadius:4,
+      tension:0.18,fill:!!d.fill,stack:d.stack, borderDash:d.dash||[],
+      spanGaps:false
+    }))},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
+      plugins:{legend:{position:"bottom",labels:{usePointStyle:true,boxWidth:7,font:{size:10}}},
+        tooltip:{callbacks:{label:ctx=>ctx.dataset.label+": "+(ctx.parsed.y==null?"—":new Intl.NumberFormat("en-IN",{maximumFractionDigits:2}).format(ctx.parsed.y)+unit)}}},
+      scales:{x:{grid:{display:false},ticks:{autoSkip:true,maxTicksLimit:12,maxRotation:45,minRotation:0,font:{size:9},color:"#94a0af"}},
+        y:{stacked:datasets.some(d=>d.stack),grid:{color:"#edf1f5"},ticks:{font:{size:9},color:"#94a0af",callback:v=>new Intl.NumberFormat("en-IN",{maximumFractionDigits:2}).format(v)+unit}}}}
+  };
+  const instance=new Chart(canvas,cfg);state.charts.push(instance);state.reportHistoryChartIds.push(id);ensureChartControls(instance);
+}
+function reportHistoryDates(points){
+  return points.map(p=>new Date(p.date+"T00:00:00+05:30").toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"2-digit",timeZone:"Asia/Kolkata"}));
+}
+function reportHistoryValues(points,key,divisor=1){
+  return points.map(p=>p[key]==null?null:Number(p[key])/divisor);
+}
+function reportHistoryNoData(points,keys){
+  return !points.length||keys.every(key=>points.every(p=>p[key]==null));
+}
+function reportHistoryPanel(title,subtitle,chartId){
+  return panel(title,subtitle,'<div class="chart-wrap report-history-chart"><canvas id="'+chartId+'"></canvas></div>');
+}
+async function renderReportHistory(reportKey){
+  const section=$("#report-history");if(!section)return;
+  destroyReportHistoryCharts();
+  const bounds=reportHistoryBounds(reportKey);
+  const apiKey=reportKey==="provisioned"?"capacity-report":reportKey==="bucket-usage"?"bucket-usage-report":"raw-capacity-report";
+  const url="/api/analytics/"+apiKey+"/history?start_date="+encodeURIComponent(bounds.startDate)+"&end_date="+encodeURIComponent(bounds.endDate);
+  const content=section.querySelector(".report-history-content");
+  content.innerHTML='<div class="loading-state">Loading historical trends…</div>';
+  try{
+    const data=await api(url),points=data.points||[],labels=reportHistoryDates(points),ti=1024**4;
+    const defs=[];
+    if(reportKey==="provisioned"){
+      defs.push({id:"report-provisioned-capacity",title:"Capacity Composition",subtitle:"Usable capacity composition: used and free",unit:" TiB",datasets:[
+        {label:"Usable Used (TiB)",data:reportHistoryValues(points,"usable_used_bytes",ti),color:"#13a58b",fill:true,stack:"usable"},
+        {label:"Usable Free (TiB)",data:reportHistoryValues(points,"usable_free_bytes",ti),color:"#4779d8",fill:true,stack:"usable"},
+      ],keys:["usable_used_bytes","usable_free_bytes"]});
+      defs.push({id:"report-provisioned-utilization",title:"Utilization Trend",subtitle:"Fleet used capacity ÷ installed capacity · 70% and 80% thresholds",unit:"%",datasets:[
+        {label:"Fleet Utilization %",data:reportHistoryValues(points,"utilization_pct"),color:"#13a58b"},
+        {label:"70% Threshold",data:points.map(()=>70),color:"#d9922e",dash:[6,4],width:1},
+        {label:"80% Threshold",data:points.map(()=>80),color:"#d45b5b",dash:[6,4],width:1}
+      ],keys:["utilization_pct"]});
+      defs.push({id:"report-provisioned-buckets",title:"Bucket Consumption vs Quota",subtitle:"Historical observed bucket metrics · coverage may be incomplete",unit:" TiB",datasets:[
+        {label:"Used Bucket (TiB)",data:reportHistoryValues(points,"bucket_used_bytes",ti),color:"#13a58b"},
+        {label:"Quota (TiB)",data:reportHistoryValues(points,"bucket_quota_bytes",ti),color:"#4779d8"},
+        {label:"Remaining Quota (TiB)",data:reportHistoryValues(points,"bucket_quota_remaining_bytes",ti),color:"#d9922e"}
+      ],keys:["bucket_used_bytes","bucket_quota_bytes"]});
+    }else if(reportKey==="bucket-usage"){
+      defs.push({id:"report-bucket-used",title:"Bucket Consumption Trend",subtitle:"Historical observed bucket used capacity",unit:" TiB",datasets:[{label:"Used (TiB)",data:reportHistoryValues(points,"used_bytes",ti),color:"#13a58b"}],keys:["used_bytes"]});
+      defs.push({id:"report-bucket-quota",title:"Quota vs Consumption",subtitle:"Observed bucket usage compared with quota",unit:" TiB",datasets:[{label:"Used (TiB)",data:reportHistoryValues(points,"used_bytes",ti),color:"#13a58b"},{label:"Quota (TiB)",data:reportHistoryValues(points,"quota_bytes",ti),color:"#4779d8"}],keys:["used_bytes","quota_bytes"]});
+      defs.push({id:"report-bucket-utilization",title:"Quota Utilization",subtitle:"Used ÷ quota · available only when both metrics are valid",unit:"%",datasets:[{label:"Quota Utilization %",data:reportHistoryValues(points,"utilization_pct"),color:"#d9922e"}],keys:["utilization_pct"]});
+    }else{
+      defs.push({id:"report-raw-capacity",title:"RAW Capacity Composition",subtitle:"Raw capacity composition: used and free",unit:" TiB",datasets:[
+        {label:"Raw Used (TiB)",data:reportHistoryValues(points,"raw_used_bytes",ti),color:"#13a58b",fill:true,stack:"raw"},
+        {label:"Raw Free (TiB)",data:reportHistoryValues(points,"raw_free_bytes",ti),color:"#4779d8",fill:true,stack:"raw"},
+      ],keys:["raw_used_bytes","raw_free_bytes"]});
+      defs.push({id:"report-raw-utilization",title:"RAW Utilization Trend",subtitle:"Raw used ÷ raw total capacity",unit:"%",datasets:[{label:"Raw Utilization %",data:reportHistoryValues(points,"raw_used_pct"),color:"#13a58b"}],keys:["raw_used_pct"]});
+      defs.push({id:"report-raw-used-capacity",title:"RAW Consumption and Capacity",subtitle:"Used capacity versus total capacity changes",unit:" TiB",datasets:[{label:"Raw Used (TiB)",data:reportHistoryValues(points,"raw_used_bytes",ti),color:"#13a58b"},{label:"Raw Total (TiB)",data:reportHistoryValues(points,"raw_total_bytes",ti),color:"#4779d8"}],keys:["raw_used_bytes","raw_total_bytes"]});
+    }
+    const available=defs.filter(d=>!reportHistoryNoData(points,d.keys));
+    const coverageSummary=reportKey==="provisioned"?"Capacity-complete days: "+points.filter(p=>p.complete).length+"/"+points.length+" · Bucket-metric days: "+points.filter(p=>p.coverage?.bucket_usage_collection_complete).length+"/"+points.length:reportKey==="bucket-usage"?"Usage-valid days: "+points.filter(p=>p.coverage?.usage_complete_for_observed_records).length+"/"+points.length+" · Quota-valid days: "+points.filter(p=>p.coverage?.quota_complete_for_observed_records).length+"/"+points.length:"Fleet-complete days: "+points.filter(p=>p.complete).length+"/"+points.length;
+    const coverage='<div class="report-history-coverage"><strong>Selected period:</strong> '+esc(bounds.startDate)+' → '+esc(bounds.endDate)+' · '+fmt(points.length,0)+' calendar days · '+esc(coverageSummary)+(data.enabled_cluster_count!=null?' · '+fmt(data.enabled_cluster_count,0)+' enabled clusters':'')+'</div>';
+    const notice=reportKey==="provisioned"?data.bucket_history_limitation:reportKey==="bucket-usage"?data.coverage_limitation:"";
+    content.innerHTML=(available.length?'<div class="report-history-grid">'+defs.map(d=>reportHistoryNoData(points,d.keys)?panel(d.title,d.subtitle,'<div class="report-history-empty">No complete data for this chart in the selected range.</div>'):reportHistoryPanel(d.title,d.subtitle,d.id)).join("")+'</div>':'<div class="empty-state">No complete historical snapshots are available in the selected period.</div>')+coverage+(notice?'<div class="report-history-note">'+esc(notice)+'</div>':'');
+    available.forEach(d=>reportHistoryChart(d.id,labels,d.datasets,d.unit));
+  }catch(err){
+    content.innerHTML='<div class="empty-state report-history-error">Historical trends could not be loaded: '+esc(err.message)+' <button type="button" class="subtle-button" data-report-history-retry="'+reportKey+'">Retry</button></div>';
+  }
+}
+
 function reportTabs(active){const tabs=[["capacity-report","Consolidated Provisioned"],["bucket-usage-report","Consolidated Bucket Usage"],["raw-capacity-report","Consolidated RAW Capacity"]];return '<div class="report-tabs" role="tablist" aria-label="Consolidated reports">'+tabs.map(([view,label])=>'<button type="button" role="tab" aria-selected="'+(active===view)+'" class="'+(active===view?"active":"")+'" data-report-view="'+view+'">'+label+'</button>').join("")+'</div>';}
 function metric(label,value,foot,icon="◈",good=false){return `<div class="metric-card"><div class="metric-top"><span>${label}</span><span class="metric-icon">${icon}</span></div><div class="metric-value">${value}</div><div class="metric-foot ${good?"good":""}">${foot}</div></div>`;}
 function pill(status){const cls=status==="success"||status===true?"":status==="partial"?"warn":status==="failed"||status===false?"bad":"neutral";const label=status===true?"Available":status===false?"Unavailable":String(status??"Unknown");return `<span class="status-pill ${cls}"><i></i>${esc(label)}</span>`;}
@@ -307,7 +412,8 @@ async function renderCapacityReport(){
     factorControls+
     '<div class="metric-grid capacity-report-grid">'+cards+'</div>'+
     table("Capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · latest available cluster and bucket snapshots",headers,rows,"No enabled clusters are registered.",{id:"provisioned",columns:provisionedColumns,visibility:state.reportColumns})+
-    formulas;
+    formulas+reportHistorySection("provisioned");
+  renderReportHistory("provisioned").catch(err=>toast(err.message,true));
 }
 async function renderRawCapacityReport(){
   const d=await api("/api/analytics/raw-capacity-report");
@@ -348,7 +454,8 @@ async function renderRawCapacityReport(){
   const rawCapacityVisibility=loadReportColumnVisibility("raw-capacity",rawCapacityColumns);
   $("#content").innerHTML=pageHead("Consolidated RAW Capacity Report","Fleet-wide raw capacity, used and free storage from the latest stored cluster snapshots. Data as of "+esc(dataAsOf)+" IST.",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+
     reportTabs("raw-capacity-report")+'<div class="metric-grid raw-capacity-grid">'+cards+'</div>'+
-    table("Raw capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · "+fmt(d.available_cluster_count,0)+" with complete raw metrics",rawCapacityColumns.map(column=>column.label),rows,"No enabled clusters are registered.",{id:"raw-capacity",columns:rawCapacityColumns,visibility:rawCapacityVisibility})+notes;
+    table("Raw capacity by cluster",fmt(d.cluster_count,0)+" enabled cluster(s) · "+fmt(d.available_cluster_count,0)+" with complete raw metrics",rawCapacityColumns.map(column=>column.label),rows,"No enabled clusters are registered.",{id:"raw-capacity",columns:rawCapacityColumns,visibility:rawCapacityVisibility})+notes+reportHistorySection("raw-capacity");
+  renderReportHistory("raw-capacity").catch(err=>toast(err.message,true));
 }
 function bucketUsageFilterControl(key,title,items,valueKey,labelKey){
   const unique=[...new Map(items.map(x=>[String(x[valueKey]??"unassigned"),{value:String(x[valueKey]??"unassigned"),label:x[labelKey]||"Unassigned"}])).values()].sort((a,b)=>a.label.localeCompare(b.label));
@@ -383,7 +490,8 @@ async function renderBucketUsageReport(){
   const asOf=dataAsOf?snapshotTimestampLabel(dataAsOf):"Unavailable — one or more filtered clusters have no bucket snapshot",summary=filters.cluster.length||filters.location.length||filters.tenant.length?"Filtered view · ":"";
   const bucketUsageColumns=[{key:"bucket",label:"BUCKET"},{key:"cluster",label:"CLUSTER"},{key:"location",label:"LOCATION"},{key:"tenant",label:"TENANT"},{key:"quota",label:"QUOTA (TiB)"},{key:"used",label:"USED (TiB)"},{key:"usage_pct",label:"USAGE %"},{key:"objects",label:"OBJECTS"},{key:"versions",label:"VERSIONS"},{key:"delete_markers",label:"DELETE MARKERS"},{key:"status",label:"STATUS"}];
   const bucketUsageVisibility=loadReportColumnVisibility("bucket-usage",bucketUsageColumns);
-  $("#content").innerHTML=pageHead("Consolidated Bucket Usage Report","Latest stored bucket usage for active buckets across enabled clusters. Data as of "+esc(asOf)+".",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+reportTabs("bucket-usage-report")+filterPanel+'<div class="metric-grid bucket-usage-grid">'+cards+'</div>'+table("Bucket usage by tenant and cluster",summary+fmt(items.length,0)+" of "+fmt(allItems.length,0)+" active bucket(s) · "+fmt(clusterIds.length,0)+" cluster(s) · latest bucket snapshot per cluster",bucketUsageColumns.map(column=>column.label),rows,"No buckets match the selected filters.",{id:"bucket-usage",columns:bucketUsageColumns,visibility:bucketUsageVisibility})+'<div class="report-footnotes"><strong>Calculation and coverage notes</strong><ul><li>Each cluster uses its latest stored bucket snapshot date; all active buckets in that cluster are represented.</li><li>Totals are shown only when every filtered bucket has an available, non-null value for that metric. Missing values are never treated as zero.</li><li>Tenant attribution is taken from the bucket snapshot, not the current bucket assignment.</li><li>Usage % = Used bytes ÷ Quota bytes × 100; it is unavailable when quota is zero or missing.</li></ul><p>Capacity units are shown in the column headers. A dash indicates missing snapshot data or incomplete metric coverage.</p></div>';
+  $("#content").innerHTML=pageHead("Consolidated Bucket Usage Report","Latest stored bucket usage for active buckets across enabled clusters. Data as of "+esc(asOf)+".",'<button class="subtle-button" data-action="refresh">↻ Refresh</button>')+reportTabs("bucket-usage-report")+filterPanel+'<div class="metric-grid bucket-usage-grid">'+cards+'</div>'+table("Bucket usage by tenant and cluster",summary+fmt(items.length,0)+" of "+fmt(allItems.length,0)+" active bucket(s) · "+fmt(clusterIds.length,0)+" cluster(s) · latest bucket snapshot per cluster",bucketUsageColumns.map(column=>column.label),rows,"No buckets match the selected filters.",{id:"bucket-usage",columns:bucketUsageColumns,visibility:bucketUsageVisibility})+'<div class="report-footnotes"><strong>Calculation and coverage notes</strong><ul><li>Each cluster uses its latest stored bucket snapshot date; all active buckets in that cluster are represented.</li><li>Totals are shown only when every filtered bucket has an available, non-null value for that metric. Missing values are never treated as zero.</li><li>Tenant attribution is taken from the bucket snapshot, not the current bucket assignment.</li><li>Usage % = Used bytes ÷ Quota bytes × 100; it is unavailable when quota is zero or missing.</li></ul><p>Capacity units are shown in the column headers. A dash indicates missing snapshot data or incomplete metric coverage.</p></div>'+reportHistorySection("bucket-usage");
+  renderReportHistory("bucket-usage").catch(err=>toast(err.message,true));
 }
 
 async function renderClusters(){
@@ -1043,6 +1151,10 @@ document.addEventListener("click",async e=>{
   const generalConfigTab=e.target.closest("[data-general-config-tab]");if(generalConfigTab){state.masterGeneralTab=generalConfigTab.dataset.generalConfigTab;state.backupOffset=0;renderMasterAdmin().catch(err=>toast(err.message,true));return;}
   const masterConfigTab=e.target.closest("[data-master-config-tab]");if(masterConfigTab){setMasterConfigTab(masterConfigTab.dataset.masterConfigTab);return;}
   const reportView=e.target.closest("[data-report-view]");if(reportView){setView(reportView.dataset.reportView);return;}
+  const historyPreset=e.target.closest("[data-report-history-range]");
+  if(historyPreset){const key=historyPreset.dataset.reportHistoryKey;state.reportHistoryRanges[key]={preset:historyPreset.dataset.reportHistoryRange,custom:false};refreshReportHistoryToolbar(key);renderReportHistory(key).catch(err=>toast(err.message,true));return;}
+  const historyRetry=e.target.closest("[data-report-history-retry]");
+  if(historyRetry){renderReportHistory(historyRetry.dataset.reportHistoryRetry).catch(err=>toast(err.message,true));return;}
   const view=e.target.closest("[data-view]");if(view){e.preventDefault();setView(view.dataset.view);return;}
   const cluster=e.target.closest("[data-cluster]");if(cluster){try{await showCluster(cluster.dataset.cluster);}catch(err){toast(err.message,true);}return;}
   const tenant=e.target.closest("[data-tenant]");if(tenant){try{await showTenant(tenant.dataset.tenant);}catch(err){toast(err.message,true);}return;}
@@ -1151,6 +1263,8 @@ $("#login-form").addEventListener("submit",async e=>{e.preventDefault();$("#logi
 $("#logout-button").addEventListener("click",async()=>{try{await api("/api/auth/logout",{method:"POST"});}catch{}showLogin();});
 $("#refresh-button").addEventListener("click",()=>render().catch(e=>toast(e.message,true)));
 $("#content").addEventListener("submit",async e=>{
+  const historyForm=e.target.closest("[data-report-history-custom]");
+  if(historyForm){e.preventDefault();const key=historyForm.dataset.reportHistoryCustom,start=historyForm.elements.start_date.value,end=historyForm.elements.end_date.value;if(!start||!end||start>end){toast("Choose a valid date range: start must be on or before end.",true);return;}state.reportHistoryRanges[key]={custom:true,startDate:start,endDate:end};refreshReportHistoryToolbar(key);renderReportHistory(key).catch(err=>toast(err.message,true));return;}
   if(e.target.id!=="master-settings-form")return;
   e.preventDefault();const form=e.target;if(!form.reportValidity())return;
   const values={node_interval_minutes:Number(form.elements.node_interval_minutes.value),telemetry_retention_days:Number(form.elements.telemetry_retention_days.value),daily_collection_time:form.elements.daily_collection_time.value};
