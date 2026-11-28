@@ -78,7 +78,11 @@ function reportHistoryBounds(reportKey){
 function reportHistoryToolbar(reportKey){
   const range=state.reportHistoryRanges[reportKey]||{preset:"90d",custom:false};
   const bounds=reportHistoryBounds(reportKey);
-  return '<div class="report-history-toolbar"><div class="report-history-presets">'+REPORT_HISTORY_PRESETS.map(([key,,label])=>'<button type="button" data-report-history-range="'+key+'" data-report-history-key="'+reportKey+'" class="'+(!range.custom&&range.preset===key?'active':'')+'">'+label+'</button>').join("")+'</div><form class="report-history-custom" data-report-history-custom="'+reportKey+'"><label>From<input type="date" name="start_date" value="'+bounds.startDate+'" required></label><label>To<input type="date" name="end_date" value="'+bounds.endDate+'" required></label><button class="subtle-button" type="submit">Apply</button></form></div>';
+  const presetLabel=REPORT_HISTORY_PRESETS.find(([key])=>key===range.preset)?.[2]||"90 days";
+  const selectedLabel=range.custom?dateLabel(bounds.startDate)+" – "+dateLabel(bounds.endDate):"Last "+presetLabel;
+  const presets=REPORT_HISTORY_PRESETS.map(([key,,label])=>'<button type="button" data-report-history-range="'+key+'" data-report-history-key="'+reportKey+'" class="'+(!range.custom&&range.preset===key?'active':'')+'">'+label+'</button>').join("");
+  const customForm=range.custom?'<form class="report-history-custom" data-report-history-custom="'+reportKey+'"><label>From<input type="date" name="start_date" value="'+bounds.startDate+'" required></label><label>To<input type="date" name="end_date" value="'+bounds.endDate+'" required></label><button class="primary-small" type="submit">Apply</button></form>':'';
+  return '<div class="report-history-toolbar"><details class="report-history-dropdown" '+(range.custom?'open':'')+'><summary><span class="report-history-clock">◷</span><span class="report-history-selected">'+esc(selectedLabel)+'</span><span class="report-history-chevron">▾</span></summary><div class="report-history-popover"><div class="report-history-popover-heading">Historical range</div><div class="report-history-presets">'+presets+'</div><button type="button" class="report-history-custom-toggle '+(range.custom?'active':'')+'" data-report-history-custom-toggle="'+reportKey+'">Custom date range</button>'+customForm+'</div></details></div>';
 }
 function refreshReportHistoryToolbar(reportKey){const section=$("#report-history"),toolbar=section?.querySelector(".report-history-toolbar");if(toolbar)toolbar.outerHTML=reportHistoryToolbar(reportKey);}
 function reportHistorySection(reportKey){
@@ -1151,6 +1155,8 @@ document.addEventListener("click",async e=>{
   const generalConfigTab=e.target.closest("[data-general-config-tab]");if(generalConfigTab){state.masterGeneralTab=generalConfigTab.dataset.generalConfigTab;state.backupOffset=0;renderMasterAdmin().catch(err=>toast(err.message,true));return;}
   const masterConfigTab=e.target.closest("[data-master-config-tab]");if(masterConfigTab){setMasterConfigTab(masterConfigTab.dataset.masterConfigTab);return;}
   const reportView=e.target.closest("[data-report-view]");if(reportView){setView(reportView.dataset.reportView);return;}
+  const historyCustomToggle=e.target.closest("[data-report-history-custom-toggle]");
+  if(historyCustomToggle){const key=historyCustomToggle.dataset.reportHistoryCustomToggle,range=state.reportHistoryRanges[key]||{preset:"90d",custom:false};state.reportHistoryRanges[key]={...range,custom:true};refreshReportHistoryToolbar(key);return;}
   const historyPreset=e.target.closest("[data-report-history-range]");
   if(historyPreset){const key=historyPreset.dataset.reportHistoryKey;state.reportHistoryRanges[key]={preset:historyPreset.dataset.reportHistoryRange,custom:false};refreshReportHistoryToolbar(key);renderReportHistory(key).catch(err=>toast(err.message,true));return;}
   const historyRetry=e.target.closest("[data-report-history-retry]");
