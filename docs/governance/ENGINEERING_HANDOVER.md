@@ -552,9 +552,9 @@ PR #71 is a successful CI feature branch and contains the workspace redesign, bu
 
 ### Recovery work authorized; status
 1. Reconcile the actual lab branch/commit and working tree from user terminal evidence. **Pending current VM verification.**
-2. Audit PR #71 and #74–#76 complete patches, overlapping files, dependency ancestry, and approved capabilities. **Started; detailed integration analysis pending.**
-3. Create a dedicated recovery/integration candidate preserving Cluster workspaces plus Reports historical analytics/filter UX. **Not yet created.**
-4. Resolve overlapping files, add integration regression tests and a Preservation Matrix, run CI on the exact candidate. **Pending.**
+2. Audit PR #71 and #74–#76 changed-file inventories, ancestry, and CI evidence. **Completed initial audit; overlap is confirmed.** PR #71 and #74 both change `app/api/analytics.py`, `app/static/app.js`, and `app/static/app.css`; PR #74 also adds `app/services/report_history.py` and `tests/test_report_history.py`. PR #71 changes bucket collection/persistence and cluster-workspace tests/docs. PR #75 overlaps frontend CSS/JS and frontend navigation tests; PR #76 overlaps frontend CSS/JS and frontend navigation tests plus the global time-range design document. The shared files require an intentional integration merge and complete regression review.
+3. Create a dedicated recovery/integration candidate preserving Cluster workspaces plus Reports historical analytics/filter UX. **Not yet created; GitHub connector provides branch/file operations but no safe local Git merge/conflict-resolution capability. I will not simulate a merge by overwriting shared files.**
+4. Resolve overlapping files, add integration regression tests and a Preservation Matrix, run CI on the exact candidate. **Pending; requires a real merge-capable development environment or an equivalent reviewed patch workflow.**
 5. Lab deploy only after candidate SHA, complete diff, CI and preservation checklist are verified. **Not authorized yet.**
 6. Record user acceptance before marking the candidate as the new lab-accepted baseline. **Pending.**
 
