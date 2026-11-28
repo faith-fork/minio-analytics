@@ -80,6 +80,7 @@ function reportHistoryToolbar(reportKey){
   const bounds=reportHistoryBounds(reportKey);
   return '<div class="report-history-toolbar"><div class="report-history-presets">'+REPORT_HISTORY_PRESETS.map(([key,,label])=>'<button type="button" data-report-history-range="'+key+'" data-report-history-key="'+reportKey+'" class="'+(!range.custom&&range.preset===key?'active':'')+'">'+label+'</button>').join("")+'</div><form class="report-history-custom" data-report-history-custom="'+reportKey+'"><label>From<input type="date" name="start_date" value="'+bounds.startDate+'" required></label><label>To<input type="date" name="end_date" value="'+bounds.endDate+'" required></label><button class="subtle-button" type="submit">Apply</button></form></div>';
 }
+function refreshReportHistoryToolbar(reportKey){const section=$("#report-history"),toolbar=section?.querySelector(".report-history-toolbar");if(toolbar)toolbar.outerHTML=reportHistoryToolbar(reportKey);}
 function reportHistorySection(reportKey){
   return '<section id="report-history" class="report-history-section"><div class="report-history-heading"><div><h2>Historical Trends</h2><p>Daily SQLite snapshots · historical graphs only (current KPIs and table are unchanged)</p></div></div>'+reportHistoryToolbar(reportKey)+'<div class="report-history-content"><div class="loading-state">Loading historical trends…</div></div></section>';
 }
@@ -1152,7 +1153,7 @@ document.addEventListener("click",async e=>{
   const masterConfigTab=e.target.closest("[data-master-config-tab]");if(masterConfigTab){setMasterConfigTab(masterConfigTab.dataset.masterConfigTab);return;}
   const reportView=e.target.closest("[data-report-view]");if(reportView){setView(reportView.dataset.reportView);return;}
   const historyPreset=e.target.closest("[data-report-history-range]");
-  if(historyPreset){const key=historyPreset.dataset.reportHistoryKey;state.reportHistoryRanges[key]={preset:historyPreset.dataset.reportHistoryRange,custom:false};renderReportHistory(key).catch(err=>toast(err.message,true));return;}
+  if(historyPreset){const key=historyPreset.dataset.reportHistoryKey;state.reportHistoryRanges[key]={preset:historyPreset.dataset.reportHistoryRange,custom:false};refreshReportHistoryToolbar(key);renderReportHistory(key).catch(err=>toast(err.message,true));return;}
   const historyRetry=e.target.closest("[data-report-history-retry]");
   if(historyRetry){renderReportHistory(historyRetry.dataset.reportHistoryRetry).catch(err=>toast(err.message,true));return;}
   const view=e.target.closest("[data-view]");if(view){e.preventDefault();setView(view.dataset.view);return;}
@@ -1264,7 +1265,7 @@ $("#logout-button").addEventListener("click",async()=>{try{await api("/api/auth/
 $("#refresh-button").addEventListener("click",()=>render().catch(e=>toast(e.message,true)));
 $("#content").addEventListener("submit",async e=>{
   const historyForm=e.target.closest("[data-report-history-custom]");
-  if(historyForm){e.preventDefault();const key=historyForm.dataset.reportHistoryCustom,start=historyForm.elements.start_date.value,end=historyForm.elements.end_date.value;if(!start||!end||start>end){toast("Choose a valid date range: start must be on or before end.",true);return;}state.reportHistoryRanges[key]={custom:true,startDate:start,endDate:end};renderReportHistory(key).catch(err=>toast(err.message,true));return;}
+  if(historyForm){e.preventDefault();const key=historyForm.dataset.reportHistoryCustom,start=historyForm.elements.start_date.value,end=historyForm.elements.end_date.value;if(!start||!end||start>end){toast("Choose a valid date range: start must be on or before end.",true);return;}state.reportHistoryRanges[key]={custom:true,startDate:start,endDate:end};refreshReportHistoryToolbar(key);renderReportHistory(key).catch(err=>toast(err.message,true));return;}
   if(e.target.id!=="master-settings-form")return;
   e.preventDefault();const form=e.target;if(!form.reportValidity())return;
   const values={node_interval_minutes:Number(form.elements.node_interval_minutes.value),telemetry_retention_days:Number(form.elements.telemetry_retention_days.value),daily_collection_time:form.elements.daily_collection_time.value};
